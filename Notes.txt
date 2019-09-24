@@ -1,0 +1,177 @@
+#test cosine distance of inverse gene pattern when scaling to same patter with *-1:
+a
+Out[106]: [1, 2, 3, 2, 1]
+b
+Out[107]: [3, 2, 1, 2, 3]
+c
+Out[108]: [-3, -2, -1, -2, -3]
+an <-normalised with from sklearn import preprocessing as pp; an=pp.scale(a, axis=1)
+Out[109]: array([-1.06904497,  0.26726124,  1.60356745,  0.26726124, -1.06904497])
+bn
+Out[110]: array([ 1.06904497, -0.26726124, -1.60356745, -0.26726124,  1.06904497])
+cn
+Out[111]: array([-1.06904497,  0.26726124,  1.60356745,  0.26726124, -1.06904497])
+1 - spatial.distance.cosine(an,bn)
+Out[112]: -1.0
+1 - spatial.distance.cosine(an,cn)
+Out[113]: 1.0
+
+
+trans_9repAX4_6strains_2rep_avr_T12.tab
+AX4 9 strains, but rep3 and rep4 only t[0,8] --> exclude
+Get KNN for each --> correltions on each replicate separately->threshold (or latter?) ->sum in matrix for graph
+Table: r0,r1 - flags,  c12869 Source ID,  c12870 Time,c12871 FeatureName,
+#Some Inverse KNN much greater distances in 200 neighbours than non-inverse - check if lower threshold importantly affects top correlations: t=0.15 or 0.3 or 0.4 (<--in replicates/try):
+
+len(dict(filter(lambda elem: abs(elem[1]) >= 0.98, rScoresS03.items())).values())
+8267
+len(dict(filter(lambda elem: abs(elem[1]) >= 0.99, rScoresS.items())).values())
+4191
+len(dict(filter(lambda elem: abs(elem[1]) >= 1, rScoresS03.items())).values())
+2626
+len(dict(filter(lambda elem: abs(elem[1]) >= 0.98, rScoresS015.items())).values())
+7868
+len(dict(filter(lambda elem: abs(elem[1]) >= 0.99, rScoresS015.items())).values())
+4087
+len(dict(filter(lambda elem: abs(elem[1]) >= 1, rScoresS015.items())).values())
+2603
+len(dict(filter(lambda elem: abs(elem[1]) >= 0.8, rScoresS03.items())).values())
+1287607
+len(dict(filter(lambda elem: abs(elem[1]) >= 0.8, rScoresS015.items())).values())
+787570
+len(dict(filter(lambda elem: abs(elem[1]) >= 0.8, rScoresS04.items())).values())
+1362133
+len(dict(filter(lambda elem: abs(elem[1]) >= 0.85, rScoresS015.items())).values())
+563874
+len(dict(filter(lambda elem: abs(elem[1]) >= 0.85, rScoresS03.items())).values())
+808960
+len(dict(filter(lambda elem: abs(elem[1]) >= 0.85, rScoresS04.items())).values())
+838999
+len(dict(filter(lambda elem: abs(elem[1]) <= 0.05, pScoresS03.items())).values())
+2713945
+len(dict(filter(lambda elem: abs(elem[1]) <= 0.05, pScoresS015.items())).values())
+1263474
+len(dict(filter(lambda elem: abs(elem[1]) <= 0.05, pScoresS04.items())).values())
+3293658
+test=mt.multipletests(list(pScoresS04.values()),alpha=0.05,method='fdr_bh')
+sum(test[0])
+3126634
+test=mt.multipletests(list(pScoresS03.values()),alpha=0.05,method='fdr_bh')
+sum(test[0])
+2643289
+test=mt.multipletests(list(pScoresS04.values()),alpha=0.01,method='fdr_bh')
+sum(test[0])
+1808705
+test=mt.multipletests(list(pScoresS03.values()),alpha=0.01,method='fdr_bh')
+sum(test[0])
+1793491
+
+
+
+
+#Single AX4 -> prune below 4 (based on image) - but for enrichment more might be better
+#Sinle: With rGraph cutoff 0.85 there is a large network: Counter({2: 3, 12001: 1, 38: 1, 20: 1, 14: 1, 13: 1, 12: 1, 11: 1, 9: 1, 6: 1, 3: 1})
+
+
+*******************************
+Graf na podlagi replikatov:
+Postopek: 1.) izbrane najboljse korelacije za vsak replikat AX4 (za vsak replikat (razen r3,4) posebaj, za vse enaki thresholdi - za korelacijo je to absolutna vrednost nad 0.99),
+2.) korelacije zdruzene v skupni graf.
+Korelacije sem izvedla loceno, ker je Mariko dejala, da so si replikati za nekatere gene manj podobni.
+Nekteri replikati so imeli manj tako (|r|>0.99) podobnih si genov zaradi vecjega stevila casovnih tock.
+Izgleda da je vec pozitivnih kot negativnih mocnih povezav, se posebaj ko je vec caasovnih tock.
+
+Pri tem je nastal zelo velik graf: 284226 povezav, 12178 pik, vecinoma v enem povezanem omrezju.
+To sem poskusila prunati z odstranitvijo povezav, ki so bile prisotne le pri enem od sedmih sevov: preostane le se 13384 povezav
+(kar je manj kot pri prvih podatkih, ko sem imela le en replikat - okoli trikrat toliko).
+Za tem sem odstranila nepovezana omrezja z manj kot 5 pikami, pri cemer preostane 3276 pik (3400 bi jih bilo ce je minimalno omrezje veliko 4 pike) in 12707 povezav.
+Se vedno je vecina pik v enem povezanem grafu.
+Za originalno omrezje so to pike z najvec povezavami:
+DDB_G0267636 (d=409): mybM TF
+DDB_G0276013 (d=481: WD40 repeat-containing protein/cyclin-like F-box containing protein
+DDB_G0280177 (d=400): Hepatoma-derived growth factor-related protein 2
+DDB_G0283759 (d=445): unknown
+DDB_G0285069 (d=472): interacts with RblA to control cell fate commitment during development
+DDB_G0290723 (d=448): putative protein serine/threonine kinase
+Za prunano omrezje so to pike z najvec povezavami:
+DDB_G0273191 (d=70): 40S ribosomal protein S30
+DDB_G0276415 (d=72): 40S ribosomal protein S18
+DDB_G0279061 (d=76): S60 ribosomal protein L31
+DDB_G0285069 (d=84): interacts with RblA to control cell fate commitment during development
+DDB_G0285597 (d=72): putative pseudogene; short fragment; similar to D. discoideum gene rps28
+DDB_G0290315 (d=70): S60 ribosomal protein L23
+Precej ocitno je v prvem omrezju kar nekaj signalnih/regulatornih proteinov, ki imajo veliko povezav zaradi vpliva na druge gene.
+Vendar pa so odnosi med njimi ocitno vseeno manj stabilni (te geni se izgubijo ko uporabim omrezje kjer so le 'bolj zanesljive' povezave prisotne pri vec replikatih).
+Gre verjetno za vpliv ostalih regulatornih dejavnikov.
+Ceprav je zaskrbljujoce da se mocne povezave izgubijo cim se jih isce pri vec kot 1 replikatu - mozno, da so nakljucno tako mocne pri enem replikatu in so pri ostalih sibkejse.
+(Bom razmislila ce bi v naprej spremenila analizo in vkljucila vec sibkejsih povezav.)
+Pri prunanem omrezju z bolj zaneslivimi povezavami prevladujejo med najbolj mocno povezanimi ribosomalni proteini, kar ni presenetljivo.
+Ribosomalni proteini so zelo pomembni in zato so proteini povezani z njimi dobro regulirani v celicnem metabolizmu.
+Gen DDB_G0285069 je edini, ki ostane mocno povezan v obeh omrezjih.
+V obeh omrezjih se pojavljajo se neraziskani geni in pseudogeni. To je po eni strani lahko zanimivo - novi pomembni proteini.
+Ali pa nakazuje na probleme v anotaciji (npr. sekvence so bile nalegane na psevdogen namesto na gen, ki se dejansko izraza).
+Morda bom lahko kaj ugotovila ko preverim njihov ekspresijo (nivo) med replikati.
+Poskusila sem narediti tudi sliko sklear tSNE, a ni bila videti boljse.
+Mogoce bi naprej namesto slike omrezja poskusila najti gruce v omrezju in jih analizirati na podlagi genske ontologije, ekspresije ipd.
+Tako bom verjetno dobila manjse skupine gruc (npr. s podobnimi proteini), ki jih bo lazje vizualizirati.
+
+*****************************************
+Replicates:
+AX4 1,2,5,6,7,8,9
+tagB 1,2
+comH 1,2
+tgrC1 1,2
+tgrB1 1,2
+tgrB1C1 1,2
+gbfA 1,2
+
+Make knn and correlations for all
+NO:If p values adjust for BH (Ax4 rep9, dKNN=0.3) p<= 0.01: 1793491, if not corrected is 2059559 --> work with not corrected as arbitrary threshold due to N of calculartions constrains anyways
+Insteaed choose threshold 0.85 because after that there is less correlations (r graph) - should be more when increasing R but not because of previous thresholding?
+Then decide for 0.8 because else some samples would have little correlations, not to then filter them out when require that present in 2 replicates
+Graph - edge for each replicate and strain
+DID:
+To get correlations; for each sample separately:
+1.) 300 nearest neighbours with cosine distance for normalised expression and inverse (*-1).
+2.) For all pairs with distance <=0.3 calculate Spearman correlations.
+To make graphs for each strain (add replicates on 1 graph), weight=abs(rho).
+1.) Make multi graph for each strain (rho (correlation) thresh min abs(0.8)).
+2.) Remove edges that were presenet in only 1 replicate (and remove isolates (nodes)).
+3.) Merge into single edges, weight by average form replicates.
+4.) Remove edges with weight below 0.95 (and isolates).
+5.) Remove subNetworks with size below 4
+Merge graphs for all strains into multigraph. This created a single graph with 10187 nodes and 243530 edges.
+If edges of this graph belonging to different strains are merged the graph has 228338 edges - most edges belong to single strain.
+
+Create graph with min weight 0.97 (nodes: 8232, edges: 46618)  or 0.99 (nodes 2795, edges: 5863).
+Another with retained only edges in at least 2 strains (nodes 2561, edges 27433; if edges from more strains are merged to single edge there is 12401 edges)
+ or 3 strains (nodes: 679, edges: 6417) or 7 strains -> no such edge.
+Merge graph with at least 2 strains into single graph (sum weights), (nodes 2561, edges 12401).
+Filter graph min 2 strains to min weight 0.97 (nodes: 455, edges 1553). (Eg. if 2 nodes were connected in 2 strains with w>=0.95 remove edges that have w<0.97 - should be vice versa -TODO).
+After all of these filters removed isolates and sub networks with size<4.
+
+To make graphs with connections in all 7 strains:
+1.) For each strain: keep correlations that are present in at least 2 replicates with abs(r)>=0.8. Average these scores for each strain.
+2.) Find connections that are present in all strains (form the strain averaged data).
+3.) Create graph (non-multi Graph) with averages from strains weights (eg. strain averages) as weight. Nodes: 208, edges: 329.
+If filter this by min weight=0.91 and remove isolates: nodes: 182, edges: 306.
+
+***************************
+Check if negative connections were present:
+comH rep 1 r values: 5720 and 11510 have r=-1: 'DDB_G0293108','DDB_G0280457' edge is in graph mde from these scores and in kN300T0_3Tr0_95_MergedStrains.gml as nodes 1007 and 5100.
+
+******************************
+GO annotation:
+1.) Get non-connected sub graphs form the graph.
+2.) Get EntrezIDs for each sub graph's nodes (genes).
+3.) Check GO term enrichment for Process at FDR cutoff 0.25 for each sub graph.
+4.) To every node in the subset add GO enrichment results for that subset.
+
+***************************
+Genes DE in time: deTimeR/script
+*******************************
+Prune graphs with removing edges from nodes with degree>d:
+1.) Merge graphs from strains by summing strain weights
+2.) Remove edges from nodes that have degree>d
+3.) Remove isolates and networks with number of nodes <4
+If used on large graphs (filter r=0.95) a fur ball is created regardless of d. If used on smaller graph (filter r=0.95, min 2 strain) the newly observed groups do not have good GO enrichment.
