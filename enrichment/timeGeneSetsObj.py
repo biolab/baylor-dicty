@@ -191,9 +191,9 @@ class SimilarityCalculator:
     CORRELATIONS=[PEARSON,SPEARMAN]
 
     #Normalisation method
-    NORMAL='normal'
+    M0SD1='mean0std1'
     TO_ONE='to_one'
-    NORMALISATION=[NORMAL,TO_ONE,None]
+    NORMALISATION=[M0SD1,TO_ONE,None]
 
     def __init__(self, bidirectional:bool=True, similarity_type:str=SPEARMAN, normalisation_type:str=None):
         """
@@ -201,7 +201,7 @@ class SimilarityCalculator:
         :param bidirectional: Return better of two possible similarities between profiles -
             eg. profile1 vs profile2 or profile1 vs inverse  profile2 (abs(corrlation/cosine); as multiplied by -1)
         :param similarity_type: Similarity method options: 'correlation_pearson', 'correlation_spearman', 'cosine'
-        :param normalisation_type: Normalisation method options, used only for cosine similarity:'normal','to_one' or None.
+        :param normalisation_type: Normalisation method options, used only for cosine similarity:'mean0std1','to_one' or None.
         'to_one' divides each value with max value of the vector
 
         These types are used automatically when calling similarity method
@@ -267,9 +267,9 @@ class SimilarityCalculator:
         """
         if isinstance(vector, list):
             vector = np.array(vector)
-        if self.normalisation_type=='normal':
+        if self.normalisation_type==self.M0SD1:
             return pp.scale(vector)
-        elif self.normalisation_type=='to_one':
+        elif self.normalisation_type==self.TO_ONE:
             return vector/max(vector)
 
     @staticmethod
