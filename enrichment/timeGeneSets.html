@@ -12764,12 +12764,12 @@ Cosine, normalised with normal distribution:
 <p>This data was used to create a table of starins and gene sets, containing p adjusted as table value. This was plotted in Orange.</p>
 <p>When examining padj distribution it was discovered that many gene sets had p adjusted well below 0.05. - To obtain a narrower set of gene sets with well correlated genes any padj greater than 5th percentile padj was changed to 1 for plotting in Orange. To try to improve heatmap resolution table was perprcessed before importing in Orange by transfroming it with -10log10.</p>
 <p>These transformations also affect strain clustering in heatmap.</p>
-<p>Original:
+<p>Original padj values:
 <img src="attachment:enriched_pearson_3000_pheno_heatmap.png" alt="enriched_pearson_3000_pheno_heatmap.png">
-Top 5% filtering:</p>
+Top 5% padj filtering:</p>
 <p>Many of top enriched phenotypes seem to be relevant for fruiting body development. What I find odd is the wild type gene set enrichment pattern - is it possible that WT gene set is in fact marker for unicelaular stage WT?
 <img src="attachment:enriched_pearson_3000_pheno_heatmap_top5.png" alt="enriched_pearson_3000_pheno_heatmap_top5.png">
--10log10 transformed
+-10log10 transformed padj
 <img src="attachment:enriched_pearson_3000_pheno_heatmap_-10log10.png" alt="enriched_pearson_3000_pheno_heatmap_-10log10.png"></p>
 
 </div>
