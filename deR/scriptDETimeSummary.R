@@ -211,7 +211,7 @@ filterLmms<- function(genes,conditions,strain,useLog=TRUE,doPlot=FALSE,subsetGen
   genesSub<-genes[conditions$Strain==strain & conditions$Include,1:subsetGenes]
   genesSNN<-data.matrix(as.data.frame(genesSub) %>% select_if(not_all_na))
   #Add pseudocount before log2, small beseuse already normalised (not counts)
-  if (useLog) genesLog2<-log2(genesSNN+10^-100)
+  if (useLog) genesLog2<-log2(genesSNN+0.01)
   conditionsSub=conditions[conditions$Strain==strain & conditions$Include,]
   timeSub<-conditionsSub$Time
   sampleSub<-conditionsSub$Sample
@@ -236,7 +236,7 @@ for (strain in strains){
   lmmsL<-list()
   reps=5
   for(i in seq(1,reps)){
-    lmmsR<-filterLmms(genes=genesNotNullNorm,conditions=conditionsNorm,strain=strain)
+    lmmsR<-filterLmms(genes=genesNotNullNorm,conditions=conditionsNorm,strain=strain,useLog = FALSE)
     lmmsL[[i]]=colnames(lmmsR)
   }
   unionG<-lmmsL[[1]]
