@@ -7,9 +7,10 @@ import numpy as np
 from scipy.stats import spearmanr
 from scipy.stats import pearsonr
 import random
-from scipy.stats import mannwhitneyu
+from scipy.stats import ks_2samp
 from statsmodels.stats.multitest import multipletests
 from math import factorial
+from statistics import mean
 
 MAX_PAIRS=5000
 
@@ -39,6 +40,13 @@ class GeneSetData():
         :param padj: adjusted p value
         """
         self.padj=padj
+
+    def set_average_similarity_direction(self,greater:bool):
+        """
+        Specify if average similarity is gretaer or not than random similarities average
+        :param greater: true if greater than random
+        """
+        self.avg_sim_direction=greater
 
 
 class GeneExpression:
@@ -467,7 +475,7 @@ class GeneSetSimilarityCalculatorNavigator(SimilarityCalculatorNavigator):
                 j = pair[1]
                 self.calculate_similarity(data, i, j, similarities_list)
         if self.rm_outliers:
-            similarities_list=self.remove_outliers(list)
+            similarities_list=self.remove_outliers(similarities_list)
         return similarities_list
 
     def get_gene_vector(self,data:pd.DataFrame,index:int)->np.array:
@@ -551,7 +559,7 @@ class EnrichmentCalculator:
         """
         Calculate p-val for a single gene-set. Are genes closer in space than expected.
         Compares gene set similarities to similarities between MAX_PAIRS random pairs
-         (less if not so much pssible pairs are present)
+         (less if not so much possible pairs are present).
         :param gene_set:
         :param max_pairs: Should number of calculated similarities be limited
         :return: data with gene set pointer and pval
@@ -559,21 +567,22 @@ class EnrichmentCalculator:
         geneIDs=gene_set.genes
         try:
             if max_pairs!=None:
-                set_stats=self.calculator.similarities(geneIDs,max_pairs)
+                set_similarities=self.calculator.similarities(geneIDs,max_pairs)
             else:
-                set_stats = self.calculator.similarities(geneIDs)
+                set_similarities = self.calculator.similarities(geneIDs)
         except EnrichmentError:
             raise
         #This option was not ok as random distances varied heavily with n of calculated distances
         #random_stats=self.storage.get(set_stats.n)
-        random_stats = self.storage.get(MAX_PAIRS,True)
-        t,p2=ttest_ind_from_stats(set_stats.mean_val,set_stats.std,set_stats.n,
-                             random_stats.mean_val,random_stats.std,random_stats.n,equal_var=False)
-        p=p2/2
-        if t<0:
-            p=1-p
+        random_similarities = self.storage.get(MAX_PAIRS,True)
+        d,p2=ks_2samp(set_similarities,random_similarities)
+        #p=p2/2
         gene_set_data=GeneSetData(gene_set)
-        gene_set_data.set_pval(p)
+        gene_set_data.set_pval(p2)
+        greater_mean=False
+        if mean(set_similarities) > mean(random_similarities):
+            greater_mean=True
+        gene_set_data.set_average_similarity_direction(greater_mean)
         return gene_set_data
 
     def calculate_enrichment(self,gene_sets:GeneSets,max_pairs:int=None)->list:
@@ -589,8 +598,9 @@ class EnrichmentCalculator:
             try:
                 #This line may throw exception if not enough genes are present
                 gene_set_data=self.calculate_pval(gene_set,max_pairs)
-                data.append(gene_set_data)
-                pvals.append(gene_set_data.pval)
+                if gene_set_data.avg_sim_direction:
+                    data.append(gene_set_data)
+                    pvals.append(gene_set_data.pval)
             except EnrichmentError:
                 pass
         padjvals=multipletests(pvals=pvals,method='fdr_bh',is_sorted=False)[1]

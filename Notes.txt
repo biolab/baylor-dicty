@@ -198,3 +198,6 @@ Distance calc tests:
 cosine: np.inner(v1, v2) / (norm(v1) * norm(v2)) quicker than 1 - spatial.distance.cosine(v1, v2)
 ************************
 Gene enrichment based on gene correlation described in timeGeneSets.ipynb
+
+The distributions are not normal.
+Kolmoragov Smerov test (example distribution shapes in try_cdf.png and try_pdf.png).
