@@ -4,15 +4,12 @@ from orangecontrib.bioinformatics.geneset.utils import (GeneSet,GeneSets)
 import pandas as pd
 from sklearn import preprocessing as pp
 import numpy as np
-from scipy.stats import spearmanr
-from scipy.stats import pearsonr
+from scipy.stats import (spearmanr,pearsonr,norm)
 import random
-from scipy.stats import ks_2samp
 from statsmodels.stats.multitest import multipletests
-from math import factorial
-from statistics import mean
+from math import factorial,sqrt
 
-MAX_PAIRS=5000
+MAX_RANDOM_PAIRS=10000
 
 
 class GeneSetData():
@@ -41,12 +38,6 @@ class GeneSetData():
         """
         self.padj=padj
 
-    def set_average_similarity_direction(self,greater:bool):
-        """
-        Specify if average similarity is gretaer or not than random similarities average
-        :param greater: true if greater than random
-        """
-        self.avg_sim_direction=greater
 
 
 class GeneExpression:
@@ -515,45 +506,71 @@ class EnrichmentError(Exception):
 
 class RandomSimilarityStorage:
     """
-    Supply similarities and store already calculated similarity statistics for similarities between random points
+    Store precomputed similarities between random points and provides their mean and standard deviation.
     """
-    def __init__(self, calculator:RandomSimilarityCalculatorNavigator):
+    def __init__(self,similarities:list):
+        self.similarities=similarities
+        self.mean=mean_list(self.similarities)
+        self.sd=std_list(self.similarities)
+
+    @classmethod
+    def from_calculator(cls, calculator:RandomSimilarityCalculatorNavigator,max_similarities:int=10000,adjust_n:bool=True):
         """
         :param calculator: Used  to calculate not yet calculated random similarities
+        :param max_similarities: Number of similarities to compute for summary statistics estimation
+        :param adjust_n: If there are less possible similarities than specified in max_similarities automatically use
+            number of max possible similarities.
         """
-        self.calculator=calculator
-        self.storage=dict()
+        similarities=calculator.similarities(max_similarities,adjust_n=adjust_n)
+        return cls(similarities)
 
-#Solwed elsewhere: TODO if number of genes is very small in some groups the distances may not be representative
-    def get(self,number:int,adjust_n:bool=False)->list:
-        """
-        Get similarity between specified number of points.
-        If similarity has not yet been calculated calculate it a new.
-        :param number: n of points/rows/genes
-        :param adjust_n: Should the number be reduced to max possible number of pairs
-        (as in RandomSimilarityCalculatorNavigator.similarities())
-        :return: similarity summary statistics
-        """
-        if number in self.storage.keys():
-            return self.storage.get(number)
-        else:
-            stats=self.calculator.similarities(number,adjust_n=adjust_n)
-            self.storage[number]=stats
-            return stats
+
+
+
+def mean_list(data:list)->float:
+    """
+    Speeds up mean calculation from list
+    :param data: Data for mean calculation
+    :return: mean
+    """
+    return np.array(data).mean()
+
+def std_list(data:list)->float:
+    """
+    Speeds up standard deviation (std) calculation from list
+    :param data: Data for std calculation
+    :return: std
+    """
+    return np.array(data).std()
+
 
 class EnrichmentCalculator:
     """
     Determine whether gene set is enriched or not
     Genes are more closely located than expected for random points.
     """
-    def __init__(self,similarity_calculator:GeneSetSimilarityCalculatorNavigator,
-                 similarity_storage:RandomSimilarityStorage):
+    def __init__ (self,random_storage:RandomSimilarityStorage,gene_set_calculator:GeneSetSimilarityCalculatorNavigator):
+        self.calculator =gene_set_calculator
+        self.storage =random_storage
+
+    @classmethod
+    def quick_init(cls,expression_data:GeneExpression, calculator:SimilarityCalculator,
+                                    rm_outliers:bool=True, random_seed:int=None,max_random_pairs:int=MAX_RANDOM_PAIRS):
         """
-        :param similarity_calculator: Used to calculate similarities within gene sets
-        :param similarity_storage: Supplies similarities between random points
+        :param expression_data: data of all genes
+        :param calculator: used to calculate similarities between gene pairs
+        :param rm_outliers: Should similarities outliers be removed before reporting/statistical testing
+        :param random_seed: Seed used for random number generator used for random pairs
+        :param max_random_pairs: Maximum number of random similarities calculated used for random points distribution estimation
+        :return:
         """
-        self.calculator=similarity_calculator
-        self.storage=similarity_storage
+        for_random = RandomSimilarityCalculatorNavigator(expression_data=expression_data, calculator=calculator,
+                                                         rm_outliers=rm_outliers,random_seed=random_seed)
+        calculator=GeneSetSimilarityCalculatorNavigator(expression_data=expression_data,
+                                                    calculator=calculator, random_generator=for_random,
+                                                    rm_outliers=rm_outliers)
+        storage=RandomSimilarityStorage(calculator=for_random,max_similarities=max_random_pairs,adjust_n=True)
+        return cls(random_storage=storage,gene_set_calculator=calculator)
 
     def calculate_pval(self,gene_set:GeneSet,max_pairs:int=None)->GeneSetData:
         """
@@ -572,17 +589,14 @@ class EnrichmentCalculator:
                 set_similarities = self.calculator.similarities(geneIDs)
         except EnrichmentError:
             raise
-        #This option was not ok as random distances varied heavily with n of calculated distances
-        #random_stats=self.storage.get(set_stats.n)
-        random_similarities = self.storage.get(MAX_PAIRS,True)
-        d,p2=ks_2samp(set_similarities,random_similarities)
-        #p=p2/2
+
+        mean_set=mean_list(set_similarities)
+        n=len(set_similarities)
+        se=self.storage.sd / sqrt(n)
+        mean_random=self.storage.mean
+        p = 1 - norm(mean_random, se).cdf(mean_set)
         gene_set_data=GeneSetData(gene_set)
-        gene_set_data.set_pval(p2)
-        greater_mean=False
-        if mean(set_similarities) > mean(random_similarities):
-            greater_mean=True
-        gene_set_data.set_average_similarity_direction(greater_mean)
+        gene_set_data.set_pval(p)
         return gene_set_data
 
     def calculate_enrichment(self,gene_sets:GeneSets,max_pairs:int=None)->list:
@@ -598,9 +612,8 @@ class EnrichmentCalculator:
             try:
                 #This line may throw exception if not enough genes are present
                 gene_set_data=self.calculate_pval(gene_set,max_pairs)
-                if gene_set_data.avg_sim_direction:
-                    data.append(gene_set_data)
-                    pvals.append(gene_set_data.pval)
+                data.append(gene_set_data)
+                pvals.append(gene_set_data.pval)
             except EnrichmentError:
                 pass
         padjvals=multipletests(pvals=pvals,method='fdr_bh',is_sorted=False)[1]
@@ -623,33 +636,6 @@ class EnrichmentCalculator:
             if gene_set.padj <=max_padj:
                 enriched.append(gene_set)
         return enriched
-
-
-class EnrichmentCalculatorFactory:
-    """
-    Make objects necesary for enrichment calculation
-    """
-
-    @staticmethod
-    def make_enrichment_calculator( expression_data:GeneExpression, calculator:SimilarityCalculator,
-                                    rm_outliers:bool=True, random_seed:int=None)->EnrichmentCalculator:
-        """
-        Return initialised EnrichmentCalculator
-        :param expression_data: data of all genes
-        :param calculator: used to calculate similarities between gene pairs
-        :param rm_outliers: Should similarities outliers be romoved befor reporting/statistical testing
-        :param random_seed: Seed used for random number generator used for random pairs
-        :return:
-        """
-        for_random = RandomSimilarityCalculatorNavigator(expression_data=expression_data, calculator=calculator,
-                                                         rm_outliers=rm_outliers,random_seed=random_seed)
-        for_GO=GeneSetSimilarityCalculatorNavigator(expression_data=expression_data,
-                                                    calculator=calculator, random_generator=for_random,
-                                                    rm_outliers=rm_outliers)
-        random_storage=RandomSimilarityStorage(for_random)
-        return EnrichmentCalculator(for_GO,random_storage)
-
-
 
 
 

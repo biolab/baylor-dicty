@@ -4,9 +4,13 @@ import networks.functionsDENet as f
 from orangecontrib.bioinformatics.geneset.__init__ import (list_all,load_gene_sets)
 import matplotlib.pyplot as plt
 from correlation_enrichment.timeGeneSetsObj import *
-from scipy.stats import (mannwhitneyu,ks_2samp,ttest_ind)
+from scipy.stats import (mannwhitneyu,ks_2samp,ttest_ind,norm)
+from scipy.integrate import quad
 import random
-import math
+import numpy.random as npran
+from math import sqrt
+import altair as alt
+
 #Load data
 #dataPath='/home/karin/Documents/DDiscoideum/'
 #dataPathSaved='/home/karin/Documents/DDiscoideum/timeTrajectoriesNet/data/enrichmentMultiD/'
@@ -59,7 +63,8 @@ samples={
 tableEID=f.loadPickle(dataPathSaved+'trans_9repAX4_6strains_2rep_avr_T12_EID.tab')
 
 genesEID,genesNotNullEID=f.extractGenesFromTable(tableEID,genesFromRow,12734)
-
+#Example of random similarities
+simsRandom=f.loadPickle(dataPathSaved+'random500000.pkl')
 #strain='AX4_avr'
 #repN=1
 
@@ -67,15 +72,16 @@ genesEID,genesNotNullEID=f.extractGenesFromTable(tableEID,genesFromRow,12734)
 
 #Get gene set
 list_of_genesets = list_all(organism='44689')
-gene_sets=load_gene_sets(list_of_genesets[3],'44689')
+gene_sets=load_gene_sets(list_of_genesets[1],'44689')
 
 #Objects for testing:
 genesStrainEID, genesStrainNNEID=f.genesByStrain(genesNotNullEID,tableEID,12735,'AX4_avr',genesFromRow)
 sc=SimilarityCalculator()
 ge=GeneExpression(genesStrainNNEID)
 rscn=RandomSimilarityCalculatorNavigator(ge,sc)
+rss=RandomSimilarityStorage(simsRandom)
 gsscn=GeneSetSimilarityCalculatorNavigator(ge,sc,rscn)
-
+ec=EnrichmentCalculator(random_storage=rss,gene_set_calculator=gsscn)
 
 #Calculate mean and stdev distn
 genesStrainEID, genesStrainNNEID=f.genesByStrain(genesNotNullEID,tableEID,12735,'AX4_avr',genesFromRow)
@@ -101,10 +107,8 @@ plt.plot(pairN,sds)
 plt.xlabel('n random pairs')
 plt.ylabel('mean (blue) and stdev (orange) similarity')
 
-#Calculate MSE (Used: pearson,Ax4_avg, random max pairs set to 5000,GO mollecular function?)
+#Calculate MSE (Used: spearman,Ax4_avg, random max pairs set to 500000,GO mollecular function)
 #Select gene sets with more genes than pairs
-sc=SimilarityCalculator(similarity_type='correlation_pearson')
-ec=EnrichmentCalculatorFactory.make_enrichment_calculator(ge,sc)
 large_sets=[]
 for s in gene_sets:
     if len(s.genes)>300:
@@ -153,7 +157,7 @@ for strain in samples.keys():
         print(strain,rep)
         genesStrainEID, genesStrainNNEID=f.genesByStrain(genesNotNullEID,tableEID,12735,strain+'_r'+str(rep),genesFromRow)
         ge=GeneExpression(genesStrainNNEID)
-        ec=EnrichmentCalculatorFactory.make_enrichment_calculator(ge,sc)
+        ec=EnrichmentCalculator(ge,sc)
         result=ec.calculate_enrichment(gene_sets,3000)
         resDict=dict()
         for r in result:
@@ -239,7 +243,7 @@ plt.ylabel('count')
 # rm_zeros - remove zero count points from line ploting (if graph will be later ploted with log scale),
 # annotation - add annotation to beginning of the line
 # pdfORcdf - plot proportion of counts in a bin or cumulative of the former
-def point_hist(data,ax,description='',width=1,bins=10,rm_zeros=True,annotation="",pdfORcdf=True,proportion=False):
+def point_hist(data,ax,legend_description='',width=1,bins=10,rm_zeros=False,annotation="",pdfORcdf=True,proportion=False):
     #Bins
     counts, bin_edges = np.histogram(data, bins)
     bin_centres = (bin_edges[:-1] + bin_edges[1:]) / 2.
@@ -258,7 +262,7 @@ def point_hist(data,ax,description='',width=1,bins=10,rm_zeros=True,annotation="
             position+=1
         y=cdf
     #Plot points
-    ax.scatter(x, y, s=8, label=description)
+    ax.scatter(x, y, s=8, label=legend_description)
     #Annotate
     if annotation !='':
         ax.annotate(annotation,(bin_centres[0],counts[0]))
@@ -277,6 +281,66 @@ def point_hist(data,ax,description='',width=1,bins=10,rm_zeros=True,annotation="
     ax.plot(x, y,linewidth=width)
 
 
+#Calculates summary statistics of random samples
+#random_similarities - list of random similarities to take samples from
+#sample_size - individual sample size
+#n_samples - number of samples to take
+#summary_stats - summary statistics  to use on each sample , 'mean' or 'median'
+#Returns list of summary statistics for individual samples
+def random_samples(random_similarities:list,sample_size:int,n_samples:int,summary_stats) ->list:
+    randomStats = []
+    for i in range(n_samples):
+        # randomSampleStat = summary_stats_function(rscn.similarities(sample_size))
+        # Faster - uses only precomputed correlations from smaller population
+        #Np choice without replacement is slower than list version (but not if used with replacement)
+        #randomSampleStat = summary_stats_function(npran.choice(random_similarities, sample_size,replace=False))
+        sample=random.sample(random_similarities, sample_size)
+        #Np mean quicker than list mean, even when included converting to np.array; but list median quicker than if converted to np array
+        randomSampleStat=calculate_summary_stats(sample,summary_stats)
+        randomStats.append(randomSampleStat)
+    return randomStats
+
+#Calculates p value for sample summary statistics vs summary statistic of samples from random population
+#similarities - sample similarities
+#n_samples - initial number of permutations
+#Other args as in random_samples
+def calculate_permutation_p(similarities,random_similarities,summary_stats,n_samples=1000):
+    sample_stat=calculate_summary_stats(similarities,summary_stats)
+    sample_size=len(similarities)
+    #random_similarities=np.array(random_similarities)
+    p,randomMeans=permutation_p(sample_stat,random_similarities, sample_size, n_samples, summary_stats)
+    repeats=0
+    while p<=(1/n_samples)*10:
+        print(p,(1/n_samples)*10)
+        if repeats>=2:
+            break
+        repeats+=1
+        n_samples=n_samples*10
+        p,randomMeans=permutation_p(sample_stat,random_similarities, sample_size, n_samples, summary_stats)
+    return (p,randomMeans)
+
+#Calculate summary statistics
+#data - the sample for calculation
+#summary_stats:'mean','median'
+#Calculation of mean and stdev is quicker when list is first transformed to np array
+def calculate_summary_stats(data:list,summary_stats:str='mean'):
+    if summary_stats == 'mean':
+        stat = np.array(data).mean()
+    if summary_stats == 'median':
+        stat = median(data)
+    return stat
+
+#Helper function for calculate_bootstrap_p
+#sample_stat - statistics on the sample
+#Other arguments as in random_samples
+def permutation_p(sample_stat,random_similarities, sample_size, n_samples, summary_stats='mean'):
+    randomMeans = np.array(random_samples(random_similarities, sample_size, n_samples, summary_stats))
+    #Quicker than list comprehention
+    greater = (randomMeans>=sample_stat).sum()
+    p = greater / n_samples
+    return (p,randomMeans)
+
+
 #Plot similarities distribution for random pairs (bold) and gene sets,
 # add  Kolmogorov Smernov two-sided p values to line starts (compares medians) and whether mean is greater than random mean (T/F)
 #Print out gene set name and number of genes
@@ -285,7 +349,7 @@ def point_hist(data,ax,description='',width=1,bins=10,rm_zeros=True,annotation="
 use_log=False
 #Plot  histogram or cumulative  histogram
 pdfORcdf=True
-# Convert counts into porportions (count in bin/total N similarities)
+# Convert counts into proportions (count in bin/total N similarities)
 proportion=True
 #Which test to use: Mann-Whitney: 'MW', Kolmogorov Smernov: 'KS' or permutation mean based 'pm', Welsch t test: 'Wt'
 test='pm'
@@ -322,16 +386,7 @@ while count_sets< 8:
             if t < 0:
                 p = 1 - p
         elif test=='pm':
-            size_sims=len(sims)
-            randomMeans=[]
-            bootstraps=1000
-            for i in range(bootstraps):
-                #randomMeanSample = mean(rscn.similarities(size_sims))
-                #Faster - uses only precomputed correlations from smaller population
-                randomMeanSample = mean(random.sample(simsRandom,size_sims))
-                randomMeans.append(randomMeanSample)
-            greater=sum(randomMean >= m for randomMean in randomMeans)
-            p=greater/bootstraps
+            p,randomMeans=calculate_permutation_p(sims,simsRandom,'mean')
         point_hist(sims,ax,gene_set.name +' N: '+ str(len(gene_set.genes))+' m: '+str(round(m,2))+' p: '+str(round(p,4)),rm_zeros=use_log,annotation=str(round(p,3))+' '+str(round(m,3)),pdfORcdf=pdfORcdf,proportion=proportion)
         print(gene_set.name , str(len(gene_set.genes)))
     except EnrichmentError:
@@ -345,4 +400,464 @@ if use_log:
     plt.yscale('log')
 #plt.legend(loc='upper left')
 
+#Distribution of random pair statistics based on random pair sample sizes
 
+#Plot distribution of random means/medians and lines for gene sets statistics
+
+#Calculate subset of random similarities
+#print('random sims')
+#max_sims_random=500000
+#simsRandom=np.array(rscn.similarities(max_sims_random))
+simsRandom=f.loadPickle(dataPathSaved+'random500000.pkl')
+
+#Make histograms of summary statistics for different random pairs sample sizes (based on number of similarities, not points)
+#sample_sizes=[6,10,15,21,40,100,500,1000,5000,10000] # N similarities
+sample_sizes=[] # N similarities
+n_points=[3,6,15,20,100,200]
+for point_n in n_points:
+    sample_sizes.append(possible_pairs(point_n))
+n_samples=1000
+fig = plt.figure(figsize=(5,5))
+ax = fig.add_subplot(111)
+#Uncomment selected function
+summary_function='mean'
+#summary_function='median'
+index=0
+for sample_size in sample_sizes:
+    print(sample_size)
+    means=random_samples(simsRandom,sample_size,n_samples,summary_function)
+    point_hist(means,ax,'points: '+str(n_points[index])+' sims: '+str(sample_size),rm_zeros=False)
+    index+=1
+
+plt.xlabel('Random similarity sample '+summary_function)
+plt.ylabel('Count')
+plt.legend(title='Similarities sample sizes')
+
+#Plot gene set summary statistic vs distribution of random summary statistics
+#Left plot - distribution of random summary statistics with marked sample summary statistics and permutation test p value
+#right plot - distribution of similarities for random sample and gene set
+count_sets=0
+set_num=0
+n_sets=5
+max_sims=1000
+summary_function='mean'
+#How many sets to plot
+plt.figure(figsize=(12, 12))
+while count_sets< n_sets:
+    # Add int to set_num to try other gene sets
+    gene_set=list(gene_sets)[set_num+20]
+    set_num+=1
+    try:
+        sims=gsscn.similarities(gene_set.genes,max_sims)
+        #print(median(sims))
+        p=None
+        m=calculate_summary_stats(sims,summary_function)
+        size_sims=len(sims)
+        p,randomMeans=calculate_permutation_p(sims,simsRandom,'mean')
+        ax1 =plt.subplot(n_sets , 2, count_sets*2+1)
+        ax1.hist(randomMeans, weights=np.ones(len(randomMeans)) / len(randomMeans),bins=20)
+        ax1.vlines(m,0,0.33)
+        plt.ylabel('Proportion')
+        plt.xlabel("Sample's "+summary_function)
+        ax1.annotate('p='+str(p), (m+m/100, 0.15))
+
+        ax2 = plt.subplot(n_sets, 2, count_sets*2+2)
+        point_hist(sims,ax2,legend_description=gene_set.name +" N: "+str(len(gene_set.genes)),proportion=True)
+        point_hist(simsRandom, ax2, legend_description='random',proportion=True)
+        ax2.legend(prop={'size': 6})
+        plt.ylabel('Proportion')
+        plt.xlabel('Similarities')
+        print(gene_set.name , str(len(gene_set.genes)))
+        count_sets+=1
+    except EnrichmentError:
+        pass
+
+
+#Time permutation test based on number of permutations/smallest possible p value
+#This is not the same as whole proces of p value calculation, as there permutation tests are repeated with more permutation if p value is low
+p_decimals=5 # Number of decimals for p value: the p value is not necessarily reliable to this decimal
+bootstraps=10**p_decimals # Number of permutations required to obtain such a decimal (any digits from 0 to 9 on it)
+sample_size=500 # Each sample (number of similarities,not points) will be of this size
+random_population_size=500000  # Samples drawn from this population, in this example this are similarities not points
+repeat_test=2 # How many times should the test be repeated for time estimation
+summary_stats='mean'  # Or median
+sample_stat=1 # Summary statistics for the sample, here chosen at random as it should not affect the timing
+population=list(np.random.sample(random_population_size))
+
+def time_permutation(bootstraps,sample_size,population,summary_stats,sample_stat,repeat_test):
+    start=time.time()
+    for i in range(repeat_test):
+        permutation_p(sample_stat,population,sample_size,bootstraps,summary_stats)
+    elapsed=time.time()-start
+    return elapsed/repeat_test
+
+# Calculate once
+#print('Average time (sec)',time_permutation(bootstraps,sample_size,population,summary_stats,sample_stat,repeat_test))
+
+# Plot elapsed time for different bootstraps
+times=[]
+decimals=[1,2,3,4,5]
+for p_decimals in decimals:
+    bootstraps=10**p_decimals
+    print('Calculating ',bootstraps,' bootstraps for decimals',p_decimals)
+    t=time_permutation(bootstraps, sample_size, population, summary_stats, sample_stat, repeat_test=1)
+    times.append(t)
+plt.plot(decimals,times)
+plt.yscale('log')
+plt.xlabel('p value decimals precision')
+plt.ylabel('time (sec)')
+
+#Ddistribution of permutation means follows normal distribution
+# mean is approximately normally distributed with mean μ and standard error sqrt(population_var/sample_size)
+
+#Estimate mean and stdev of whole population:
+arr_random=np.array(simsRandom)
+mu=arr_random.mean()
+sd=arr_random.std()
+me=median(simsRandom)
+
+#Plot distributions of sample means/medians
+#statistic='mean'
+statistic='median'
+index=1
+plt.rcParams.update({'font.size': 8})
+sizes=[3,10,50,100,500,1000]
+plt.figure(figsize=(12,12))
+for n in sizes:
+    plt.subplot(int(round(len(sizes)/2,0)),2,index)
+    index+=1
+    stats=random_samples(simsRandom, n, 5000, statistic)
+    x = np.linspace(min(stats), max(stats), 100)
+    plt.hist(stats,weights=np.ones(len(stats)) / len(stats),density=True,bins=15)
+    #For means use predefined se and mean
+    if statistic == 'mean':
+        se = sd / sqrt(n)
+        normal=norm.pdf(x, mu, se)
+        plt.plot(x, normal)
+        add_title=''
+    #For median fit normal distribution to the data
+    elif statistic == 'median':
+        centerFit,seFit=norm.fit(stats)
+        normalFit=norm.pdf(x, centerFit, seFit)
+        plt.plot(x, normalFit)
+        #Check how se, as used for means distribution, could be scaled to obtain se for medians
+        observed_se_scaling=seFit*sqrt(n)/sd
+        add_title=', observed se scaling: '+str(observed_se_scaling)
+    plt.title('n='+str(n)+add_title,fontsize=8)
+plt.suptitle('Distribution of random sample '+statistic+'s, n=number of similarities',fontsize=10)
+
+#Plot distribution of scaling factors for se of sample medians distribution
+
+#Estimates se scaling for medians distribution based on n_pairs (sample size) and n permutations (n samples)
+def se_scaling_estimation(n_pair:int,permutations:int):
+    stats=random_samples(simsRandom, n_pair, permutations, 'median')
+    centerFit, seFit = norm.fit(stats)
+    observed_se_scaling = seFit * sqrt(n_pair) / sd
+    return observed_se_scaling
+
+#Get number of pairs from points and scaling factor for that number of pairs
+#n_points - eg. n genes
+#permutations - as in se_scaling_estimation
+#Return tupple with list of n_similarities for each n_points as first element and list of scaling factors as second element
+def se_scalings_estimation(n_points:list,permutations:int):
+    n_pairs = []
+    scalings = []
+    for n_point in n_points:
+        n = possible_pairs(n_point)
+        n_pairs.append(n)
+        scalings.append(se_scaling_estimation(n,permutations))
+    return(n_pairs,scalings)
+
+def log_fit_to_function(fit):
+    b1=fit[0]
+    b0=fit[1]
+    def F(x):
+        return b1*np.log(x)+b0
+    return F
+
+#Converts poly fit with degree up to 5 to function
+def poly_fit_to_function(fit,is_log=False):
+    degree=len(fit)-1
+    if degree<=5:
+        b0=fit[degree]
+        coeffs = list(fit[:degree])
+        while len(coeffs) < 5:
+            coeffs.insert(0, 0)
+        b5=coeffs[0]
+        b4=coeffs[1]
+        b3 = coeffs[2]
+        b2 = coeffs[3]
+        b1 = coeffs[4]
+        if not is_log:
+            def F(x):
+                y=b5*x**5+b4*x**4+b3*x**3+b2*x**2+b1*x+b0
+                return y
+        else:
+            def F(x):
+                y=b5*np.log(x)**5+b4*np.log(x)**4+b3*np.log(x)**3+b2*np.log(x)**2+b1*np.log(x)+b0
+                return y
+        return F
+
+#Find y based on y-s of (2) neighbouring x-s. If x is in data_x return data_y value
+#Data_x must be sorted from smallest to largest, it can not have repeated values
+def fit_neighbours(data_x:list,data_y:list,x:int):
+    if x in data_x:
+        index=data_x.index(x)
+        return data_y[index]
+    elif x<min(data_x):
+        return data_y[0]
+    elif x>max(data_x):
+        return data_y[len(data_y)-1]
+    else:
+        for i in range(len(data_x)):
+            if data_x[i]<x and data_x[i+1]>x:
+                y=(data_y[i]+data_y[i+1])/2
+                return y
+
+#Plot distribution of scaling factors for se of sample medians distribution
+#N points (eg. genes)
+n_points=[3,4,5,6,7,8,9,10,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,33,35,37,40,42,45,47,50,55,60,70,80]
+#Sample sizes - n similarities
+permutations=1000
+n_pairs,scalings=se_scalings_estimation(n_points,permutations)
+plt.plot(n_pairs,scalings)
+plt.xlabel('n similarities')
+plt.ylabel('se scaling factor')
+
+#Try to estimate se scaling factors
+#Compare how densiti of n_points sampling and n permutations affects the estimation of se
+#This might need to be latter re adjusted when it becomes evident how the final run times of the two compare
+#Data
+#Many sample sizes, less permutations
+n_points_many_points=[3,4,5,6,7,8,9,10,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,33,35,37,40,42,45,47,50,55,60,70,80]
+n_pairs_many_point ,scalings_many_point =se_scalings_estimation(n_points_many_points,1000)
+#Less sample sizes, more permutations
+n_points_many_permutations=[3,5,7,10,20,30,50,80]
+n_pairs_many_permutations ,scalings_many_permutations =se_scalings_estimation(n_points_many_permutations,5000)
+#Test set
+#Add some points before random addition of points to also ensure inclusion of extreme points
+#The points could be in fact sampled from distribution of gene set lengths (adjusting long sets to have less points,as would be used in enrichment calculations)
+n_points_test=[3,4,5,6,10,20,50,80]
+for i in range(20):
+    n=random.randint(3,81)
+    n_points_test.append(n)
+n_pairs_test ,scalings_test =se_scalings_estimation(n_points_test,2500)
+scalings_test=[x for _,x in sorted(zip(n_pairs_test,scalings_test))]
+n_pairs_test.sort()
+
+#Fits to data points
+#Test
+plt.figure(figsize=(10,10))
+plt.scatter(n_pairs_test,scalings_test)
+#Polinomial
+fit_many_points1= poly_fit_to_function(np.polyfit(n_pairs_many_point , scalings_many_point, 3))
+fits=[]
+for i in n_pairs_test:
+    fits.append(fit_many_points1(i))
+plt.plot(n_pairs_test,fits,label='many points poly')
+#Log polinomial
+fit_many_points2= poly_fit_to_function(np.polyfit(np.log(n_pairs_many_point) , scalings_many_point, 2),True)
+fits=[]
+for i in n_pairs_test:
+    fits.append(fit_many_points2(i))
+plt.plot(n_pairs_test,fits,label='many points log poly')
+#Based on neighbouring points
+fits=[]
+for i in n_pairs_test:
+    fits.append(fit_neighbours(n_pairs_many_point,scalings_many_point,i))
+plt.plot(n_pairs_test,fits,label='many points neighbours')
+
+#Fit for more permutations
+#Polinomial
+fit_many_permutations1=poly_fit_to_function(np.polyfit(n_pairs_many_permutations , scalings_many_permutations,3))
+fits=[]
+for i in n_pairs_test:
+    fits.append(fit_many_permutations1(i))
+plt.plot(n_pairs_test,fits,label='many permutations  poly')
+#Log polinomial
+fit_many_permutations2= poly_fit_to_function(np.polyfit(np.log(n_pairs_many_permutations) , scalings_many_permutations, 2),True)
+fits=[]
+for i in n_pairs_test:
+    fits.append(fit_many_permutations2(i))
+plt.plot(n_pairs_test,fits,label='many permutations log poly')
+#Based on neighbouring points
+fits=[]
+for i in n_pairs_test:
+    fits.append(fit_neighbours(n_pairs_many_permutations,scalings_many_permutations,i))
+plt.plot(n_pairs_test,fits,label='many permutations neighbours')
+
+plt.legend()
+#MSE was not calculated as it could be influenced by random distribution of test points -
+# for MSE estimation they should be sampled for gene set lengths
+
+#For medians and means compare normal fit results and permutation test results
+#se scaling factor was estimated with neighbours based on smaller number of points with more permutations
+#Median normal distribution fit: from above
+
+#Left Plot - distribution of random means with marked gene set mean,
+#Middle plot - distribution of random medians with marked gene set median,
+# permutation test p value (pp) and median normal distribution based p value (pn)
+#Histograms are permutation results, line fit is the normal fit (based on whole random population, not observed histogram)
+#right plot - distribution of similarities for random sample and gene set
+count_sets=0
+set_num=0
+n_sets=5
+max_sims=1000
+#How many sets to plot
+plt.figure(figsize=(12, 12))
+while count_sets< n_sets:
+    # Add int to set_num to try other gene sets
+    gene_set=list(gene_sets)[set_num+20]
+    set_num+=1
+    try:
+        sims=gsscn.similarities(gene_set.genes,max_sims)
+        #print(median(sims))
+        size_sims=len(sims)
+
+        #Mean based
+        #Permutations
+        m=calculate_summary_stats(sims,'mean')
+        pp, randomMeans = calculate_permutation_p(sims, simsRandom, 'mean')
+        ax1 = plt.subplot(n_sets,3, count_sets * 3 + 1)
+        ax1.hist(randomMeans, density=True, bins=20)
+        plt.ylabel('Density')
+        plt.xlabel("Sample's means")
+
+        # Add normal distribution to sampling means
+        se = sd / sqrt(size_sims)
+        x = np.linspace(min(randomMeans), max(randomMeans), 100)
+        normalFit = norm.pdf(x, mu, se)
+        plt.plot(x, normalFit)
+        pn = 1 - norm(mu, se).cdf(m)
+
+        # Plot p values
+        ax1.vlines(m, 0, max(normalFit))
+        ax1.annotate('pp=' + str(pp) + '\npn=' + str(pn), (m + m / 100, max(normalFit) / 3))
+
+        #Median based
+        #Permutations
+        m = calculate_summary_stats(sims, 'median')
+        pp,randomMeans=calculate_permutation_p(sims,simsRandom,'median')
+        ax1 =plt.subplot(n_sets , 3, count_sets*3+2)
+        ax1.hist(randomMeans,density=True ,bins=20)
+        plt.ylabel('Density')
+        plt.xlabel("Sample's medians")
+
+        #Add normal distribution to sampling medians
+        scaling_fit=fit_neighbours(n_pairs_many_permutations, scalings_many_permutations, size_sims)
+        se=scaling_fit*sd/sqrt(size_sims)
+        x = np.linspace(min(randomMeans), max(randomMeans), 100)
+        normalFit=norm.pdf(x, me, se)
+        plt.plot(x, normalFit)
+        pn=1-norm(me, se).cdf(m)
+
+        #Plot p values
+        ax1.vlines(m, 0, max(normalFit))
+        ax1.annotate('pp='+str(pp)+'\npn='+str(pn), (m+m/100, max(normalFit)/3))
+
+        #Distributions of similarities
+        ax2 = plt.subplot(n_sets, 3, count_sets*3+3)
+        point_hist(sims,ax2,legend_description=gene_set.name +" N: "+str(len(gene_set.genes)),proportion=True)
+        point_hist(simsRandom, ax2, legend_description='random',proportion=True)
+        ax2.legend(prop={'size': 6})
+        plt.ylabel('Proportion')
+        plt.xlabel('Similarities')
+        print(gene_set.name , str(len(gene_set.genes)))
+        count_sets+=1
+    except EnrichmentError:
+        pass
+
+#Compare means and medians p values at lower p values (eg. mean based p value <0.1)
+#data for median and mean based fitting is from above
+
+#Compare with similarities graphs
+count_sets=0
+set_num=0
+n_sets=20
+max_sims=1000
+#How many sets to plot
+plt.figure(figsize=(12, 12))
+while count_sets< n_sets:
+    # Add int to set_num to try other gene sets
+    gene_set=list(gene_sets)[set_num+20]
+    set_num+=1
+    try:
+        sims=gsscn.similarities(gene_set.genes,max_sims)
+        size_sims=len(sims)
+
+        # mean based p value
+        m = calculate_summary_stats(sims, 'mean')
+        se = sd / sqrt(size_sims)
+        pm = 1 - norm(mu, se).cdf(m)
+        if pm<=0.1:
+
+            # median based p value
+            m = calculate_summary_stats(sims, 'median')
+            scaling_fit = fit_neighbours(n_pairs_many_permutations, scalings_many_permutations, size_sims)
+            se = scaling_fit * sd / sqrt(size_sims)
+            pme = 1 - norm(me, se).cdf(m)
+
+            ax = plt.subplot(5, 4, count_sets+1)
+            point_hist(sims, ax, legend_description=gene_set.name + " N: " + str(len(gene_set.genes)), proportion=True)
+            point_hist(simsRandom, ax, legend_description='random', proportion=True)
+            plt.ylabel('Proportion')
+            plt.xlabel('Similarities')
+            ax.annotate('pm=' + str(pm) + '\npme=' + str(pme)+'\nNgen='+str(len(gene_set.genes))+' Nsims='+str(size_sims), (0.05, 0.05))
+
+            print(gene_set.name, str(len(gene_set.genes)))
+            count_sets += 1
+
+    except EnrichmentError:
+        pass
+
+
+#Compare difference between p mean and median based on sample size:
+count_sets=0
+set_num=0
+n_sets=100
+max_sims=1000
+#How many sets to plot
+n_sims=[]
+p_diffs=[]
+p_avgs=[]
+pms=[]
+pmes=[]
+while count_sets< n_sets:
+    # Add int to set_num to try other gene sets
+    gene_set=list(gene_sets)[set_num]
+    set_num+=1
+    try:
+        sims=gsscn.similarities(gene_set.genes,max_sims)
+        size_sims=len(sims)
+
+        # mean based p value
+        m = calculate_summary_stats(sims, 'mean')
+        se = sd / sqrt(size_sims)
+        pm = 1 - norm(mu, se).cdf(m)
+        if pm<=0.1:
+            count_sets += 1
+            # median based p value
+            m = calculate_summary_stats(sims, 'median')
+            scaling_fit = fit_neighbours(n_pairs_many_permutations, scalings_many_permutations, size_sims)
+            se = scaling_fit * sd / sqrt(size_sims)
+            pme = 1 - norm(me, se).cdf(m)
+
+            pms.append(pm)
+            pmes.append(pme)
+            p_diff=pm-pme
+            p_diffs.append(p_diff)
+            p_avg=(pm+pme)/2
+            p_avgs.append(p_avg)
+            n_sims.append(size_sims)
+    except EnrichmentError:
+        pass
+df = pd.DataFrame(list(zip(n_sims, p_diffs,p_avgs,pms,pmes)),
+               columns =['N_similarities', 'p_difference','p_aerage','p_mean','p_median'])
+#Use in notebook
+alt.Chart(df).mark_circle().encode(x='N_similarities',y='p_difference',
+                                   color=alt.Color('p_mean',scale=alt.Scale(range=['darkviolet','yellow']))
+                                  ).configure_circle(size=20)
+alt.Chart(df).mark_circle().encode(x='N_similarities',y='p_difference',
+                                   color=alt.Color('p_median',
+                                                   scale=alt.Scale(range=['darkviolet','yellow','yellowgreen','green']))
+                                  ).configure_circle(size=20)
