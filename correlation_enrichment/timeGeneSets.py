@@ -79,7 +79,6 @@ genesStrainEID, genesStrainNNEID=f.genesByStrain(genesNotNullEID,tableEID,12735,
 sc=SimilarityCalculator()
 ge=GeneExpression(genesStrainNNEID)
 rscn=RandomSimilarityCalculatorNavigator(ge,sc)
-rss=RandomSimilarityStorage(simsRandom)
 gsscn=GeneSetSimilarityCalculatorNavigator(ge,sc,rscn)
 ec=EnrichmentCalculator(random_storage=rss,gene_set_calculator=gsscn)
 
@@ -110,15 +109,22 @@ plt.ylabel('mean (blue) and stdev (orange) similarity')
 #Calculate MSE (Used: spearman,Ax4_avg, random max pairs set to 500000,GO mollecular function)
 #Select gene sets with more genes than pairs
 large_sets=[]
+min_points=300
+max_points=400
 for s in gene_sets:
-    if len(s.genes)>300:
+    n_genes=len(s.genes)
+    if n_genes>=min_points and n_genes<=max_points:
         large_sets.append(s)
 #Reduce number of sets:
 max_sets=20
 if len(large_sets)>max_sets:
     large_sets=large_sets[:max_sets]
 
-pairN=[500,800,1000,2000,3500,5000,10000,20000,7500]
+#Decide on pair numbers
+min_possible_pair=possible_pairs(min_points)
+pairN=[]
+for i in range(1,11):
+    pairN.append(round(min_possible_pair/20*i,0))
 results=[]
 res=ec.calculate_enrichment(large_sets)
 results.append(res)
@@ -131,7 +137,7 @@ mse=[]
 max_se=[]
 for n in range(1,len(results)):
     errorsSquared=[]
-    for s in range(max_sets):
+    for s in range(len(large_sets)):
         padjOriginal=results[0][s].padj
         padjShortened=results[n][s].padj
         errSq=(padjOriginal-padjShortened)**2
@@ -144,9 +150,14 @@ max_se=[x for _, x in sorted(zip(pairN,max_se), key=lambda pair: pair[0])]
 pairN=sorted(pairN)
 plt.plot(pairN,mse)
 plt.scatter(pairN,mse)
-plt.plot(pairN,max_se)
-plt.ylabel('MSE (blue) and max SE (orange) padj')
-plt.xlabel('n pairs')
+#plt.plot(pairN,max_se)
+#plt.ylabel('MSE (blue) and max SE (orange) padj')
+plt.ylabel('MSE padj')
+avg_points=0
+for i in large_sets:
+    avg_points+=len(i.genes)
+avg_pairs=possible_pairs(round(avg_points/len(large_sets),0))
+plt.xlabel('n pairs (out of at least '+str(possible_pairs(min_points))+' possible, average '+str(avg_pairs)+')')
 
 
 #Try enrichment for each strain and replicate:

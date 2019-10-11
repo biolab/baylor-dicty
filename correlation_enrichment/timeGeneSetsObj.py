@@ -8,9 +8,17 @@ from scipy.stats import (spearmanr,pearsonr,norm)
 import random
 from statsmodels.stats.multitest import multipletests
 from math import factorial,sqrt
+from statistics import median
+from collections import OrderedDict
+from abc import ABC, abstractmethod,ABCMeta
 
 MAX_RANDOM_PAIRS=10000
 
+MEAN='mean'
+MEDIAN='median'
+
+SE_SCALING_POINTS = [3, 5, 7, 10, 20, 30, 50, 80]
+PERMUTATIONS = 8000
 
 class GeneSetData():
 
@@ -23,6 +31,20 @@ class GeneSetData():
         :param gene_set: gene set for which data should be stored
         """
         self.gene_set=gene_set
+
+    def set_mean_similarity(self, mean: float):
+        """
+        Add p value to the data
+        :param pval: p value
+        """
+        self.mean = mean
+
+    def set_median_similarity(self, median: float):
+        """
+        Add p value to the data
+        :param pval: p value
+        """
+        self.median = median
 
     def set_pval(self,pval:float):
         """
@@ -304,10 +326,12 @@ class SimilarityCalculator:
 class ArgumentException(Exception):
     pass
 
-class SimilarityCalculatorNavigator:
+#TODO make it abstract
+class SimilarityCalculatorNavigator(ABC):
     """
-    Navigates similarity calculation between specified genes and reports similarity statistics
+    Abstract class for navigation of similarity calculation between specified genes.
     """
+
     def __init__(self, expression_data:GeneExpression, calculator:SimilarityCalculator,rm_outliers:bool=True):
         """
         :param expression_data:  Data for all genes
@@ -504,14 +528,34 @@ class EnrichmentError(Exception):
     pass
 
 
-class RandomSimilarityStorage:
+class RandomStatisticBundleStorage(ABC):
     """
     Store precomputed similarities between random points and provides their mean and standard deviation.
+    Calculates se based on sample size.
     """
-    def __init__(self,similarities:list):
+    def __init__(self, similarities: list):
         self.similarities=similarities
-        self.mean=mean_list(self.similarities)
         self.sd=std_list(self.similarities)
+        self.summary_type=None
+        self.center=None
+
+    @abstractmethod
+    def get_se(self,n_pairs):
+        pass
+
+class RandomMeanStorage(RandomStatisticBundleStorage):
+    """
+    Store precomputed similarities between random points and provides their mean and standard deviation.
+    Calculates standard error based on sample size.
+    """
+
+    def __init__(self, similarities: list):
+        """
+        :param similarities: Set of precomputed random similarities
+        """
+        super().__init__(similarities=similarities)
+        self.center = mean_list(self.similarities)
+        self.summary_type = MEAN
 
     @classmethod
     def from_calculator(cls, calculator:RandomSimilarityCalculatorNavigator,max_similarities:int=10000,adjust_n:bool=True):
@@ -524,8 +568,87 @@ class RandomSimilarityStorage:
         similarities=calculator.similarities(max_similarities,adjust_n=adjust_n)
         return cls(similarities)
 
+    def get_se(self,n_pairs):
+        return self.sd/sqrt(n_pairs)
 
 
+class RandomMedianStorage(RandomStatisticBundleStorage):
+    """
+    Store precomputed similarities between random points and provides their median and standard deviation.
+    Calculates standard error based on sample size.
+    """
+
+    def __init__(self, similarities: list,se_scaling_points:list=SE_SCALING_POINTS,permutations:int=PERMUTATIONS):
+
+        super().__init__(similarities=similarities)
+        se_scaling_points.sort()
+        self.se_scaling_points=se_scaling_points
+        self.permutations=permutations
+        self.center=median(self.similarities)
+        self.se_scalings = self.se_scalings_estimation()
+        self.se_scaling_pairs=list(self.se_scalings.keys())
+        self.min_scaling_pair = min(self.se_scaling_pairs)
+        self.max_scaling_pair = max(self.se_scaling_pairs)
+        self.num_scaling_pairs=len(self.se_scaling_pairs)
+        self.summary_type = MEDIAN
+
+    @classmethod
+    def from_calculator(cls, calculator:RandomSimilarityCalculatorNavigator,max_similarities:int=200000,adjust_n:bool=True,
+                        se_scaling_points:list= SE_SCALING_POINTS,permutations:int=PERMUTATIONS):
+        """
+        :param calculator: Used  to calculate not yet calculated random similarities
+        :param max_similarities: Number of similarities to compute for summary statistics estimation
+        :param adjust_n: If there are less possible similarities than specified in max_similarities automatically use
+            number of max possible similarities.
+        """
+        similarities=calculator.similarities(max_similarities,adjust_n=adjust_n)
+        return cls(similarities=similarities,se_scaling_points=se_scaling_points,permutations=permutations)
+
+    def random_sample_medians(self, sample_size: int) -> list:
+        medians = []
+        for i in range(self.permutations):
+            sample = random.sample(self.similarities, sample_size)
+            sample_median =median(sample)
+            medians.append(sample_median)
+        return medians
+
+    # Estimates se scaling for medians distribution based on n_pairs (sample size) and n permutations (n samples)
+    def se_scaling_estimation(self,n_pairs: int):
+        medians = self.random_sample_medians(n_pairs)
+        center_fit, se_fit = norm.fit(medians)
+        observed_se_scaling = se_fit * sqrt(n_pairs) / self.sd
+        return observed_se_scaling
+
+    # Get number of pairs from points and scaling factor for that number of pairs
+    # n_points - eg. n genes
+    # permutations - as in se_scaling_estimation
+    # Return tupple with list of n_similarities for each n_points as first element and list of scaling factors as second element
+    def se_scalings_estimation(self):
+        scalings={}
+        for n_point in self.se_scaling_points:
+            n_pairs = possible_pairs(n_point)
+            scalings[n_pairs]=self.se_scaling_estimation(n_pairs)
+        scalings = OrderedDict(sorted(scalings.items()))
+        return scalings
+
+    # Find y based on y-s of (2) neighbouring x-s. If x is in data_x return data_y value
+    # Data_x must be sorted from smallest to largest, it can not have repeated values
+    def get_se_scaling( self, n_pairs: int):
+        if n_pairs in self.se_scaling_pairs:
+            return self.se_scalings[n_pairs]
+        elif n_pairs < self.min_scaling_pair:
+            return self.se_scalings[self.min_scaling_pair]
+        elif n_pairs > self.max_scaling_pair:
+            return self.se_scalings[self.max_scaling_pair]
+        else:
+            for i in range(self.num_scaling_pairs):
+                if self.se_scaling_pairs[i] < n_pairs < self.se_scaling_pairs[i + 1]:
+                    y = (self.se_scalings[self.se_scaling_pairs[i]] + self.se_scalings[self.se_scaling_pairs[i+1]]) / 2
+                    return y
+
+    def get_se(self,n_pairs):
+        scaling=self.get_se_scaling(n_pairs)
+        return scaling*self.sd/sqrt(n_pairs)
 
 def mean_list(data:list)->float:
     """
@@ -549,13 +672,15 @@ class EnrichmentCalculator:
     Determine whether gene set is enriched or not
     Genes are more closely located than expected for random points.
     """
-    def __init__ (self,random_storage:RandomSimilarityStorage,gene_set_calculator:GeneSetSimilarityCalculatorNavigator):
+
+    def __init__ (self,random_storage:RandomStatisticBundleStorage,gene_set_calculator:GeneSetSimilarityCalculatorNavigator):
         self.calculator =gene_set_calculator
         self.storage =random_storage
 
     @classmethod
     def quick_init(cls,expression_data:GeneExpression, calculator:SimilarityCalculator,
-                                    rm_outliers:bool=True, random_seed:int=None,max_random_pairs:int=MAX_RANDOM_PAIRS):
+                                    rm_outliers:bool=True, random_seed:int=None,max_random_pairs:int=MAX_RANDOM_PAIRS,
+                   summary_type:str=MEAN,se_scaling_points:list=SE_SCALING_POINTS,permutations:int=PERMUTATIONS):
         """
         :param expression_data: data of all genes
         :param calculator: used to calculate similarities between gene pairs
@@ -569,14 +694,17 @@ class EnrichmentCalculator:
         calculator=GeneSetSimilarityCalculatorNavigator(expression_data=expression_data,
                                                     calculator=calculator, random_generator=for_random,
                                                     rm_outliers=rm_outliers)
-        storage=RandomSimilarityStorage(calculator=for_random,max_similarities=max_random_pairs,adjust_n=True)
+        if summary_type==MEAN:
+            storage=RandomMeanStorage.from_calculator(calculator=for_random,max_similarities=max_random_pairs,adjust_n=True)
+        elif summary_type==MEDIAN:
+            storage=RandomMedianStorage.from_calculator(calculator=for_random,max_similarities=max_random_pairs,
+                        adjust_n=True, se_scaling_points= se_scaling_points,permutations=permutations)
         return cls(random_storage=storage,gene_set_calculator=calculator)
 
     def calculate_pval(self,gene_set:GeneSet,max_pairs:int=None)->GeneSetData:
         """
         Calculate p-val for a single gene-set. Are genes closer in space than expected.
-        Compares gene set similarities to similarities between MAX_PAIRS random pairs
-         (less if not so much possible pairs are present).
+        Compares gene set similarities to similarities between random pairs.
         :param gene_set:
         :param max_pairs: Should number of calculated similarities be limited
         :return: data with gene set pointer and pval
@@ -591,11 +719,19 @@ class EnrichmentCalculator:
             raise
 
         mean_set=mean_list(set_similarities)
+        median_set=median(set_similarities)
         n=len(set_similarities)
-        se=self.storage.sd / sqrt(n)
-        mean_random=self.storage.mean
-        p = 1 - norm(mean_random, se).cdf(mean_set)
+        if self.storage.summary_type==MEAN:
+            center_set=mean_set
+        elif self.storage.summary_type == MEDIAN:
+            center_set = mean_set
+        se=self.storage.get_se(n)
+        center_random=self.storage.center
+        p = 1 - norm(center_random, se).cdf(center_set)
+
         gene_set_data=GeneSetData(gene_set)
+        gene_set_data.set_mean_similarity(mean_set)
+        gene_set_data.set_median_similarity(median_set)
         gene_set_data.set_pval(p)
         return gene_set_data
 
@@ -603,7 +739,7 @@ class EnrichmentCalculator:
         """
         claculate enrichment for multiple gene sets, adjust p val (Benjamini Hoechber)
         :param gene_sets:
-        :param max_pairs: for within gene set similarity calculation, as described for  calculate_pval
+        :param max_pairs: for within gene set similarity calculation, as described for calculate_pval
         :return: gene set data with p and adjusted p values
         """
         pvals=[]
