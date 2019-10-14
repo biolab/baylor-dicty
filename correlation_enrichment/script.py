@@ -2,12 +2,11 @@ import time
 from statistics import (mean, stdev,median)
 import networks.functionsDENet as f
 from orangecontrib.bioinformatics.geneset.__init__ import (list_all,load_gene_sets)
+from orangecontrib.bioinformatics.geneset.utils import (GeneSet,GeneSets)
 import matplotlib.pyplot as plt
-from correlation_enrichment.timeGeneSetsObj import *
+from correlation_enrichment.library import *
 from scipy.stats import (mannwhitneyu,ks_2samp,ttest_ind,norm)
-from scipy.integrate import quad
 import random
-import numpy.random as npran
 from math import sqrt
 import altair as alt
 
@@ -80,6 +79,7 @@ sc=SimilarityCalculator()
 ge=GeneExpression(genesStrainNNEID)
 rscn=RandomSimilarityCalculatorNavigator(ge,sc)
 gsscn=GeneSetSimilarityCalculatorNavigator(ge,sc,rscn)
+rss=RandomMeanStorage(simsRandom)
 ec=EnrichmentCalculator(random_storage=rss,gene_set_calculator=gsscn)
 
 #Calculate mean and stdev distn
@@ -107,7 +107,7 @@ plt.xlabel('n random pairs')
 plt.ylabel('mean (blue) and stdev (orange) similarity')
 
 #Calculate MSE (Used: spearman,Ax4_avg, random max pairs set to 500000,GO mollecular function)
-#Select gene sets with more genes than pairs
+#Select gene sets specified size
 large_sets=[]
 min_points=300
 max_points=400
@@ -120,11 +120,13 @@ max_sets=20
 if len(large_sets)>max_sets:
     large_sets=large_sets[:max_sets]
 
-#Decide on pair numbers
+#Decide on number of similarities  used for calculaion
 min_possible_pair=possible_pairs(min_points)
 pairN=[]
 for i in range(1,11):
     pairN.append(round(min_possible_pair/20*i,0))
+#Calculate p values
+#TODO remember padj scale (eg. was it small/large)
 results=[]
 res=ec.calculate_enrichment(large_sets)
 results.append(res)
