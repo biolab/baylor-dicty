@@ -2,7 +2,6 @@ import unittest
 
 from scipy.spatial.distance import cosine
 
-from orangecontrib.bioinformatics.geneset.utils import (GeneSet, GeneSets)
 from correlation_enrichment.library import *
 
 DF = pd.DataFrame({1: [1, 2, 3, 4, 5, 6, 7, -10], 2: [12, 22, 23, 24, 25, 26, 27, -100], 3: [1, 2, 3, 4, 5, 6, 7, 100]},
@@ -140,9 +139,9 @@ class TestSimilarityCalculator(unittest.TestCase):
         self.assertEqual(sc.normalise(self.vector), None)
         # Test if normalisation to mean 0 and std 1 results in vector with these parameters
         sc = SimilarityCalculator(similarity_type='cosine', normalisation_type='mean0std1')
-        normalised=sc.normalise(self.vector)
-        self.assertEqual(round(mean_list(normalised),1), 0.0)
-        self.assertEqual(round(std_list(normalised),1), 1.0)
+        normalised = sc.normalise(self.vector)
+        self.assertEqual(round(mean_list(normalised), 1), 0.0)
+        self.assertEqual(round(std_list(normalised), 1), 1.0)
 
     def test_calc_cosine(self):
         # Test if 'hand made' cosine similarity method returns same result as scipy method
@@ -158,7 +157,7 @@ class TestSimilarityCalculatorNavigator(unittest.TestCase):
         self.assertListEqual(SimilarityCalculatorNavigator.remove_outliers(vector), vector)
         # Are outliers removed
         self.assertListEqual(SimilarityCalculatorNavigator.remove_outliers(vector + [max(np.array(vector) * 100)]),
-            vector)
+                             vector)
 
 
 class TestRandomSimilarityCalculatorNavigator(unittest.TestCase):
@@ -200,7 +199,7 @@ class TestRandomSimilarityCalculatorNavigator(unittest.TestCase):
     def test_generate_index_pair(self):
         # Test if index pairs are correctly generated (if min=0 and max=1 only the pair 0,1 is possible)
         # Run test multiple times to check if orientation of the single possible pair is  not random - (smaller,larger)
-        for i in range(5):
+        for rep in range(5):
             self.assertEqual(self.rscn.generate_index_pair(1, 0), (0, 1))
 
 
@@ -327,9 +326,9 @@ class TestEnrichmentCalculator(unittest.TestCase):
         # Are only padj values below or equal to filtering p_value present in filtered data.
         # Use min padj for filtering to ensure that also padjs equal to filtering padj are retained
         padj_filter = min(self.padj)
-        filtered=self.ec_m.filter_enrichment_data(self.data, padj_filter)
+        filtered = self.ec_m.filter_enrichment_data(self.data, padj_filter)
         for filtered_set in filtered:
-            self.assertLessEqual(filtered_set.padj,padj_filter)
+            self.assertLessEqual(filtered_set.padj, padj_filter)
 
     def test_sort_padj(self):
         # Is list of sorted padj equal to list of padj obtained from sorted GeneSetData

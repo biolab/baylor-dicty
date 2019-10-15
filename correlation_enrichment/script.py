@@ -1,14 +1,16 @@
 import time
-from statistics import (mean, stdev,median)
-import networks.functionsDENet as f
-from orangecontrib.bioinformatics.geneset.__init__ import (list_all,load_gene_sets)
-from orangecontrib.bioinformatics.geneset.utils import (GeneSet,GeneSets)
-import matplotlib.pyplot as plt
-from correlation_enrichment.library import *
-from scipy.stats import (mannwhitneyu,ks_2samp,ttest_ind,norm)
 import random
 from math import sqrt
+
+from statistics import (mean, stdev,median)
+import matplotlib.pyplot as plt
+from scipy.stats import (mannwhitneyu,ks_2samp,ttest_ind,norm)
 import altair as alt
+
+from orangecontrib.bioinformatics.geneset.__init__ import (list_all,load_gene_sets)
+
+from correlation_enrichment.library import *
+import networks.functionsDENet as f
 
 #Load data
 #dataPath='/home/karin/Documents/DDiscoideum/'
@@ -874,3 +876,92 @@ alt.Chart(df).mark_circle().encode(x='N_similarities',y='p_difference',
                                    color=alt.Color('p_median',
                                                    scale=alt.Scale(range=['darkviolet','yellow','yellowgreen','green']))
                                   ).configure_circle(size=20)
+
+
+#Plot distribution of expression values:
+values=genesEID.values.tolist()
+values=[x for sub in values for x in sub]
+plt.hist(values,bins=10000)
+
+#Compare different parameters
+#Compare difference between spearman and normalised cosine based results:
+sc_spearman=SimilarityCalculator(similarity_type='correlation_spearman')
+sc_cosine=SimilarityCalculator(similarity_type='cosine',normalisation_type='mean0std1')
+ec_cosine=EnrichmentCalculator.quick_init(ge,sc_spearman)
+ec_spearman=EnrichmentCalculator.quick_init(ge,sc_cosine)
+
+max_pairs=10000
+gene_sets_sub=list(gene_sets)[:50]
+result_cosine=ec_cosine.calculate_enrichment(gene_sets_sub,max_pairs=max_pairs)
+print('spearman')
+result_spearman=ec_spearman.calculate_enrichment(gene_sets_sub,max_pairs=max_pairs)
+
+
+result_1=result_spearman
+result_2=result_cosine
+
+def result_df(result_1,result_2,max_pairs):
+    padj_diff=[]
+    padjs_1=[]
+    padjs_2=[]
+    n_genes=[]
+    means_1=[]
+    means_2=[]
+    medians_1=[]
+    medians_2=[]
+    n_sims=[]
+    matching=True
+    for index in range(len(result_1)):
+        data_1=result_1[index]
+        data_2=result_2[index]
+        if data_1.gene_set is not data_2.gene_set:
+            matching=False
+            break
+
+    for index in range(len(result_1)):
+        data_1=result_1[index]
+        data_2=result_2[index]
+        if data_1.gene_set is data_2.gene_set:
+            padj_1=data_1.padj
+            padj_2=data_2.padj
+            padj_diff.append(padj_1-padj_2)
+            padjs_1.append(padj_1)
+            padjs_2.append(padj_2)
+            n=len(data_1.gene_set.genes)
+            n_genes.append(n)
+            means_1.append(data_1.mean)
+            means_2.append(data_2.mean)
+            medians_1.append(data_1.median)
+            medians_2.append(data_2.median)
+            n_sim=possible_pairs(n)
+            if n_sim>max_pairs:
+                n_sim=max_pairs
+            n_sims.append(n_sim)
+    abs_padj_diff = [abs(x) for x in padj_diff]
+
+    return pd.DataFrame(list(zip(n_sims, n_genes, padj_diff, abs_padj_diff, padjs_1, padjs_2, means_1, means_2)),
+                      columns=['N_similarities', 'N_genes', 'padj_difference', 'abs_padj_difference', 'padj_1',
+                               'padj_2','mean_1', 'mean_2'])
+
+
+#Compare distribution of similarities of gene sets with divergent p values between cosine and spearman similarity
+n = 0
+plt.figure(figsize=(12,12))
+for index in range(len(result_cosine)):
+    data_1 = result_cosine[index]
+    data_2 = result_spearman[index]
+    if data_1.gene_set is data_2.gene_set:
+        padj_1 = data_1.padj
+        padj_2 = data_2.padj
+        if (padj_1 <= 0.05 and padj_2 > 0.05) or (padj_2 <= 0.05 and padj_1 > 0.05):
+            n += 1
+            sims_cosine = ec_cosine.calculator.similarities(data_1.gene_set.genes, 10000)
+            sims_spearman = ec_spearman.calculator.similarities(data_2.gene_set.genes, 10000)
+            sims_random_cosine = ec_cosine.storage._similarities
+            sims_random_spearman = ec_spearman.storage._similarities
+            point_hist(sims_cosine, plt.subplot(3, 3, n), 'cosine ' + str(padj_1),proportion=True)
+            point_hist(sims_spearman, plt.subplot(3, 3, n), 'spearman ' + str(padj_2),proportion=True)
+            point_hist(sims_random_cosine, plt.subplot(3, 3, n), 'cosine random',proportion=True)
+            point_hist(sims_random_spearman, plt.subplot(3, 3, n), 'spearman random',proportion=True)
+            plt.legend()
+

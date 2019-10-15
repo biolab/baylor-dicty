@@ -477,7 +477,7 @@ class RandomMeanStorage(RandomStatisticBundleStorage):
         self._summary_type = MEAN
 
     @classmethod
-    def from_calculator(cls, calculator: RandomSimilarityCalculatorNavigator, max_similarities: int = 10000,
+    def from_calculator(cls, calculator: RandomSimilarityCalculatorNavigator, max_similarities: int = MAX_RANDOM_PAIRS,
                         adjust_n: bool = True):
         """
         :param calculator: Used  to calculate not yet calculated random similarities
@@ -540,7 +540,6 @@ class RandomMedianStorage(RandomStatisticBundleStorage):
         """
         similarities = calculator.similarities(max_similarities, adjust_n=adjust_n)
         return cls(similarities=similarities, se_scaling_points=se_scaling_points, permutations=permutations)
-
 
     def se_scalings_estimation(self) -> OrderedDict:
         """
@@ -653,7 +652,8 @@ class EnrichmentCalculator:
         :param calculator: used to calculate similarities between gene pairs
         :param rm_outliers: Should similarities outliers be removed before reporting/statistical testing
         :param random_seed: Seed used for random number generator used for random pairs
-        :param max_random_pairs: Maximum number of random similarities calculated used for random points distribution estimation
+        :param max_random_pairs: Maximum number of random similarities calculated used for random points distribution
+            estimation
         :param summary_type: compute p values based on mean or median of similarities
         :param se_scaling_points: if summary_type is 'median' the scaling factor for standard errors of
          medians distribution are estimated based on these points
@@ -663,7 +663,7 @@ class EnrichmentCalculator:
         """
         for_random = RandomSimilarityCalculatorNavigator(expression_data=expression_data, calculator=calculator,
                                                          rm_outliers=rm_outliers, random_seed=random_seed)
-        calculator = GeneSetSimilarityCalculatorNavigator(expression_data=expression_data,
+        calculator_gs = GeneSetSimilarityCalculatorNavigator(expression_data=expression_data,
                                                           calculator=calculator, random_generator=for_random,
                                                           rm_outliers=rm_outliers)
         if summary_type == MEAN:
@@ -673,7 +673,7 @@ class EnrichmentCalculator:
             storage = RandomMedianStorage.from_calculator(calculator=for_random, max_similarities=max_random_pairs,
                                                           adjust_n=True, se_scaling_points=se_scaling_points,
                                                           permutations=permutations)
-        return cls(random_storage=storage, gene_set_calculator=calculator)
+        return cls(random_storage=storage, gene_set_calculator=calculator_gs)
 
     def calculate_pval(self, gene_set: GeneSet, max_pairs: int = None) -> GeneSetData:
         """
