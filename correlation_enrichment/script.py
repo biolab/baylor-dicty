@@ -84,6 +84,27 @@ gsscn=GeneSetSimilarityCalculatorNavigator(ge,sc,rscn)
 rss=RandomMeanStorage(simsRandom)
 ec=EnrichmentCalculator(random_storage=rss,gene_set_calculator=gsscn)
 
+#Cosine:
+sc_c=SimilarityCalculator(similarity_type='cosine',normalisation_type='mean0std1')
+rscn_c=RandomSimilarityCalculatorNavigator(ge,sc_c)
+gsscn_c=GeneSetSimilarityCalculatorNavigator(ge,sc_c,rscn_c)
+rss_c=RandomMeanStorage.from_calculator(calculator=rscn_c,max_similarities=10000)
+ec_c=EnrichmentCalculator(random_storage=rss_c,gene_set_calculator=gsscn_c)
+
+#Plot gene set lengths distribution ofr each group of gene sets:
+i=0
+for set_group in list_of_genesets:
+    i+=1
+    gene_sets = load_gene_sets(set_group, '44689')
+    lenghts=[]
+    for gs in gene_sets:
+        lenghts.append(len(gs.genes))
+    plt.subplot(3,2,i)
+    plt.hist(lenghts,bins=1000)
+    plt.xscale('log')
+    plt.xlabel('N genes')
+    plt.ylabel('Count '+set_group[1])
+
 #Calculate mean and stdev distn
 genesStrainEID, genesStrainNNEID=f.genesByStrain(genesNotNullEID,tableEID,12735,'AX4_avr',genesFromRow)
 sc=SimilarityCalculator()
@@ -110,58 +131,71 @@ plt.ylabel('mean (blue) and stdev (orange) similarity')
 
 #Calculate MSE (Used: spearman,Ax4_avg, random max pairs set to 500000,GO mollecular function)
 #Select gene sets specified size
-large_sets=[]
-min_points=300
-max_points=400
-for s in gene_sets:
-    n_genes=len(s.genes)
-    if n_genes>=min_points and n_genes<=max_points:
-        large_sets.append(s)
-#Reduce number of sets:
-max_sets=20
-if len(large_sets)>max_sets:
-    large_sets=large_sets[:max_sets]
+for set_group in list_of_genesets:
+    gene_sets=load_gene_sets(set_group,'44689')
+    large_sets=[]
+    min_points=300
+    max_points=400000000
+    for s in gene_sets:
+        n_genes=len(s.genes)
+        if n_genes>=min_points and n_genes<=max_points:
+            large_sets.append(s)
+    #Reduce number of sets:
+    max_sets=30
+    if len(large_sets)>max_sets:
+        large_sets=large_sets[:max_sets]
 
-#Decide on number of similarities  used for calculaion
-min_possible_pair=possible_pairs(min_points)
-pairN=[]
-for i in range(1,11):
-    pairN.append(round(min_possible_pair/20*i,0))
-#Calculate p values
-#TODO remember padj scale (eg. was it small/large)
-results=[]
-res=ec.calculate_enrichment(large_sets)
-results.append(res)
-for n in pairN:
-    print(n)
-    res=ec.calculate_enrichment(large_sets,max_pairs=n)
+    #Decide on number of similarities  used for calculaion
+    min_possible_pair=possible_pairs(min_points)
+    pairN=[1000,2500,5000,7500,10000,15000,20000]
+    #Calculate p values
+    results=[]
+    res=ec_c.calculate_enrichment(large_sets)
     results.append(res)
-#MSE
-mse=[]
-max_se=[]
-for n in range(1,len(results)):
-    errorsSquared=[]
-    for s in range(len(large_sets)):
-        padjOriginal=results[0][s].padj
-        padjShortened=results[n][s].padj
-        errSq=(padjOriginal-padjShortened)**2
-        errorsSquared.append(errSq)
-    mse.append(mean(errorsSquared))
-    max_se.append(max(errorsSquared))
-#Sort for plotting
-mse=[x for _, x in sorted(zip(pairN,mse), key=lambda pair: pair[0])]
-max_se=[x for _, x in sorted(zip(pairN,max_se), key=lambda pair: pair[0])]
-pairN=sorted(pairN)
-plt.plot(pairN,mse)
-plt.scatter(pairN,mse)
-#plt.plot(pairN,max_se)
-#plt.ylabel('MSE (blue) and max SE (orange) padj')
-plt.ylabel('MSE padj')
-avg_points=0
-for i in large_sets:
-    avg_points+=len(i.genes)
-avg_pairs=possible_pairs(round(avg_points/len(large_sets),0))
-plt.xlabel('n pairs (out of at least '+str(possible_pairs(min_points))+' possible, average '+str(avg_pairs)+')')
+    for n in pairN:
+        print(n)
+        res=ec_c.calculate_enrichment(large_sets,max_pairs=n)
+        results.append(res)
+    #MSE
+    mse=[]
+    max_se=[]
+    sub_plot=0
+    plt.figure(figsize=(15,15))
+    for n in range(1,len(results)):
+        errorsSquared=[]
+        padjs_Original = []
+        sub_plot += 1
+        for s in range(len(large_sets)):
+            padjOriginal=results[0][s].padj
+            padjShortened=results[n][s].padj
+            errSq=(padjOriginal-padjShortened)**2
+            padjs_Original.append(padjOriginal)
+            errorsSquared.append(errSq)
+        plt.subplot(4,2,sub_plot)
+        plt.scatter(padjs_Original, errorsSquared,s=2)
+        plt.xlabel('padj non-reduced')
+        plt.ylabel('SE padj (n_similarities: '+str(pairN[n-1])+')')
+        mse.append(mean(errorsSquared))
+        max_se.append(max(errorsSquared))
+    plt.savefig(dataPathSaved + 'SE_' + set_group[1] + '.png')
+    plt.clf()
+    #Sort for plotting
+    mse=[x for _, x in sorted(zip(pairN,mse), key=lambda pair: pair[0])]
+    max_se=[x for _, x in sorted(zip(pairN,max_se), key=lambda pair: pair[0])]
+    pairN=sorted(pairN)
+    plt.figure(figsize=(8, 8))
+    plt.plot(pairN,mse)
+    plt.scatter(pairN,mse)
+    #plt.plot(pairN,max_se)
+    #plt.ylabel('MSE (blue) and max SE (orange) padj')
+    plt.ylabel('MSE padj')
+    avg_points=0
+    for i in large_sets:
+        avg_points+=len(i.genes)
+    avg_pairs=possible_pairs(round(avg_points/len(large_sets),0))
+    plt.xlabel('n pairs (out of at least '+str(possible_pairs(min_points))+' possible, average '+str(avg_pairs)+')')
+    plt.savefig(dataPathSaved+'MSE_'+set_group[1]+'.png')
+    plt.clf()
 
 
 #Try enrichment for each strain and replicate:
