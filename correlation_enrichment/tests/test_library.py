@@ -322,11 +322,11 @@ class TestEnrichmentCalculator(unittest.TestCase):
             self.assertLessEqual(gene_set.padj, 1)
             self.assertGreaterEqual(gene_set.padj, 0)
 
-    def test_filter_enrichment_data(self):
+    def test_filter_enrichment_data_padj(self):
         # Are only padj values below or equal to filtering p_value present in filtered data.
         # Use min padj for filtering to ensure that also padjs equal to filtering padj are retained
         padj_filter = min(self.padj)
-        filtered = self.ec_m.filter_enrichment_data(self.data, padj_filter)
+        filtered = self.ec_m.filter_enrichment_data_padj(self.data, padj_filter)
         for filtered_set in filtered:
             self.assertLessEqual(filtered_set.padj, padj_filter)
 

@@ -90,6 +90,13 @@ rscn_c=RandomSimilarityCalculatorNavigator(ge,sc_c)
 gsscn_c=GeneSetSimilarityCalculatorNavigator(ge,sc_c,rscn_c)
 rss_c=RandomMeanStorage.from_calculator(calculator=rscn_c,max_similarities=10000)
 ec_c=EnrichmentCalculator(random_storage=rss_c,gene_set_calculator=gsscn_c)
+#Spearman
+sc_s=SimilarityCalculator(similarity_type='correlation_spearman')
+rscn_s=RandomSimilarityCalculatorNavigator(ge,sc_s)
+gsscn_s=GeneSetSimilarityCalculatorNavigator(ge,sc_s,rscn_s)
+rss_s=RandomMeanStorage.from_calculator(calculator=rscn_s,max_similarities=10000)
+ec_s=EnrichmentCalculator(random_storage=rss_s,gene_set_calculator=gsscn_s)
+
 
 #Plot gene set lengths distribution ofr each group of gene sets:
 i=0
@@ -119,8 +126,8 @@ for pN in pairN:
 sds=[]
 means=[]
 for s in sims:
-    means.append(s.mean_val)
-    sds.append(s.std)
+    means.append(mean(s))
+    sds.append(stdev(s))
 plt.scatter(pairN,means)
 plt.plot(pairN,means)
 plt.xscale('log')
@@ -129,8 +136,13 @@ plt.plot(pairN,sds)
 plt.xlabel('n random pairs')
 plt.ylabel('mean (blue) and stdev (orange) similarity')
 
-#Calculate MSE (Used: spearman,Ax4_avg, random max pairs set to 500000,GO mollecular function)
+#Calculate MSE (Used: initialls: spearman,Ax4_avg, random max pairs set to 500000,GO mollecular function)
 #Select gene sets specified size
+sim_metric='spearman'
+if sim_metric=='cosine':
+    ec_mse=ec_c
+else:
+    ec_mse=ec_s
 for set_group in list_of_genesets:
     gene_sets=load_gene_sets(set_group,'44689')
     large_sets=[]
@@ -150,11 +162,11 @@ for set_group in list_of_genesets:
     pairN=[1000,2500,5000,7500,10000,15000,20000]
     #Calculate p values
     results=[]
-    res=ec_c.calculate_enrichment(large_sets)
+    res=ec_mse.calculate_enrichment(large_sets)
     results.append(res)
     for n in pairN:
         print(n)
-        res=ec_c.calculate_enrichment(large_sets,max_pairs=n)
+        res=ec_mse.calculate_enrichment(large_sets,max_pairs=n)
         results.append(res)
     #MSE
     mse=[]
@@ -177,7 +189,7 @@ for set_group in list_of_genesets:
         plt.ylabel('SE padj (n_similarities: '+str(pairN[n-1])+')')
         mse.append(mean(errorsSquared))
         max_se.append(max(errorsSquared))
-    plt.savefig(dataPathSaved + 'SE_' + set_group[1] + '.png')
+    plt.savefig(dataPathSaved + 'SE_' + set_group[1] + '_'+sim_metric+'.png')
     plt.clf()
     #Sort for plotting
     mse=[x for _, x in sorted(zip(pairN,mse), key=lambda pair: pair[0])]
@@ -194,7 +206,7 @@ for set_group in list_of_genesets:
         avg_points+=len(i.genes)
     avg_pairs=possible_pairs(round(avg_points/len(large_sets),0))
     plt.xlabel('n pairs (out of at least '+str(possible_pairs(min_points))+' possible, average '+str(avg_pairs)+')')
-    plt.savefig(dataPathSaved+'MSE_'+set_group[1]+'.png')
+    plt.savefig(dataPathSaved+'MSE_'+set_group[1]+'_'+sim_metric+'.png')
     plt.clf()
 
 
@@ -921,8 +933,8 @@ plt.hist(values,bins=10000)
 #Compare difference between spearman and normalised cosine based results:
 sc_spearman=SimilarityCalculator(similarity_type='correlation_spearman')
 sc_cosine=SimilarityCalculator(similarity_type='cosine',normalisation_type='mean0std1')
-ec_cosine=EnrichmentCalculator.quick_init(ge,sc_spearman)
-ec_spearman=EnrichmentCalculator.quick_init(ge,sc_cosine)
+ec_cosine=EnrichmentCalculator.quick_init(ge,sc_cosine)
+ec_spearman=EnrichmentCalculator.quick_init(ge,sc_spearman)
 
 max_pairs=10000
 gene_sets_sub=list(gene_sets)[:50]
@@ -998,4 +1010,21 @@ for index in range(len(result_cosine)):
             point_hist(sims_random_cosine, plt.subplot(3, 3, n), 'cosine random',proportion=True)
             point_hist(sims_random_spearman, plt.subplot(3, 3, n), 'spearman random',proportion=True)
             plt.legend()
+
+#Gene set comparison:
+
+#Plot profiles of genes from 2 gene sets
+#GeneSetPairData - data
+data=res[2]
+colour='g'
+for dataset in [data.gene_set1,data.gene_set2]:
+    count=0
+    for gene in dataset.genes:
+        if count<20:
+            count+=1
+            points=pp.minmax_scale(genesStrainNNEID.loc[gene,:])
+            #Replace!
+            times=range(len(points))
+            plt.plot(times,points,colour)
+    colour='b'
 
