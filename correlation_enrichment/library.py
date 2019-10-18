@@ -401,6 +401,7 @@ class GeneSetSimilarityCalculatorNavigator(SimilarityCalculatorNavigator):
     def similarities(self, geneIDs: list, max_n_similarities: int = None, as_list=True):
         """
         Caluclate similarity between all genes from a gene set
+        Treats replicates as different genes
         :param geneIDs: Entrez IDs of genes in the gene set
         :param max_n_similarities: Should be number of similarity calculations limited,
         eg. a random sample of similarities between specified genes

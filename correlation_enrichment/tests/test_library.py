@@ -230,9 +230,9 @@ class TestGeneSetSimilarityCalculatorNavigator(unittest.TestCase):
     def test_calculate_similarity(self):
         # Is a single computed similarity added to result list
         # Uses specified rows in GE so that specified similarity will be 1  - the GE structure must be correct
-        result = []
+        result = dict()
         self.gsscn.calculate_similarity(DF, 0, 1, result)
-        self.assertListEqual(result, [1])
+        self.assertDictEqual(result, {('1','2'):1})
 
 
 class RandomMeanStorage(unittest.TestCase):

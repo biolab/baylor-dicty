@@ -216,6 +216,7 @@ for set_group in list_of_genesets:
     plt.savefig(dataPathSaved+'MSE_'+set_group[1]+'_'+sim_metric+'.png')
     plt.clf()
 
+#*****For different strains - OLD VERSION!
 
 #Try enrichment for each strain and replicate:
 sc=SimilarityCalculator(similarity_type='correlation_pearson')
@@ -1038,4 +1039,74 @@ for dataset in [data.gene_set_data1,data.gene_set_data2]:
     colour='r'
 
 
-#Plot heatmap
+
+#*********Compare results of all replicates in one dataset or averaging from separate replicate data
+#For tagB as same number of time points:
+
+# Individual replicates
+strain='tagB'
+gene_sets=load_gene_sets(('Dictybase', 'Phenotypes'),'44689')
+for rep in samples[strain]:
+    print(strain,rep)
+    genesStrainEID, genesStrainNNEID=f.genesByStrain(genesNotNullEID,tableEID,12735,strain+'_r'+str(rep),genesFromRow)
+    ge_strain=GeneExpression(genesStrainNNEID)
+    ec_strain=EnrichmentCalculator.quick_init(ge_strain,sc_c)
+    start = time.time()
+    result=ec_strain.calculate_enrichment(gene_sets,5000)
+    print(time.time()-start)
+    f.savePickle(dataPathSaved+'enrichment_cosine_5000_pheno'+strain+str(rep)+'.pkl',result)
+
+# All replicates together
+genes_data=[]
+for rep in samples[strain]:
+    print(strain,rep)
+    genesStrainEID, genesStrainNNEID=f.genesByStrain(genesNotNullEID,tableEID,12735,strain+'_r'+str(rep),genesFromRow)
+    genesStrainNNEID.columns=range(genesStrainNNEID.shape[1])
+    genes_data.append(genesStrainNNEID)
+genesStrainsNNEID=pd.concat(genes_data)
+ge_strain=GeneExpression(genesStrainsNNEID)
+ec_strain=EnrichmentCalculator.quick_init(ge_strain,sc_c)
+start = time.time()
+result=ec_strain.calculate_enrichment(gene_sets,5000)
+print(time.time()-start)
+f.savePickle(dataPathSaved+'enrichment_cosine_5000_pheno'+strain+'.pkl',result)
+
+#Retain sets that are present in at least min_replicates replicates at level of max padj, average the padj
+#Reps data - list of enrichment data, where list elements are dicts (resDict) of gene set names (key) and padj (value)
+def merge_from_replicates(reps_data:list, max_padj,min_reps:int=2)->dict:
+    merged=dict()
+    for data in reps_data:
+        for gene_set,padj in data.items():
+            if padj<=max_padj:
+                if gene_set in merged.keys():
+                    merged[gene_set].append(padj)
+                else:
+                    merged[gene_set]=[padj]
+    filtered=dict()
+    for gene_set,padjs in merged.items():
+        if len(padjs)>=min_reps:
+            filtered[gene_set]=mean(padjs)
+    return filtered
+
+#Merge replicates data:
+reps=[]
+for rep in samples[strain]:
+    rep_data=f.loadPickle(dataPathSaved+'enrichment_cosine_5000_pheno'+strain+str(rep)+'.pkl')
+    resDict=dict()
+    for r in result:
+        resDict[r.gene_set.name] = r.padj
+    reps.append(resDict)
+merged=merge_from_replicates(reps,1)
+
+initially_merged_data=f.loadPickle(dataPathSaved+'enrichment_cosine_5000_pheno'+strain+'.pkl')
+initially_merged=dict()
+for r in initially_merged_data:
+    initially_merged[r.gene_set.name] = r.padj
+
+sets_reps=merged.keys()
+sets_reps_initially=initially_merged.keys()
+padjs_reps=[]
+padjs_reps_initially=[]
+for gene_set in gene_sets:
+    if gene_set in sets_reps or gene_set in sets_reps_initially:
+        if gene_set in
