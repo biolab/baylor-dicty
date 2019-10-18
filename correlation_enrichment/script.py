@@ -138,6 +138,13 @@ plt.ylabel('mean (blue) and stdev (orange) similarity')
 
 #Calculate MSE (Used: initialls: spearman,Ax4_avg, random max pairs set to 500000,GO mollecular function)
 #Select gene sets specified size
+#N of sets with at least 300 genes:
+#1 ('Dictybase', 'Phenotypes')
+#1 ('KEGG', 'Pathways')
+#23 ('GO', 'cellular_component')
+#58 ('GO', 'biological_process')
+#32 ('GO', 'molecular_function')
+
 sim_metric='spearman'
 if sim_metric=='cosine':
     ec_mse=ec_c
@@ -930,6 +937,7 @@ values=[x for sub in values for x in sub]
 plt.hist(values,bins=10000)
 
 #Compare different parameters
+
 #Compare difference between spearman and normalised cosine based results:
 sc_spearman=SimilarityCalculator(similarity_type='correlation_spearman')
 sc_cosine=SimilarityCalculator(similarity_type='cosine',normalisation_type='mean0std1')
@@ -1015,16 +1023,19 @@ for index in range(len(result_cosine)):
 
 #Plot profiles of genes from 2 gene sets
 #GeneSetPairData - data
-data=res[2]
+#pairs - GeneSetPairData list
+data=pairs[13]
 colour='g'
-for dataset in [data.gene_set1,data.gene_set2]:
+for dataset in [data.gene_set_data1,data.gene_set_data2]:
     count=0
-    for gene in dataset.genes:
+    for gene in dataset.most_similar:
         if count<20:
             count+=1
             points=pp.minmax_scale(genesStrainNNEID.loc[gene,:])
             #Replace!
             times=range(len(points))
             plt.plot(times,points,colour)
-    colour='b'
+    colour='r'
 
+
+#Plot heatmap
