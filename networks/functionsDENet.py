@@ -50,6 +50,14 @@ def genesByStrain(genes,table,collumn,strain,fromRow):
     genesWTN=notNull(genesWT,1)
     return genesWT, genesWTN
 
+#Extract genes by keyword based on gene table (genes in rows, 'genes') and original Orange formated 'table'
+#Collumn in 'table' with strain info - retains if the keyword (strain) is present
+#In which row does expression/strain data start in table
+def genesByKeyword(genes,table,collumn,strain,fromRow):
+    genesWT=genes.T[(table.iloc[:,collumn].str.contains(strain)).values[fromRow:]].T
+    genesWTN=notNull(genesWT,1)
+    return genesWT, genesWTN
+
 #Return portion of table with non zero rows/collumns
 def notNull(table,axis):
     return table[(table != 0).any(axis=1)]
