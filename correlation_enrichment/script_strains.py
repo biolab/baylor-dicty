@@ -1,15 +1,19 @@
 import time
 
-from statistics import (mean, stdev,median)
+
+from Orange.widgets.tests.base import datasets
 from orangecontrib.bioinformatics.geneset.__init__ import (list_all,load_gene_sets)
 import matplotlib.pyplot as plt
 
 from correlation_enrichment.library import *
 import networks.functionsDENet as f
 
-
+lab=False
 dataPath='/home/karin/Documents/git/baylor-dicty/data_expression/'
-dataPathSaved='/home/karin/Documents/timeTrajectories/data/timeGeneSets/'
+if lab:
+    dataPathSaved='/home/karin/Documents/timeTrajectories/data/timeGeneSets/'
+else:
+    dataPathSaved='/home/karin/Documents/DDiscoideum/data/enrichmentMultiD/'
 
 samples={
 'AX4':[1,2,5,6,7,8,9],
@@ -52,6 +56,7 @@ table_enriched=pd.DataFrame(datas)
 table_enriched.index=strains
 table_enriched.to_csv(dataPathSaved+'enriched_cosine_5000_pheno.tsv',sep='\t')
 
+table_enriched=pd.read_csv(dataPathSaved+'enriched_cosine_5000_pheno.tsv',sep='\t',index_col=0)
 
 #Retain only best pvals, replace others with 1
 table_filtered=table_enriched.copy()
@@ -62,5 +67,12 @@ for row in padjs:
     table_filtered.iloc[index,:][table_filtered.iloc[index,:]>boundary]=-1
     index+=1
 table_filtered[table_filtered<0]='NaN'
-table_filtered.to_csv(dataPathSaved+'enriched_pearson_3000_top5.tsv',sep='\t')
+table_filtered=table_filtered.loc[:, (table_filtered != 'NaN').any(axis=0)]
+table_filtered.to_csv(dataPathSaved+'enriched_cosine_5000_pheno_top5.tsv',sep='\t')
+
+#Log transform
+table_log = np.log10(table_enriched)
+table_log = table_log * -1
+table_log[table_log==float('inf')]=500
+table_log.to_csv(dataPathSaved + 'enriched_cosine_5000_pheno_-log10.tsv', sep='\t')
 

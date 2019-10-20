@@ -9,6 +9,8 @@ from statistics import median
 from statsmodels.stats.multitest import multipletests
 from sklearn import preprocessing as pp
 from scipy.stats import (spearmanr, pearsonr, norm)
+import mpmath
+mpmath.mp.dps = 500
 
 from orangecontrib.bioinformatics.geneset.utils import (GeneSet, GeneSets)
 
@@ -775,7 +777,7 @@ class EnrichmentCalculator:
             raise ValueError('Possible summary types are', MEAN, 'and', MEDIAN)
         se = self.storage.get_se(n)
         center_random = self.storage._center
-        p = 1 - norm(center_random, se).cdf(center_set)
+        p=float(1-mpmath.ncdf(center_set, mu=center_random, sigma=se))
 
         gene_set_data = GeneSetData(gene_set)
         gene_set_data.mean = mean_set
