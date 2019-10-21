@@ -85,7 +85,7 @@ def normaliseGenes(genes, axisN):
 
 # The first calling of index.query is slower than subsequent callings,
 # although it does not seem to strongly affect neighbours
-def genesKNN(kN, genes, scaleByAxis, filePrefix='', save=True, timing=False):
+def genesKNN(kN, genes, scaleByAxis, filePrefix='', save=True, timing=False,adjustForSelf=False):
     scaled = normaliseGenes(genes, scaleByAxis)
     if timing:
         start = time.time()

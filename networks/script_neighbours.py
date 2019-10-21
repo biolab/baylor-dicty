@@ -41,7 +41,7 @@ genesWT, genesWTN = genesByStrain(genesNotNull, table, data['Strain'], strain + 
 
 # **************************************************************
 # Perform KNN with package
-knnNeighbours=30
+knnNeighbours = 30
 dist, neigh, distInv, neighInv, nGenesKnnUsed = genesKNN(knnNeighbours, genesWTN, 1, save=False, timing=True)
 
 # Check cosine distance calculation
@@ -56,7 +56,7 @@ for gene in range(0, 150):
         sse.append((cosine_direct - cosine_package) ** 2)
     for neighbour in range(0, knnNeighbours):
         cosine_package = round(distInv[gene][neighbour], 7)
-        cosine_direct = round(1-SimilarityCalculator.calc_cosine(inverse[gene], scaled[neighInv[gene][neighbour]]), 7)
+        cosine_direct = round(1 - SimilarityCalculator.calc_cosine(inverse[gene], scaled[neighInv[gene][neighbour]]), 7)
         sse_inv.append((cosine_direct - cosine_package) ** 2)
 print('MSE', sum(sse) / len(sse))
 print('MSE inverse', sum(sse_inv) / len(sse_inv))
@@ -66,13 +66,13 @@ print('MSE inverse', sum(sse_inv) / len(sse_inv))
 
 # ******************************************************
 # Check if closest neighbours computation is reliable
-# Check how this deppends on data set size and number of required neighbours
-subset_size=[]
-neighbour_n=[]
-mean_diff=[]
-mean_diff_inv=[]
-for subset in [100,500,1000]:
-    genesSub=genesWTN.iloc[:subset,]
+# Check how this depends on data set size and number of required neighbours
+subset_size = []
+neighbour_n = []
+mean_diff = []
+mean_diff_inv = []
+for subset in [100, 500, 1000]:
+    genesSub = genesWTN.iloc[:subset, ]
 
     # Compute all similarities by hand
     similarities = np.ones((subset, subset))
@@ -82,52 +82,53 @@ for subset in [100,500,1000]:
             similarity = SimilarityCalculator.calc_cosine(scaled[i], scaled[j])
             similarities[j][i] = similarity
             similarities[i][j] = similarity
-    # If knnNeigbours is set too big compared to sample size the package becomes very slow
-    for knnNeighbours in [3,5,8,int(subset/10),int(subset/5)]:
-        print(subset,knnNeighbours)
+
+    # If knnNeighbours is set too big compared to sample size the package becomes very slow
+    for knnNeighbours in [3, 5, 8, int(subset / 10), int(subset / 5)]:
+        print(subset, knnNeighbours)
         subset_size.append(subset)
         neighbour_n.append(knnNeighbours)
 
-        #Neighbours with package
+        # Neighbours with package
         dist, neigh, distInv, neighInv, nGenesKnnUsed = genesKNN(knnNeighbours, genesSub, 1, save=False, timing=True)
 
-        #Check if neighbours are the same
-
-        #matching=[]
-        #matching_inv=[]
+        # Check if neighbours are the same
+        # For each gene sum differences of knn best neighbour position indices between approximated neighbours
+        # and all neighbours computed based on computing all distances. For each set of parameters average these
+        # differences for closest neighbours and "inverse" neighbours (eg. opposite profile).
         place_inv = list(range(0, subset))
-        diffs_inv=[]
-        diffs=[]
-        for i in range(0,subset):
+        diffs_inv = []
+        diffs = []
+        for i in range(0, subset):
             sorted_indices = np.argsort(similarities[i])
             neigh_dict_inv = dict(zip(sorted_indices, place_inv))
-            diff=0
-            diff_inv=0
+            diff = 0
+            diff_inv = 0
             for neighbour_place in range(knnNeighbours):
-                neighbour=neigh[i][neighbour_place]
-                neighbour_inv=neighInv[i][neighbour_place]
-                real_place=subset-1-neigh_dict_inv[neighbour]
-                real_place_inv=neigh_dict_inv[neighbour_inv]
-                diff+=abs(real_place - neighbour_place)
-                diff_inv+=abs(real_place_inv-neighbour_place)
+                neighbour_inv = neighInv[i][neighbour_place]
+                real_place_inv = neigh_dict_inv[neighbour_inv]
+                diff_inv += abs(real_place_inv - neighbour_place)
+
+                # Note that closest neighbour is most likely self, but not always, so this is not used
+                #if neighbour_place!=i:
+                real_place = subset - 1 - neigh_dict_inv[neighbour]
+                neighbour = neigh[i][neighbour_place]
+                diff += abs(real_place - neighbour_place)
             diffs.append(diff)
             diffs_inv.append(diff_inv)
 
-            # If it was assumed the package neighbours list is sorted by cosine similarity
-            #farthest=sorted_indices[:knnNeighbours]
-            #closest=sorted_indices[subset-knnNeighbours:]
-            #matching.append(sum(el in closest for el in neigh[i])/knnNeighbours)
-            #matching_inv.append(sum(el in farthest for el in neighInv[i])/knnNeighbours)
-
-        #print(mean(diffs),mean(diffs_inv))
         mean_diff.append(mean(diffs))
         mean_diff_inv.append(mean(diffs_inv))
 
-df = pd.DataFrame(list(zip(subset_size,neighbour_n,mean_diff,mean_diff_inv)),
-               columns =['N genes', 'N neighbours','mean neighbour difference','mean inverse neighbour difference'])
+df = pd.DataFrame(list(zip(subset_size, neighbour_n, mean_diff, mean_diff_inv)),
+                  columns=['N genes', 'N neighbours', 'mean neighbour diff', 'mean inverse neighbour diff'])
 
-alt.Chart(df).mark_circle().encode(x='N genes',y='N neighbours',
-                                   color=alt.Color('mean neighbour difference',scale=
-                                                   alt.Scale(range=['darkviolet','yellow','yellowgreen','green']))
-                                  ).configure_circle(size=50).interactive().serve()
+alt.Chart(df).mark_circle().encode(x='N genes', y='N neighbours',
+                                   color=alt.Color('mean neighbour diff', scale=
+                                   alt.Scale(range=['darkviolet', 'yellow', 'yellowgreen', 'green']))
+                                   ).configure_circle(size=50).interactive().serve()
 
+alt.Chart(df).mark_circle().encode(x='N genes', y='N neighbours',
+                                   color=alt.Color('mean inverse neighbour diff', scale=
+                                   alt.Scale(range=['darkviolet', 'yellow', 'yellowgreen', 'green']))
+                                   ).configure_circle(size=50).interactive().serve()
