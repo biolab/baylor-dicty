@@ -93,9 +93,13 @@ def genesKNN(kN, genes, scaleByAxis, filePrefix='', save=True, timing=False,adju
     if timing:
         end = str(time.time() - start)
         print("Index sec: " + end)
+    if adjustForSelf:
+        kN_similar = kN + 1
+    else:
+        kN_similar = kN
     if timing:
         start = time.time()
-    resultKNN = index.query(scaled.tolist(), k=kN)
+    resultKNN = index.query(scaled.tolist(), k=kN_similar)
     if timing:
         end = str(time.time() - start)
         print("KNN " + str(kN) + " sec: " + end)
@@ -166,20 +170,31 @@ def position(j, i):
     return int((row * (row + 1) / 2) + col - row)
 
 
-# Based on KNN result make lower triangular matrix w/o diagonal (vector), denoting which elemnts are similar
+# NO-changed: Based on KNN result make lower triangular matrix w/o diagonal (vector), denoting which elemnts are similar
 # Result: 1 if not similar, less if similar
-def chooseGenePairsFromKnn(nGenesKnn, knnNeighbours, threshold, dist, neigh, distInv, neighInv):
-    knnChosen = set()
+# use Dict - returns dict where value is similarity (calculated as 1-distance) and keys are gene pairs
+def chooseGenePairsFromKnn(nGenesKnn, knnNeighbours, threshold, dist, neigh, distInv, neighInv,useDict=False):
+    if not useDict:
+        knnChosen = set()
+    else:
+        knnChosen=dict()
     for gene in range(nGenesKnn):
-        for k in range(knnNeighbours):
+        for k in range(dist.shape[1]):
             d = dist[gene, k]
-            if d <= threshold:
+            if 0 <= d <= threshold:
                 gene2 = neigh[gene, k]
-                addToknnDMatrix(gene, gene2, knnChosen)
+                if not useDict:
+                    addToknnDMatrix(gene, gene2, knnChosen)
+                else:
+                    addToknnDDict(gene, gene2, 1-d,knnChosen)
+        for k in range(distInv.shape[1]):
             di = distInv[gene, k]
-            if di <= threshold:
+            if 0 <= di <= threshold:
                 gene2i = neighInv[gene, k]
-                addToknnDMatrix(gene, gene2i, knnChosen)
+                if not useDict:
+                    addToknnDMatrix(gene, gene2i, knnChosen)
+                else:
+                    addToknnDDict(gene, gene2i, 1 - di, knnChosen)
     return knnChosen
 
 
@@ -190,6 +205,14 @@ def addToknnDMatrix(j, i, matrix):
             matrix.add((j, i))
         else:
             matrix.add((i, j))
+
+# Add distance to diagonal matrix, excluding diagonal elements, prioritise lower distances
+def addToknnDDict(j, i,value, dictionary):
+    if i != j:
+        if j > i:
+            dictionary[(j, i)]=value
+        else:
+            dictionary[(i,j)]=value
 
 
 # Correlations

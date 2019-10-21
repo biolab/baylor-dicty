@@ -48,6 +48,7 @@ genesFromRow = 2
 table = f.importTable(dataPath + 'trans_9repAX4_6strains_2rep_avr_T12.tab')
 
 genes, genesNotNull = f.extractGenesFromTable(table, genesFromRow, data['lastGene'])
+
 genesWT, genesWTN = f.genesByStrain(genesNotNull, table, data['Strain'], strain + '_r' + str(repN), genesFromRow)
 
 # Load gene info
@@ -301,4 +302,5 @@ repN='9'
 knnNeighbours=5
 rep = 'rep' + str(repN)
 genesWT, genesWTN = f.genesByStrain(genesNotNull, table, data['Strain'], strain + '_r' + str(repN), genesFromRow)
-dist,neigh,distInv,neighInv,nGenesKnn=f.genesKNN(knnNeighbours,genesWTN,1,dataPathSaved+strain+'_'+rep)
+dist,neigh,distInv,neighInv,nGenesKnn=f.genesKNN(knnNeighbours,genesWTN,1,dataPathSaved+strain+'_'+rep,adjustForSelf=True)
+knnChosen = f.chooseGenePairsFromKnn(nGenesKnn, knnNeighbours, thresholdKNND, dist, neigh, distInv, neighInv,useDict=True)

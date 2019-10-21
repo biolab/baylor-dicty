@@ -109,8 +109,8 @@ for subset in [100, 500, 1000]:
                 real_place_inv = neigh_dict_inv[neighbour_inv]
                 diff_inv += abs(real_place_inv - neighbour_place)
 
-                # Note that closest neighbour is most likely self, but not always, so this is not used
-                #if neighbour_place!=i:
+                # Note that closest neighbour is most often self, but not always.
+                # Thus the first neighbour is not automatically excluded
                 real_place = subset - 1 - neigh_dict_inv[neighbour]
                 neighbour = neigh[i][neighbour_place]
                 diff += abs(real_place - neighbour_place)
