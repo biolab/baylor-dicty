@@ -1,4 +1,4 @@
-import functionsDENet as f
+import networks.functionsDENet as f
 
 #Script parts are to be run separately as needed
 
