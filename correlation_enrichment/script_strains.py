@@ -85,8 +85,8 @@ ge_strain = GeneExpression(genesStrainNNEID)
 ec_strain = EnrichmentCalculator.quick_init(ge_strain, sc)
 gsc=GeneSetComparator(ec_strain.calculator)
 enrichment_data=f.loadPickle(dataPathSaved + 'enrichment_cosine_5000_pheno_' + strain + '.pkl')
-top=EnrichmentCalculator.filter_enrichment_data_top(enrichment_data,30)
-set_pairs=gsc.make_set_pairs(top)
+top=EnrichmentCalculator.filter_enrichment_data_top(enrichment_data,20)
+set_pairs=gsc.make_set_pairs(top,include_identical=True)
 gsc.between_set_similarities(set_pairs)
 n_sets=len(top)
 matrix=np.ones((n_sets,n_sets))
@@ -102,3 +102,4 @@ for pair in set_pairs:
     mean_sim=pair.mean_profile_similarity
     matrix.loc[name1,name2]=mean_sim
     matrix.loc[name2, name1] = mean_sim
+matrix.to_csv(dataPathSaved+'enrichment_cosine_5000_pheno_AX4_topSetSimilarity.tsv',sep='\t')

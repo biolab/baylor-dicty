@@ -975,11 +975,17 @@ class GeneSetComparator:
         differences = pp.minmax_scale(differences,axis=1)
         gene_set_data.pattern_stdevs = differences.std(axis=0)
 
-    def make_set_pairs(self, gene_set_data: GeneSetData)->list:
+    @staticmethod
+    def make_set_pairs( gene_set_data: GeneSetData,include_identical=False)->list:
         set_pairs = []
         n_sets = len(gene_set_data)
-        for i in range(0, n_sets - 1):
-            for j in range(i + 1, n_sets):
+        start_j_add=1
+        end_i_miss=1
+        if include_identical:
+            start_j_add=0
+            end_i_miss = 0
+        for i in range(0, n_sets - end_i_miss):
+            for j in range(i + start_j_add, n_sets):
                 data1 = gene_set_data[i]
                 data2 = gene_set_data[j]
                 pair = GeneSetPairData(data1, data2)
