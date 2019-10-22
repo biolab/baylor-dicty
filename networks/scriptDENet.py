@@ -297,10 +297,23 @@ f.annSubsWithGO(graph, slims=False)  # Annotates the existing graph
 
 # ******************************************
 # Graph with 5 neighbours from knn package
-strain='AX4'
-repN='9'
+
 knnNeighbours=5
-rep = 'rep' + str(repN)
-genesWT, genesWTN = f.genesByStrain(genesNotNull, table, data['Strain'], strain + '_r' + str(repN), genesFromRow)
-dist,neigh,distInv,neighInv,nGenesKnn=f.genesKNN(knnNeighbours,genesWTN,1,dataPathSaved+strain+'_'+rep,adjustForSelf=True)
-knnChosen = f.chooseGenePairsFromKnn(nGenesKnn, knnNeighbours, thresholdKNND, dist, neigh, distInv, neighInv,useDict=True)
+graphs=[]
+for strain in samples.keys():
+    genesWT, genesWTN = f.genesByKeyword(genesNotNull, table, data['Strain'], strain + '_r' , genesFromRow)
+    dist,neigh,distInv,neighInv,nGenesKnn=f.genesKNN(knnNeighbours,genesWTN,1,dataPathSaved+strain,adjustForSelf=True,
+                                                     save=False)
+    knnChosen = f.chooseGenePairsFromKnn(nGenesKnn, knnNeighbours, 1, dist, neigh, distInv, neighInv,useDict=True)
+    graph=f.makeMultiGraph()
+    f.buildGraph(graph,strain,'merged',knnChosen,0,genesWTN,True)
+    graphs.append(graph)
+graph=f.mergeGraphs(graphs)
+f.saveGraph(graph,dataPathSaved+'kN6-5_mergedRep_mergedStrain',False)
+
+graph=f.loadGMLGraph(dataPathSaved+'kN6-5_mergedRep_mergedStrain.gml')
+pruned=f.removeEdgesWeigth(graph,0.9)
+f.removeIsolates(pruned)
+pruned=f.removeSubNetsBelow(pruned,4)
+f.removeEdgeLessThanStrains(pruned,2)
+merged=f.mergeStrainEdges(pruned)

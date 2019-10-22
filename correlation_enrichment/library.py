@@ -932,7 +932,7 @@ class GeneSetComparator:
         self.similarity_calculator = similarity_calculator
         self.expression_data = self.similarity_calculator.expression_data
 
-    def between_set_similarities(self, set_pairs_data: list) -> list:
+    def between_set_similarities(self, set_pairs_data: list):
         """
         Calculates similariti between two data sets based on genes declared to be most similar within the sets
         :param gene_sets_data: list of GeneSetData object to be compared to each other
@@ -940,12 +940,12 @@ class GeneSetComparator:
         """
         for pair in set_pairs_data:
             set1 = pair.gene_set_data1
-            set2 = pair.gene_set_data1
+            set2 = pair.gene_set_data2
             similarities = self.similarity_calculator.similarities_pair(set1.most_similar, set2.most_similar)
             pair.mean_profile_similarity = mean_list(similarities)
             pair.median_profile_similarity = median(similarities)
 
-    def changeability_similarity(self, set_pairs_data: list) -> list:
+    def changeability_similarity(self, set_pairs_data: list):
         gene_sets_data = set()
         for pair in set_pairs_data:
             gene_sets_data.add(pair.gene_set_data1)
@@ -975,7 +975,7 @@ class GeneSetComparator:
         differences = pp.minmax_scale(differences,axis=1)
         gene_set_data.pattern_stdevs = differences.std(axis=0)
 
-    def make_set_pairs(self, gene_set_data: GeneSetData):
+    def make_set_pairs(self, gene_set_data: GeneSetData)->list:
         set_pairs = []
         n_sets = len(gene_set_data)
         for i in range(0, n_sets - 1):

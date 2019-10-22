@@ -201,3 +201,16 @@ Gene enrichment based on gene correlation described in timeGeneSets.ipynb
 
 The distributions are not normal.
 Kolmoragov Smerov test (example distribution shapes in try_cdf.png and try_pdf.png).
+
+*********************************
+Graphs:
+Check if knn package can be used instead of calculating similarity again - this seems ok.
+It is fast (a few seconds) when not many neighbours are required (eg. 5).
+
+Make graphs from 5 inverse and 6 non inverse neighbours (in non inverse is also self).
+Calculate similarity based on all replicates together.
+Try pruning with cosine similarity (weight) threshold 1.) 0.99 or 2.) 0.8 and then 2 strains and subsequent 2.1) 0.9 weight.
+Also try creating graph for only 3.) AX4 and pruning weight at 0.9.
+Some graphs (eg. 1.) ) create some separate subgraphs that are enriched.
+However, the connections are dense and nodes are lost when removing low-weight edges- eg. many isolates arise.
+Still, there remains furball. When clustering the graph/part of it some clusters are enriched, but many are not.

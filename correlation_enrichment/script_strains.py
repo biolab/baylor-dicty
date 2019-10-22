@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from correlation_enrichment.library import *
 import networks.functionsDENet as f
 
-lab=False
+lab=True
 dataPath='/home/karin/Documents/git/baylor-dicty/data_expression/'
 if lab:
     dataPathSaved='/home/karin/Documents/timeTrajectories/data/timeGeneSets/'
@@ -40,6 +40,7 @@ for strain in samples.keys():
     ec_strain = EnrichmentCalculator.quick_init(ge_strain, sc)
     result = ec_strain.calculate_enrichment(gene_sets, 5000)
     print(time.time() - start)
+    f.savePickle(dataPathSaved + 'enrichment_cosine_5000_pheno_' + strain + '.pkl', result)
     resDict = dict()
     for r in result:
         resDict[r.gene_set.name] = r.padj
@@ -76,3 +77,28 @@ table_log = table_log * -1
 table_log[table_log==float('inf')]=500
 table_log.to_csv(dataPathSaved + 'enriched_cosine_5000_pheno_-log10.tsv', sep='\t')
 
+#******************************
+# Compare gene sets:
+strain='AX4'
+genesStrainEID, genesStrainNNEID = f.genesByKeyword(genesNotNullEID, tableEID, 12735, strain + '_r', genesFromRow)
+ge_strain = GeneExpression(genesStrainNNEID)
+ec_strain = EnrichmentCalculator.quick_init(ge_strain, sc)
+gsc=GeneSetComparator(ec_strain.calculator)
+enrichment_data=f.loadPickle(dataPathSaved + 'enrichment_cosine_5000_pheno_' + strain + '.pkl')
+top=EnrichmentCalculator.filter_enrichment_data_top(enrichment_data,30)
+set_pairs=gsc.make_set_pairs(top)
+gsc.between_set_similarities(set_pairs)
+n_sets=len(top)
+matrix=np.ones((n_sets,n_sets))
+matrix=pd.DataFrame(matrix)
+set_names=[]
+for gene_set in top:
+    set_names.append(gene_set.gene_set.name)
+matrix.index=set_names
+matrix.columns=set_names
+for pair in set_pairs:
+    name1=pair.gene_set_data1.gene_set.name
+    name2 = pair.gene_set_data2.gene_set.name
+    mean_sim=pair.mean_profile_similarity
+    matrix.loc[name1,name2]=mean_sim
+    matrix.loc[name2, name1] = mean_sim

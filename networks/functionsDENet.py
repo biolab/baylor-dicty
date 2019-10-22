@@ -85,7 +85,7 @@ def normaliseGenes(genes, axisN):
 
 # The first calling of index.query is slower than subsequent callings,
 # although it does not seem to strongly affect neighbours
-def genesKNN(kN, genes, scaleByAxis, filePrefix='', save=True, timing=False,adjustForSelf=False):
+def genesKNN(kN, genes, scaleByAxis, filePrefix='', save=True, timing=False, adjustForSelf=False):
     scaled = normaliseGenes(genes, scaleByAxis)
     if timing:
         start = time.time()
@@ -172,29 +172,40 @@ def position(j, i):
 
 # NO-changed: Based on KNN result make lower triangular matrix w/o diagonal (vector), denoting which elemnts are similar
 # Result: 1 if not similar, less if similar
-# use Dict - returns dict where value is similarity (calculated as 1-distance) and keys are gene pairs
-def chooseGenePairsFromKnn(nGenesKnn, knnNeighbours, threshold, dist, neigh, distInv, neighInv,useDict=False):
+# use Dict - returns dict where value is similarity (calculated as 1-distance), set to negative if from inverse pair,
+# and keys are gene pairs
+#In dict mode sets any distance below 0 to 0 (eg. below 0 due to rounding errors)
+def chooseGenePairsFromKnn(nGenesKnn, knnNeighbours, threshold, dist, neigh, distInv, neighInv, useDict=False):
     if not useDict:
         knnChosen = set()
     else:
-        knnChosen=dict()
+        knnChosen = dict()
     for gene in range(nGenesKnn):
         for k in range(dist.shape[1]):
             d = dist[gene, k]
-            if 0 <= d <= threshold:
+            # Because of rounding the similarity may be slightly above one and distance slightly below 0
+            if d < 0:
+                if round(d, 4) != 0:
+                    print('Odd cosine distance at', gene, k, ':', d)
+                d = 0
+            if d <= threshold:
                 gene2 = neigh[gene, k]
                 if not useDict:
                     addToknnDMatrix(gene, gene2, knnChosen)
                 else:
-                    addToknnDDict(gene, gene2, 1-d,knnChosen)
+                    addToknnDDict(gene, gene2, 1 - d, knnChosen)
         for k in range(distInv.shape[1]):
             di = distInv[gene, k]
-            if 0 <= di <= threshold:
+            if di < 0:
+                if round(di, 4) != 0:
+                    print('Odd cosine distance at', gene, k, ':', di)
+                di = 0
+            if di <= threshold:
                 gene2i = neighInv[gene, k]
                 if not useDict:
                     addToknnDMatrix(gene, gene2i, knnChosen)
                 else:
-                    addToknnDDict(gene, gene2i, 1 - di, knnChosen)
+                    addToknnDDict(gene, gene2i, (1 - di)*-1, knnChosen)
     return knnChosen
 
 
@@ -206,13 +217,14 @@ def addToknnDMatrix(j, i, matrix):
         else:
             matrix.add((i, j))
 
+
 # Add distance to diagonal matrix, excluding diagonal elements, prioritise lower distances
-def addToknnDDict(j, i,value, dictionary):
+def addToknnDDict(j, i, value, dictionary):
     if i != j:
         if j > i:
-            dictionary[(j, i)]=value
+            dictionary[(j, i)] = value
         else:
-            dictionary[(i,j)]=value
+            dictionary[(i, j)] = value
 
 
 # Correlations
@@ -419,13 +431,19 @@ def buildGraph(graph, strain, replicateNumber, rScores, threshold, genesForNames
     names = genesForNames.index
     for pair, r in rScores.items():
         w = abs(r)
+        if r < 0:
+            inversed=True
+        else:
+            inversed=False
         if threshRorP:
             if w >= threshold:
-                graph.add_edge(names[pair[0]], names[pair[1]], weight=w, strain=strain, replicate=replicateNumber)
+                graph.add_edge(names[pair[0]], names[pair[1]], weight=w, strain=strain, replicate=replicateNumber,
+                               inverse=inversed)
         else:
             p = pScores[pair]
             if p <= threshold:
-                graph.add_edge(names[pair[0]], names[pair[1]], weight=w, strain=strain, replicate=replicateNumber)
+                graph.add_edge(names[pair[0]], names[pair[1]], weight=w, strain=strain, replicate=replicateNumber,
+                               inverse=inversed)
 
 
 def makeMultiGraph():
@@ -834,15 +852,17 @@ def extractSubGraphs(graph):
 
 
 def plotEdgeWeigths(graph, file='', save=True):
-    weigths = []
-    for e in list(graph.edges):
-        for k, v in graph.get_edge_data(e[0], e[1]).items():
-            if type(v) == dict:
-                if 'weight' in v.keys():
-                    weigths.append(v['weight'])
-            elif (type(v) == float or type(v) == int) and k == 'weight':
-                weigths.append(v)
-    fig = plt.hist(weigths, bins=100)
+    weights = []
+    if isinstance(graph,nx.MultiGraph):
+        for e in list(graph.edges):
+            data=graph.get_edge_data(e[0], e[1],e[2])
+            if 'weight' in data.keys():
+                weights.append(data['weight'])
+    else:
+        for e in list(graph.edges):
+            for k, v in graph.get_edge_data(e[0], e[1]).items():
+                 weights.append(v)
+    fig = plt.hist(weights, bins=100)
     plt.yscale('log')
     plt.xlabel('Weigth')
     plt.ylabel('Count')
@@ -864,7 +884,7 @@ def removeSubNetsBelow(graph, minSizeNet):
     return graphPruned
 
 
-# Remove below minWeigth, NOT for MULTI graph (if it has more than 1 edge between 2 nodes), can work on multigraph class
+# Remove below minWeigth, corrected to work also on multi graphs properly (before removed all edges)
 def removeEdgesWeigth(graph, minWeigth):
     toRemove = []
     for e in list(graph.edges):
@@ -873,7 +893,7 @@ def removeEdgesWeigth(graph, minWeigth):
                 if 'weight' in v.keys():
                     weigth = v['weight']
                     if weigth < minWeigth:
-                        toRemove.append((e[0], e[1]))
+                        toRemove.append((e[0], e[1],k))
             elif (type(v) == float or type(v) == int) and k == 'weight':
                 weigth = v
                 if weigth < minWeigth:
