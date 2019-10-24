@@ -77,6 +77,10 @@ def normaliseGenes(genes, axisN):
     return pp.scale(genes, axis=axisN)
 
 
+def getKnnIndex(scaled):
+    return NNDescent(scaled, metric='cosine', random_state=0)
+
+
 # Get gene neighbours with KNN and save, kN-neighbours
 # Genes table on which the calculations will be done, genes in rows
 # scaleByAxis - scale axis to have stdev 1 and mean 0
@@ -89,7 +93,7 @@ def genesKNN(kN, genes, scaleByAxis, filePrefix='', save=True, timing=False, adj
     scaled = normaliseGenes(genes, scaleByAxis)
     if timing:
         start = time.time()
-    index = NNDescent(scaled, metric='cosine', random_state=0)
+    index = getKnnIndex(scaled)
     if timing:
         end = str(time.time() - start)
         print("Index sec: " + end)
@@ -174,7 +178,7 @@ def position(j, i):
 # Result: 1 if not similar, less if similar
 # use Dict - returns dict where value is similarity (calculated as 1-distance), set to negative if from inverse pair,
 # and keys are gene pairs
-#In dict mode sets any distance below 0 to 0 (eg. below 0 due to rounding errors)
+# In dict mode sets any distance below 0 to 0 (eg. below 0 due to rounding errors)
 def chooseGenePairsFromKnn(nGenesKnn, knnNeighbours, threshold, dist, neigh, distInv, neighInv, useDict=False):
     if not useDict:
         knnChosen = set()
@@ -205,7 +209,7 @@ def chooseGenePairsFromKnn(nGenesKnn, knnNeighbours, threshold, dist, neigh, dis
                 if not useDict:
                     addToknnDMatrix(gene, gene2i, knnChosen)
                 else:
-                    addToknnDDict(gene, gene2i, (1 - di)*-1, knnChosen)
+                    addToknnDDict(gene, gene2i, (1 - di) * -1, knnChosen)
     return knnChosen
 
 
@@ -432,9 +436,9 @@ def buildGraph(graph, strain, replicateNumber, rScores, threshold, genesForNames
     for pair, r in rScores.items():
         w = abs(r)
         if r < 0:
-            inversed=True
+            inversed = True
         else:
-            inversed=False
+            inversed = False
         if threshRorP:
             if w >= threshold:
                 graph.add_edge(names[pair[0]], names[pair[1]], weight=w, strain=strain, replicate=replicateNumber,
@@ -853,15 +857,15 @@ def extractSubGraphs(graph):
 
 def plotEdgeWeigths(graph, file='', save=True):
     weights = []
-    if isinstance(graph,nx.MultiGraph):
+    if isinstance(graph, nx.MultiGraph):
         for e in list(graph.edges):
-            data=graph.get_edge_data(e[0], e[1],e[2])
+            data = graph.get_edge_data(e[0], e[1], e[2])
             if 'weight' in data.keys():
                 weights.append(data['weight'])
     else:
         for e in list(graph.edges):
             for k, v in graph.get_edge_data(e[0], e[1]).items():
-                 weights.append(v)
+                weights.append(v)
     fig = plt.hist(weights, bins=100)
     plt.yscale('log')
     plt.xlabel('Weigth')
@@ -893,7 +897,7 @@ def removeEdgesWeigth(graph, minWeigth):
                 if 'weight' in v.keys():
                     weigth = v['weight']
                     if weigth < minWeigth:
-                        toRemove.append((e[0], e[1],k))
+                        toRemove.append((e[0], e[1], k))
             elif (type(v) == float or type(v) == int) and k == 'weight':
                 weigth = v
                 if weigth < minWeigth:
