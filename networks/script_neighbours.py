@@ -111,8 +111,8 @@ for subset in [100, 500, 1000]:
 
                 # Note that closest neighbour is most often self, but not always.
                 # Thus the first neighbour is not automatically excluded
-                real_place = subset - 1 - neigh_dict_inv[neighbour]
                 neighbour = neigh[i][neighbour_place]
+                real_place = subset - 1 - neigh_dict_inv[neighbour]
                 diff += abs(real_place - neighbour_place)
             diffs.append(diff)
             diffs_inv.append(diff_inv)

@@ -89,7 +89,7 @@ def getKnnIndex(scaled):
 
 # The first calling of index.query is slower than subsequent callings,
 # although it does not seem to strongly affect neighbours
-def genesKNN(kN, genes, scaleByAxis, filePrefix='', save=True, timing=False, adjustForSelf=False):
+def genesKNN(kN, genes, scaleByAxis, filePrefix='', save=True, timing=False, adjustForSelf=False,precision=5):
     scaled = normaliseGenes(genes, scaleByAxis)
     if timing:
         start = time.time()
@@ -103,7 +103,7 @@ def genesKNN(kN, genes, scaleByAxis, filePrefix='', save=True, timing=False, adj
         kN_similar = kN
     if timing:
         start = time.time()
-    resultKNN = index.query(scaled.tolist(), k=kN_similar)
+    resultKNN = index.query(scaled.tolist(), k=kN_similar,queue_size=precision)
     if timing:
         end = str(time.time() - start)
         print("KNN " + str(kN) + " sec: " + end)
@@ -113,7 +113,7 @@ def genesKNN(kN, genes, scaleByAxis, filePrefix='', save=True, timing=False, adj
     if timing:
         start = time.time()
     inverse = scaled * -1
-    resultKNNInv = index.query(inverse.tolist(), k=kN)
+    resultKNNInv = index.query(inverse.tolist(), k=kN,queue_size=precision)
     if timing:
         end = str(time.time() - start)
         print("KNN " + str(kN) + " inverse sec: " + end)
