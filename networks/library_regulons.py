@@ -155,7 +155,7 @@ def build_graph(similarities):
         graph.add_edge(pair[0], pair[1], weight=similarity)
     return graph
 
-#TO-DO
+#TODO
 def saveGenesForNet(graph, genes, table, file, dataFirstRow, hasEntrez):
     # Extract genes
     geneNames = list(graph.nodes)

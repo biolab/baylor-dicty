@@ -192,7 +192,7 @@ Plotted heatmap of DE genes and AX4 expression.
 *******************************
 Collect genes DE in time:
 Use lmms (R) to identify genes DE in time on  normalised genes. Run lmms 5x and collect union of DE genes for each strain. results gene lists in timeTrajectories/data/deTime.
-
+Use impulseDe2 for DE in time and start for DE between strains. Use only those genes taht have include in Include column.
 **************
 Distance calc tests:
 cosine: np.inner(v1, v2) / (norm(v1) * norm(v2)) quicker than 1 - spatial.distance.cosine(v1, v2)
@@ -214,3 +214,11 @@ Also try creating graph for only 3.) AX4 and pruning weight at 0.9.
 Some graphs (eg. 1.) ) create some separate subgraphs that are enriched.
 However, the connections are dense and nodes are lost when removing low-weight edges- eg. many isolates arise.
 Still, there remains furball. When clustering the graph/part of it some clusters are enriched, but many are not.
+***************************
+Gene expression QC:
+RESULT: Top hat gene counts are higher (median based) (eg. pool261 and bio11); same for pkaR_bio1 compared to bio2 and mybB_bio13 compared to mybB_bio1 (bowPE)
+The above (differently analysed) were remouved. Afterwards, there are a few outliers: gtaI_bio1_20hr (MSE count,RPKUM)
+and gtaI_bio2_12hr (MSE count,RPKUM).
+Boxplots: Expression of gtaI_bio1_20hr has one highly expressed gene, but otherwise seems normal.
+Expression of gtaI_bio2_12hr seems normal.
+Thus none of them were excluded.
