@@ -3,10 +3,10 @@ import sklearn.preprocessing as pp
 from pynndescent import NNDescent
 import numpy as np
 from statistics import mean
+import networkx as nx
 
 
 class NeighbourCalculator:
-
     MINMAX = 'minmax'
     MEANSTD = 'mean0std1'
     SCALES = [MINMAX, MEANSTD]
@@ -21,7 +21,8 @@ class NeighbourCalculator:
             genes = genes[(genes != 0).any(axis=1)]
         self._genes = genes
 
-    def neighbours(self, n_neighbours: int, inverse: bool, scale: str, log: bool, batches: list = None) -> dict:
+    def neighbours(self, n_neighbours: int, inverse: bool, scale: str, log: bool, batches: list = None,
+                   random: int = 0):
         """
         :param n_neighbours:
         :param inverse: Calculate most similar neighbours (False) or neighbours with inverse profile (True)
@@ -35,22 +36,20 @@ class NeighbourCalculator:
         if scale not in self.SCALES:
             raise ValueError('Scale must be:', self.SCALES)
         genes = self._genes
-        if log:
-            genes = np.log2(genes + 1)
         if batches is None:
-            return self.calculate_neighbours(genes, n_neighbours, inverse, scale)
+            return self.calculate_neighbours(genes, n_neighbours, inverse, scale, log, random)
         else:
             batch_groups = set(batches)
             batches = np.array(batches)
             results = []
             for batch in batch_groups:
                 genes_sub = genes.T[batches == batch].T
-                result = self.calculate_neighbours(genes_sub, n_neighbours, inverse, scale)
+                result = self.calculate_neighbours(genes_sub, n_neighbours, inverse, scale, log, random)
                 results.append(result)
             return results
 
-    @classmethod
-    def calculate_neighbours(cls, genes, n_neighbours: int, inverse: bool, scale: str) -> dict:
+    def calculate_neighbours(self, genes, n_neighbours: int, inverse: bool, scale: str, log: bool,
+                             random: int = 0) -> dict:
         """
         :param genes: Data frame as in init
         :param n_neighbours:
@@ -60,14 +59,16 @@ class NeighbourCalculator:
         :return: Dict with gene names as tupple keys (smaller by alphabet first) and
             values representing cosine similarity
         """
-        genes_index, genes_query = cls.get_index_query(genes, inverse, scale)
+        genes_index, genes_query = self.get_index_query(genes, inverse, scale, log)
         # Can set speed-quality trade-off, default is ok
-        index = NNDescent(genes_index, metric='cosine', random_state=0)
+        index = NNDescent(genes_index, metric='cosine', random_state=random, n_jobs=4)
         neighbours, distances = index.query(genes_query.tolist(), k=n_neighbours)
-        return cls.parse_neighbours(neighbours, distances)
+        return self.parse_neighbours(neighbours, distances)
 
     @classmethod
-    def get_index_query(cls, genes, inverse: bool, scale: str):
+    def get_index_query(cls, genes, inverse: bool, scale: str, log: bool):
+        if log:
+            genes = np.log2(genes + 1)
         if inverse:
             genes_query = genes * -1
             genes_index = genes
@@ -146,3 +147,51 @@ class NeighbourCalculator:
     @staticmethod
     def filter_similarities(results: dict, similarity_threshold: float) -> dict:
         return dict(filter(lambda elem: elem[1] >= similarity_threshold, results.items()))
+
+
+def build_graph(similarities):
+    graph = nx.Graph()
+    for pair, similarity in similarities.items():
+        graph.add_edge(pair[0], pair[1], weight=similarity)
+    return graph
+
+#TO-DO
+def saveGenesForNet(graph, genes, table, file, dataFirstRow, hasEntrez):
+    # Extract genes
+    geneNames = list(graph.nodes)
+    geneSub = genes[geneNames].T
+    geneSub.columns = table['Feature name'].tolist()[dataFirstRow:]
+    featCols = len(geneSub.columns)
+
+    # Add cols
+    geneSub['Gene'] = geneSub.index
+
+    if hasEntrez:
+        entrezIDs = []
+        for gene in geneSub.index:
+            dictData = table.iloc[1, :].loc[gene]
+            id = splitBy(dictData, 'Entrez\ ID=', ' ddb_g')
+            entrezIDs.append(id)
+
+        geneSub['Entrez ID'] = entrezIDs
+
+    # Make attributes
+    if hasEntrez:
+        addAttrType = 2
+        addAttrFlag = ['class', 'meta']
+    else:
+        addAttrType = 1
+        addAttrFlag = ['class']
+    attrFlagTime = table['Time'].tolist()[dataFirstRow:]
+    attrFlagTime = ['Time=' + t for t in attrFlagTime]
+    attrFlagStrain = table['Source ID'].tolist()[dataFirstRow:]
+    attrFlagStrain = ['Source\ ID=' + t for t in attrFlagStrain]
+    attrFlag = [i + ' ' + j for i, j in zip(attrFlagTime, attrFlagStrain)]
+    attrType = tuple(['continuous'] * featCols + ['string'] * addAttrType)
+    attrFlag = tuple(attrFlag + addAttrFlag)
+    attr = [attrType, attrFlag]
+    attributesRows = pd.DataFrame(attr, columns=geneSub.columns)
+
+    # Make DF
+    subsetDF = attributesRows.append(geneSub)
+    subsetDF.to_csv(path_or_buf=file, sep='\t', index=False)
