@@ -924,6 +924,7 @@ class EnrichmentCalculator:
 
 
 class GeneSetComparator:
+    # TODO: write docs, finish testing, decide if changeability_similarity is even sensible
     """
     Compares GeneSets to each other.
     """

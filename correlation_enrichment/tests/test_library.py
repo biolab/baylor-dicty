@@ -44,7 +44,7 @@ class TestGeneExpression(unittest.TestCase):
     def test_check_numeric(self):
         # Correct numeric data
         GeneExpression.check_numeric(pd.DataFrame({1: [1, 1.2]}))
-        # Wrong
+        # Wrong (not numeric)
         with self.assertRaises(ValueError):
             GeneExpression.check_numeric(pd.DataFrame({1: ['a']}))
         with self.assertRaises(ValueError):

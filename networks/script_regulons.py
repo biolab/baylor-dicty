@@ -54,9 +54,7 @@ inverse = False
 scale = 'minmax'
 use_log = True
 result0 = np.array(list(neighbour_calculator.neighbours(30, inverse, scale=scale, log=use_log).values()))
-result01 = np.array(list(neighbour_calculator.neighbours(300, inverse, scale=scale, log=use_log, random=1).values()))
 result1 = np.array(list(neighbour_calculator.neighbours(310, inverse, scale=scale, log=use_log).values()))
-result11 = np.array(list(neighbour_calculator.neighbours(30, inverse, scale=scale, log=use_log, random=1).values()))
 result2 = np.array(list(neighbour_calculator.neighbours(400, inverse, scale=scale, log=use_log).values()))
 
 # What percent of shorter result's values is missing
@@ -103,7 +101,6 @@ plt.scatter(thresholds, differences)
 # 0.97: 0.004912777331506044,
 # 0.98: 0.0010464107378820762,
 # 0.99: 0.0}
-# Between 2 replicates with 300 neighbours (different ranedom seed) the differences are 0 or in range of 3e-07
 # For 300 and 400:
 # {0.8: 0.26040938111687456,
 # 0.85: 0.2459931932319785,
@@ -171,7 +168,7 @@ gene_names = np.array(genes_test.index)
 # Calculate neighbours
 if batches != None:
     results = neighbour_calculator.neighbours(neighbours_n, inverse=inverse, scale=scale, log=use_log, batches=batches)
-    result = neighbour_calculator.merge_results(results, threshold, len(set(batches)))
+    result = neighbour_calculator.merge_results(results.values(), threshold, len(set(batches)))
 else:
     result = neighbour_calculator.neighbours(neighbours_n, inverse=inverse, scale=scale, log=use_log, batches=batches)
 
