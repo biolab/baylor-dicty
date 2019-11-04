@@ -1,8 +1,12 @@
 import pandas as pd
 import matplotlib.pyplot as plt
+import altair as alt
 
 from correlation_enrichment.library import SimilarityCalculator
 from networks.library_regulons import *
+from scipy.spatial.distance import pdist
+from scipy.cluster.hierarchy import ward
+from scipy.cluster.hierarchy import fcluster
 
 # Script parts are to be run separately as needed
 
@@ -68,6 +72,7 @@ differences = []
 for threshold in thresholds:
     differences.append((sum(result1 >= threshold) - sum(result0 >= threshold)) / len(result0))
 plt.scatter(thresholds, differences)
+
 # On all genes:
 # For neighbours (result0) 20,(result1) 30, (result2) 40, scale='minmax, log=False, inverse=False
 # result0 vs result1 0.0102, result0 vs result01=1.004e-05, result1 vs result2: 0.00299, result1 vs result11: -3.320e-05
@@ -112,85 +117,109 @@ plt.scatter(thresholds, differences)
 # 0.98: 0.007848717812275061,
 # 0.99: 0.0}
 
+# Check how often is closest (non self) neighbour different if different N of sought neighbours
+neighbour_calculator = NeighbourCalculator(genes)
+inverse = False
+scale = 'minmax'
+use_log = True
+index, query = neighbour_calculator.get_index_query(genes, inverse, scale=scale, log=use_log)
+index = NNDescent(index, metric='cosine', n_jobs=4)
+neighbours2, distances2 = index.query(query.tolist(), k=30)
+for n_neighbours in [2, 3, 5, 10]:
+    neighbours1, distances1 = index.query(query.tolist(), k=5)
+    match = 0
+    differ = 0
+    for gene in range(neighbours1.shape[0]):
+        closest1 = neighbours1[gene][0]
+        if closest1 == gene:
+            closest1 = neighbours1[gene][1]
+        closest2 = neighbours2[gene][0]
+        if closest2 == gene:
+            closest2 = neighbours2[gene][1]
+        if closest2 == closest1:
+            match += 1
+        else:
+            differ += 1
+    print(n_neighbours, round(differ / (match + differ), 5))
+
 
 # Test Setting of parameters
 
-# Cosine similarity threshold
-threshold = 0.95
-# Set if want to compute at multiple thresholds
-thresholds = [threshold]
-# thresholds=[0.85,0.9,0.92,0.94,0.96,0.98,0.99]
-# Number of neighbours to obtain for each gene
-neighbours_n = 3
-# Scaling of genes
-# scale: 'minmax' (from 0 to 1) or 'mean0std1' (to mean0 and std1)
-scale = 'minmax'
-# Log transform expression values before scaling
-use_log = True
-# Calculate inverse profiles
-inverse = False
-# Batches: 'replicate', 'strain', 'none'
-# replicate,strain - computes neighbours for each replicate/strain separately
-# and retains neighbours present at some threshold in all replicates/strains
-# none - uses all samples at the same time
-batches = 'none'
+def compare_conditions(genes, conditions, neighbours_n, inverse, scale, use_log, thresholds, filter_column,
+                       filter_column_values_sub,
+                       filter_column_values_test, batch_column=None):
+    """
+    Evaluates pattern similarity calculation preprocessing and parameters based on difference between subset and test set.
+    Computes MSE from differences between similarities of subset gene pairs and corresponding test gene pairs.
+    :param genes: data frame with gene expression data, genes in rows, measurments in columns, dimension G*M
+    :param conditions: data frame with conditions for genes subseting, measurments in rows,rows should have same order as
+        genes table columns, dimensions M*D (D are description types)
+    :param neighbours_n: N of calculated neighbours for each gene
+    :param inverse: find neighbours with opposite profile
+    :param scale: 'minmax' (from 0 to 1) or 'mean0std1' (to mean 0 and std 1)
+    :param use_log: Log transform expression values before scaling
+    :param thresholds: filter out any result with similarity below threshold, do for each threshold
+    :param filter_column: On which column of conditions should genes be subset for separation in subset and test set
+    :param filter_column_values_sub: Values of filter_column to use for subset genes
+    :param filter_column_values_test:Values of filter_column to use for test genes
+    :param batch_column: Should batches be used based on some column of conditions
+    :return: Dictionary with parameters and results, description as key, result/parameter setting as value
+    """
+    # Prepare data
+    if not batch_column:
+        batches = None
+    else:
+        list((conditions[conditions[filter_column].isin(filter_column_values_sub)].loc[:, batch_column]))
+    genes_sub = genes.T[list(conditions[filter_column].isin(filter_column_values_sub))].T
+    genes_test = genes.T[list(conditions[filter_column].isin(filter_column_values_test))].T
 
-# Prepare data
-if batches == 'none':
-    batches = None
-if batches == 'strain':
-    batches = list(conditions[list(
-        (conditions["Strain"] == 'comH') | (conditions["Strain"] == 'cudA') | (conditions["Strain"] == 'gbfA') | (
-                    conditions["Strain"] == 'mybBGFP') | (conditions["Strain"] == 'pkaR'))]
-                   .loc[:, 'Strain'])
-if batches == 'replicate':
-    batches = list(conditions[list(
-        (conditions["Strain"] == 'comH') | (conditions["Strain"] == 'cudA') | (conditions["Strain"] == 'gbfA') | (
-                    conditions["Strain"] == 'mybBGFP') | (conditions["Strain"] == 'pkaR'))]
-                   .loc[:, 'Replicate'])
-genes_sub = genes.T[list((conditions["Replicate"] == 'comH_r1')
-                         | (conditions["Replicate"] == 'cudA_r2')
-                         | (conditions["Replicate"] == 'gbfA_r1')
-                         | (conditions["Replicate"] == 'mybBGFP_bio1')
-                         | (conditions["Replicate"] == 'pkaR_bio1'))].T
+    neighbour_calculator = NeighbourCalculator(genes_sub)
+    test_index, test_query = NeighbourCalculator.get_index_query(genes_test, inverse=inverse, scale=scale, log=use_log)
+    gene_names = list(genes_test.index)
 
-#
-# genes_sub=genes.T[list((conditions["Strain"]=='comH')
-#                         | (conditions["Strain"]=='cudA')
-#                         | (conditions["Strain"]=='gbfA')
-#                         | (conditions["Strain"]=='mybBGFP')
-#                         | (conditions["Strain"]=='pkaR'))].T
+    # Is similarity matrix expected to be simetric or not
+    both_directions = False
+    if inverse and (scale == 'minmax'):
+        both_directions = True
 
-genes_test = genes.T[list((conditions["Replicate"] == 'AX4_bio1'))].T
-neighbour_calculator = NeighbourCalculator(genes_sub)
-test_index, test_query = NeighbourCalculator.get_index_query(genes_test, inverse=inverse, scale=scale, log=use_log)
-gene_names = np.array(genes_test.index)
-# Calculate neighbours
-if batches != None:
-    results = neighbour_calculator.neighbours(neighbours_n, inverse=inverse, scale=scale, log=use_log, batches=batches)
-    result = neighbour_calculator.merge_results(results.values(), threshold, len(set(batches)))
-else:
-    result = neighbour_calculator.neighbours(neighbours_n, inverse=inverse, scale=scale, log=use_log, batches=batches)
+    # Calculate neighbours
+    result = neighbour_calculator.neighbours(neighbours_n, inverse=inverse, scale=scale, log=use_log,
+                                             batches=batches)
 
-# Filter neighbours on similarity
-for threshold in thresholds:
-    result_filtered = NeighbourCalculator.filter_similarities(result, threshold)
-    # Calculate MSE for each gene pair -
-    # compare similarity from gene subset to similarity of the gene pair in gene test set
-    sq_errors = []
-    for pair, similarity in result_filtered.items():
-        gene1 = pair[0]
-        gene2 = pair[1]
-        similarity_test = SimilarityCalculator.calc_cosine(test_index[gene_names == gene1].flatten(),
-                                                           test_query[gene_names == gene2].flatten())
-        se = (similarity - similarity_test) ** 2
-        # Happens if at least one vector has all 0 values
-        if not np.isnan(se):
-            sq_errors.append(se)
-    print('threshold:', threshold, 'MSE:', mean(sq_errors), 'N:', len(result_filtered))
+    # Filter neighbours on similarity
+    data_summary = []
+    for threshold in thresholds:
+        if batches != None:
+            result_filtered = neighbour_calculator.merge_results(result.values(), threshold, len(set(batches)))
+        else:
+            result_filtered = NeighbourCalculator.filter_similarities(result, threshold)
+
+        # Calculate MSE for each gene pair -
+        # compare similarity from gene subset to similarity of the gene pair in gene test set
+        sq_errors = []
+        for pair, similarity in result_filtered.items():
+            gene1 = pair[0]
+            gene2 = pair[1]
+            index1=gene_names.index(gene1)
+            index2 = gene_names.index(gene2)
+            similarity_test=calc_cosine(test_index,test_query,index1,index2,sim_dist=True,both_directions=both_directions)
+            se = (similarity - similarity_test) ** 2
+            # Happens if at least one vector has all 0 values
+            if not np.isnan(se):
+                sq_errors.append(se)
+        if len(sq_errors) > 0:
+            mse = round(mean(sq_errors), 5)
+        else:
+            mse = float('NaN')
+        n_genes = len(set(gene for pair in result_filtered.keys() for gene in pair))
+        data_summary.append({'N neighbours': neighbours_n, 'inverse': inverse, 'use_log': use_log, 'scale': scale,
+                             'threshold': threshold, 'batches': batch_column, 'MSE': mse,
+                             'N pairs': len(result_filtered), 'N genes': n_genes})
+    return data_summary
+
 
 # Result:
-# Sample: comH_r1, cudA_r2, gbfA_r1,mybBGBF_bio1,pkaR_bio1 and test sample: AX4_bio1; not inverse: threshold 0.95; neighbours 30
+# Sample: comH_r1, cudA_r2, gbfA_r1,mybBGFP_bio1,pkaR_bio1 and test sample: AX4_bio1; not inverse: threshold 0.95; neighbours 30
 # minmax, no log: MSE 0.01615798890022193, filtered N: 57921
 # minmax, log: MSE 0.008855992300398607, filtered: 191347
 # mean0std1, no log: MSE 0.10903301209390322, filtered: 14100
@@ -205,7 +234,7 @@ for threshold in thresholds:
 # the number of filtered pairs remained at 270
 
 # Compare result by using batches on samples or strains
-# Sample strains: comH, cudA, gbfA,mybBGBF,pkaR and test sample: AX4_bio1; not inverse: threshold 0.95; neighbours 30
+# Sample strains: comH, cudA, gbfA,mybBGFP,pkaR and test sample: AX4_bio1; not inverse: threshold 0.95; neighbours 30
 # minmax, log ,not inverse, 30 neighbours, threshold 0.95
 # By strain: 0.0006956959575191145 559, when lowering merging threshold to max of any result's min similarity there is 762 pairs
 # By replicate: 6.592793901930816e-05 41, when lowering the merging threshold as above got to 54 pairs
@@ -218,12 +247,79 @@ for threshold in thresholds:
 # threshold: 0.93 MSE: 0.012841511138263213 N: 1788086
 # threshold: 0.91 MSE: 0.013112523538440932 N: 2091354
 
+# Make table of results for different condition settings
+results = []
+# Which parameters to try
+thresholds = [0.95]
+for scale in ['minmax', 'mean0std1']:
+    for use_log in [True, False]:
+        for inverse in [False, True]:
+            for n_neighbours in [30]:
+                result = compare_conditions(genes, conditions,  # Data
+                                            # Parameters
+                                            neighbours_n=n_neighbours, inverse=inverse, scale=scale, use_log=use_log,
+                                            thresholds=thresholds,
+                                            filter_column='Replicate',
+                                            # For subset genes
+                                            filter_column_values_sub=['comH_r1', 'cudA_r2', 'gbfA_r1', 'mybBGFP_bio1',
+                                                                      'pkaR_bio1'],
+                                            # For test genes
+                                            filter_column_values_test=['AX4_bio1'],
 
+                                            batch_column=None)
+                for res in result:
+                    results.append(res)
+data_summary = pd.DataFrame(results)
+alt.Chart(data_summary).mark_circle().encode(alt.X('threshold', scale=alt.Scale(zero=False)),
+                                             alt.Y('MSE', scale=alt.Scale(zero=False))
+                                             ).configure_circle(size=50).interactive().serve()
+
+# Check if set of genes with highly correlated neighbours changes upon changing number of obtained neighbours.
+# Also check if this changes at different retention thresholds
+# Parameters
+inverse = False
+scale = 'minmax'
+use_log = True
+# Different relatively small numbers of neighbours used for calculation (neighbours_check) compared to results
+# from larger number of neighbours (neighbours_reference)
+neighbours_check=[2]
+neighbours_reference=100
+thresholds=[0.98, 0.99]
+
+neighbour_calculator = NeighbourCalculator(genes)
+neighbours2_all = neighbour_calculator.neighbours(100, inverse, scale=scale, log=use_log)
+results = []
+for n_neighbours in neighbours_check:
+    neighbours1_all = neighbour_calculator.neighbours(n_neighbours, inverse, scale=scale, log=use_log)
+    for threshold in [0.98, 0.99]:
+        neighbours1 = NeighbourCalculator.filter_similarities(neighbours1_all, threshold)
+        neighbours1 = set((gene for pair in neighbours1.keys() for gene in pair))
+        neighbours2 = NeighbourCalculator.filter_similarities(neighbours2_all, threshold)
+        neighbours2 = set((gene for pair in neighbours2.keys() for gene in pair))
+        match = neighbours1 & neighbours2
+        in12 = len(match)
+        in1 = len(neighbours1 ^ match)
+        in2 = len(neighbours2 ^ match)
+        results.append(
+            {'n_neighbours': n_neighbours, 'threshold': threshold, 'intersect': in12, 'unique1': in1, 'unique2': in2})
+pd.DataFrame(results)
+
+# For inverse=False, scale='minmax' and use_log=True:
+# Table n_neighbours, threshold, in1&2, only in 1, only in 2
+# 2 0.98 5565 0 0
+# 2 0.99 1967 0 0
+# 3 0.98 5564 0 1
+# 3 0.99 1967 0 0
+# 5 0.98 5565 0 0
+# 5 0.99 1967 0 0
+# 10 0.98 5564 0 1
+# 10 0.99 1967 0 0
+# Thus: Calculation of 2 closest neighbours (for non inverse, as closest may be self) is sufficient
 # **************************
 # Make regulons
 
 # Set parameters
-neighbour_n = 200
+neighbours_n = 200
 threshold = 0.99
 scale = 'minmax'
 use_log = True
@@ -237,5 +333,25 @@ result_filtered = NeighbourCalculator.filter_similarities(result, threshold)
 result_filtered_inv = NeighbourCalculator.filter_similarities(result_inv, threshold)
 graph = build_graph(result_filtered)
 graph_inv = build_graph(result_filtered_inv)
-nx.write_pajek(graph,dataPathSaved+'kN200_t0.99_scaleMinmax_log.net')
-nx.write_pajek(graph_inv,dataPathSaved+'kN200_t0.99_scaleMinmax_log_inv.net')
+nx.write_pajek(graph, dataPathSaved + 'kN200_t0.99_scaleMinmax_log.net')
+nx.write_pajek(graph_inv, dataPathSaved + 'kN200_t0.99_scaleMinmax_log_inv.net')
+
+# ***********************************************8
+# Find clusters based on best connected genes
+# Set parameters
+# Enough smalle N of neighbours as only interested if there is at least one highly connected neighbour
+neighbours_n = 2
+threshold = 0.99
+scale = 'minmax'
+use_log = True
+batches = None
+
+# Calculate neighbours and make hierarchical clustering
+neighbour_calculator = NeighbourCalculator(genes)
+result = neighbour_calculator.neighbours(neighbours_n, inverse=False, scale=scale, log=use_log, batches=batches)
+result_inv = neighbour_calculator.neighbours(neighbours_n, inverse=True, scale=scale, log=use_log, batches=batches)
+hcl,names=HierarchicalCluster.hclust_correlated(result,genes,threshold,inverse=inverse,scale=scale,log=use_log)
+hcl_inv,names_inv=HierarchicalCluster.hclust_correlated(result_inv,genes,threshold,inverse=inverse,scale=scale,log=use_log)
+
+
+

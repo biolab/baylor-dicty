@@ -5,8 +5,10 @@ import numpy as np
 from statistics import mean
 import networkx as nx
 import warnings
+import scipy.cluster.hierarchy as hc
+import scipy.spatial.distance as sp_dist
 
-from correlation_enrichment.library import GeneExpression
+from correlation_enrichment.library import GeneExpression, SimilarityCalculator
 
 
 class NeighbourCalculator:
@@ -143,8 +145,8 @@ class NeighbourCalculator:
             for neighbour in range(distances.shape[1]):
                 distance = distances[gene, neighbour]
                 # Because of rounding the similarity may be slightly above one and distance slightly below 0
-                if distance < 0 or distance >1:
-                    if round(distance, 4) != 0 or distance >1:
+                if distance < 0 or distance > 1:
+                    if round(distance, 4) != 0 or distance > 1:
                         warnings.warn(
                             'Odd cosine distance at ' + str(gene) + ' ' + str(neighbour) + ' :' + str(distance),
                             Warning)
@@ -155,9 +157,18 @@ class NeighbourCalculator:
                 gene_name2 = self._genes.index[gene2]
                 if gene_name1 != gene_name2:
                     if gene_name2 > gene_name1:
-                        parsed[(gene_name1, gene_name2)] = similarity
+                        add_name1 = gene_name1
+                        add_name2 = gene_name2
                     else:
-                        parsed[(gene_name2, gene_name1)] = similarity
+                        add_name1 = gene_name2
+                        add_name2 = gene_name1
+                    if (add_name1, add_name2) in parsed.keys():
+                        # Can do average directly as there will not be more than 2 pairs with same elements
+                        # (eg. both possible positions: a,b and b,a for index,query)
+                        # Similarities may be different when inverse is used with minmax
+                        parsed[(add_name1, add_name2)] = (parsed[(add_name1, add_name2)] + similarity) / 2
+                    else:
+                        parsed[(add_name1, add_name2)] = similarity
         return parsed
 
     @staticmethod
@@ -210,3 +221,59 @@ def build_graph(similarities: dict) -> nx.Graph:
     for pair, similarity in similarities.items():
         graph.add_edge(pair[0], pair[1], weight=similarity)
     return graph
+
+
+class HierarchicalCluster:
+
+    @staticmethod
+    def hclust_correlated(result: dict, genes: pd.DataFrame, threshold: int, inverse: bool, scale: str, log: bool):
+        result_filtered = NeighbourCalculator.filter_similarities(result, threshold)
+        genes_filtered = set((gene for pair in result_filtered.keys() for gene in pair))
+        genes_data = genes.loc[genes_filtered, :]
+        gene_names=list(genes_data.index)
+        index, query = NeighbourCalculator.get_index_query(genes=genes_data, inverse=inverse, scale=scale, log=log)
+        n_genes = genes_data.shape[0]
+        distances = []
+        both_directions = False
+        if inverse & (scale == 'minmax'):
+            both_directions = True
+        for i in range(0, n_genes - 1):
+            for q in range(i + 1, n_genes):
+                # TODO This might be quicker if pdist from scipy was used when inverse was not needed
+                distances.append(calc_cosine(data1=index, data2=query, index1=i, index2=q, sim_dist=False,
+                                             both_directions=both_directions))
+        return hc.ward(np.array(distances)),gene_names
+
+    @staticmethod
+    def get_clusters(clustering:np.ndarray,gene_names:list,groups:int):
+        clusters=hc.fcluster(clustering, t=groups, criterion='maxclust')
+        return dict(zip(gene_names,clusters))
+
+class ClusterAnalyser:
+
+    def c
+
+def calc_cosine(data1, data2, index1, index2, sim_dist, both_directions):
+    similarity = SimilarityCalculator.calc_cosine(data1[index1], data2[index2])
+    if both_directions:
+        similarity2 = SimilarityCalculator.calc_cosine(data1[index2], data2[index1])
+        similarity = (similarity + similarity2) / 2
+    if sim_dist:
+        return similarity
+    else:
+        return 1 - similarity
+
+
+# TODO
+n=4
+matrix=[[0] * n for i in range(n)]
+position=0
+for i in range(0, n - 1):
+        for j in range(0, n - 1 - i):
+            element = distances[position]
+            if element<0:
+                element=0
+            position += 1
+            matrix[i][i + j + 1] = element # fill in the upper triangle
+            matrix[i + j + 1][i] = element # fill in the lower triangle
+silhouette_score(matrix,classes,metric='precomputed')
