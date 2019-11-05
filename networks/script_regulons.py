@@ -1,12 +1,9 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import altair as alt
+from statistics import median
 
-from correlation_enrichment.library import SimilarityCalculator
 from networks.library_regulons import *
-from scipy.spatial.distance import pdist
-from scipy.cluster.hierarchy import ward
-from scipy.cluster.hierarchy import fcluster
 
 # Script parts are to be run separately as needed
 
@@ -200,9 +197,10 @@ def compare_conditions(genes, conditions, neighbours_n, inverse, scale, use_log,
         for pair, similarity in result_filtered.items():
             gene1 = pair[0]
             gene2 = pair[1]
-            index1=gene_names.index(gene1)
+            index1 = gene_names.index(gene1)
             index2 = gene_names.index(gene2)
-            similarity_test=calc_cosine(test_index,test_query,index1,index2,sim_dist=True,both_directions=both_directions)
+            similarity_test = calc_cosine(test_index, test_query, index1, index2, sim_dist=True,
+                                          both_directions=both_directions)
             se = (similarity - similarity_test) ** 2
             # Happens if at least one vector has all 0 values
             if not np.isnan(se):
@@ -282,9 +280,9 @@ scale = 'minmax'
 use_log = True
 # Different relatively small numbers of neighbours used for calculation (neighbours_check) compared to results
 # from larger number of neighbours (neighbours_reference)
-neighbours_check=[2]
-neighbours_reference=100
-thresholds=[0.98, 0.99]
+neighbours_check = [2]
+neighbours_reference = 100
+thresholds = [0.98, 0.99]
 
 neighbour_calculator = NeighbourCalculator(genes)
 neighbours2_all = neighbour_calculator.neighbours(100, inverse, scale=scale, log=use_log)
@@ -341,7 +339,7 @@ nx.write_pajek(graph_inv, dataPathSaved + 'kN200_t0.99_scaleMinmax_log_inv.net')
 # Set parameters
 # Enough smalle N of neighbours as only interested if there is at least one highly connected neighbour
 neighbours_n = 2
-threshold = 0.99
+threshold = 0.995
 scale = 'minmax'
 use_log = True
 batches = None
@@ -349,9 +347,53 @@ batches = None
 # Calculate neighbours and make hierarchical clustering
 neighbour_calculator = NeighbourCalculator(genes)
 result = neighbour_calculator.neighbours(neighbours_n, inverse=False, scale=scale, log=use_log, batches=batches)
-result_inv = neighbour_calculator.neighbours(neighbours_n, inverse=True, scale=scale, log=use_log, batches=batches)
-hcl,names=HierarchicalCluster.hclust_correlated(result,genes,threshold,inverse=inverse,scale=scale,log=use_log)
-hcl_inv,names_inv=HierarchicalCluster.hclust_correlated(result_inv,genes,threshold,inverse=inverse,scale=scale,log=use_log)
+# result_inv = neighbour_calculator.neighbours(neighbours_n, inverse=True, scale=scale, log=use_log, batches=batches)
+hcl = HierarchicalClustering(result, genes, threshold, inverse=False, scale=scale, log=use_log)
+ca=ClusterAnalyser(genes.index)
+# hcl_inv=HierarchicalClustering(result_inv,genes,threshold,inverse=True,scale=scale,log=use_log)
+silhouettes = []
+median_sizes = []
+entropy=[]
+n_clusters = list(range(3, 60, 6))
+for n in n_clusters:
+    median_sizes.append(median(hcl.cluster_sizes(n)))
+    silhouettes.append(ClusterAnalyser.silhouette(hcl, n))
+    entropy.append(ca.annotation_entropy(hcl,n,('KEGG','Pathways')))
+
+#Taken from: https://matplotlib.org/3.1.1/gallery/ticks_and_spines/multiple_yaxis_with_spines.html
+def make_patch_spines_invisible(ax):
+    ax.set_frame_on(True)
+    ax.patch.set_visible(False)
+    for sp in ax.spines.values():
+        sp.set_visible(False)
 
 
+fig, host = plt.subplots()
+fig.subplots_adjust(right=0.75)
 
+par1 = host.twinx()
+
+p11 = host.scatter(n_clusters, silhouettes, c="b")
+p1, = host.plot(n_clusters, silhouettes, "b-",label="Silhouette")
+p22 = par1.scatter(n_clusters, median_sizes, c="r")
+p2, = par1.plot(n_clusters, median_sizes, "r-", label="Median size")
+
+host.set_xlim(min(n_clusters), max(n_clusters))
+host.set_ylim(min(silhouettes), max(silhouettes))
+par1.set_ylim(min(median_sizes), max(median_sizes))
+
+host.set_xlabel('N clusters')
+host.set_ylabel('Silhouette values')
+par1.set_ylabel('Median cluster size')
+
+host.yaxis.label.set_color(p1.get_color())
+par1.yaxis.label.set_color(p2.get_color())
+
+tkw = dict(size=4, width=1.5)
+host.tick_params(axis='y', colors=p1.get_color() )
+par1.tick_params(axis='y', colors=p2.get_color())
+host.tick_params(axis='x' )
+
+lines = [p1, p2]
+
+host.legend(lines, [l.get_label() for l in lines])

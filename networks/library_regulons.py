@@ -1,3 +1,5 @@
+from abc import ABC, abstractmethod
+
 import pandas as pd
 import sklearn.preprocessing as pp
 from pynndescent import NNDescent
@@ -6,7 +8,12 @@ from statistics import mean
 import networkx as nx
 import warnings
 import scipy.cluster.hierarchy as hc
-import scipy.spatial.distance as sp_dist
+from sklearn.metrics import silhouette_score
+from collections import Counter
+from math import log
+
+from orangecontrib.bioinformatics.ncbi.gene import GeneMatcher
+from orangecontrib.bioinformatics.geneset.__init__ import (list_all, load_gene_sets)
 
 from correlation_enrichment.library import GeneExpression, SimilarityCalculator
 
@@ -223,35 +230,177 @@ def build_graph(similarities: dict) -> nx.Graph:
     return graph
 
 
-class HierarchicalCluster:
+class Clustering(ABC):
+    def __init(self):
+        self._n_genes = None
+        self._distances = None
 
-    @staticmethod
-    def hclust_correlated(result: dict, genes: pd.DataFrame, threshold: int, inverse: bool, scale: str, log: bool):
+    @abstractmethod
+    def get_clusters(self, n_clusters: int):
+        pass
+
+    @abstractmethod
+    def get_distance_matrix(self):
+        pass
+
+    @abstractmethod
+    def get_genes_by_clusters(self, n_clusters: int, filter_genes: iter = None):
+        pass
+
+    def distances_to_matrix(self):
+        self._matrix = [[0] * self._n_genes for i in range(self._n_genes)]
+        position = 0
+        for i in range(0, self._n_genes - 1):
+            for j in range(0, self._n_genes - 1 - i):
+                element = self._distances[position]
+                if element < 0:
+                    element = 0
+                position += 1
+                self._matrix[i][i + j + 1] = element  # fill in the upper triangle
+                self._matrix[i + j + 1][i] = element  # fill in the lower triangle
+
+
+class HierarchicalClustering(Clustering):
+
+    def __init__(self, result: dict, genes: pd.DataFrame, threshold: float, inverse: bool, scale: str, log: bool):
         result_filtered = NeighbourCalculator.filter_similarities(result, threshold)
         genes_filtered = set((gene for pair in result_filtered.keys() for gene in pair))
         genes_data = genes.loc[genes_filtered, :]
-        gene_names=list(genes_data.index)
+        self._gene_names = list(genes_data.index)
         index, query = NeighbourCalculator.get_index_query(genes=genes_data, inverse=inverse, scale=scale, log=log)
-        n_genes = genes_data.shape[0]
-        distances = []
+        self._n_genes = genes_data.shape[0]
+        self._distances = []
+        self._matrix = None
         both_directions = False
         if inverse & (scale == 'minmax'):
             both_directions = True
-        for i in range(0, n_genes - 1):
-            for q in range(i + 1, n_genes):
+        for i in range(0, self._n_genes - 1):
+            for q in range(i + 1, self._n_genes):
                 # TODO This might be quicker if pdist from scipy was used when inverse was not needed
-                distances.append(calc_cosine(data1=index, data2=query, index1=i, index2=q, sim_dist=False,
-                                             both_directions=both_directions))
-        return hc.ward(np.array(distances)),gene_names
+                self._distances.append(calc_cosine(data1=index, data2=query, index1=i, index2=q, sim_dist=False,
+                                                   both_directions=both_directions))
+        self._hcl = hc.ward(np.array(self._distances))
 
-    @staticmethod
-    def get_clusters(clustering:np.ndarray,gene_names:list,groups:int):
-        clusters=hc.fcluster(clustering, t=groups, criterion='maxclust')
-        return dict(zip(gene_names,clusters))
+    def get_genes_by_clusters(self, n_clusters: int, filter_genes: iter = None):
+        clusters = hc.fcluster(self._hcl, t=n_clusters, criterion='maxclust')
+        cluster_dict = dict((gene_set, []) for gene_set in range(1, n_clusters + 1))
+        for gene, cluster in zip(self._gene_names, clusters):
+            if (filter_genes is None) or (gene in filter_genes):
+                cluster_dict[cluster].append(gene)
+        if filter_genes is not None:
+            for cluster, gene_list in zip(list(cluster_dict.keys()), list(cluster_dict.values())):
+                if len(gene_list) == 0:
+                    del cluster_dict[cluster]
+        return cluster_dict
+
+    def get_clusters(self, n_clusters: int):
+        return hc.fcluster(self._hcl, t=n_clusters, criterion='maxclust')
+
+    def get_distance_matrix(self):
+        # TODO maybe store only distance vector or matrix, as they can be converted to each other
+        if self._matrix is None:
+            self.distances_to_matrix()
+        return self._matrix.copy()
+
+    def cluster_sizes(self, n_clusters: int):
+        clusters = list(hc.fcluster(self._hcl, t=n_clusters, criterion='maxclust'))
+        return Counter(clusters).values()
+
 
 class ClusterAnalyser:
 
-    def c
+    def __init__(self, gene_names: list, organism: int = '44689', max_set_size: int = 100, min_set_size: int = 2):
+        self._organism = organism
+        self._entrez_names = dict()
+        self._max_set_size = max_set_size
+        self._min_set_size = min_set_size
+        self._annotation_dict = dict((gene_set, None) for gene_set in list_all(organism=str(self._organism)))
+
+        self.name_genes_entrez(gene_names=gene_names)
+
+    def name_genes_entrez(self, gene_names):
+        matcher = GeneMatcher(self._organism)
+        matcher.genes = gene_names
+        for gene in matcher.genes:
+            name = gene.input_identifier
+            entrez = gene.gene_id
+            if entrez is not None:
+                self._entrez_names[entrez] = name
+
+    def available_annotations(self):
+        return list(self._annotation_dict.keys())
+
+    @staticmethod
+    def silhouette(clustering: Clustering, n_clusters: int):
+        matrix = clustering.get_distance_matrix()
+        clusters = clustering.get_clusters(n_clusters)
+        return silhouette_score(matrix, clusters, metric='precomputed')
+
+    # Sources: https://stackoverflow.com/questions/35709562/how-to-calculate-clustering-entropy-a-working-example-or-software-code
+    # compute_domain_entropy_by_domain_source: https://github.com/DRL/kinfin/blob/master/src/kinfin.py
+    # For cluster:
+    # p=n_in_set/n_all_annotated_sets ; n_all_annotated_sets - n of all annotations for this cluster
+    # for single cluster: -sum_over_sets(p*log2(p))
+    # For clustering:
+    # sum(entropy*member_genes/all_genes) : including only genes with annotations
+    def annotation_entropy(self, clustering: Clustering, n_clusters: int, ontology: tuple):
+        annotation_dict, clusters = self.init_annotation_evaluation(clustering, n_clusters, ontology)
+        sizes = []
+        entropies = []
+        for members in clusters.values():
+            sizes.append(len(members))
+            annotations = []
+            for gene in members:
+                # if gene in annotation_dict.keys(): # Not needed as filtering is performed above
+                annotations += annotation_dict[gene]
+            n_annotations = len(annotations)
+            cluster_entropy = -sum([count_anno / n_annotations * log(count_anno / n_annotations, 2) for count_anno in
+                                    Counter(annotations).values()])
+            if str(cluster_entropy) == "-0.0":
+                cluster_entropy = 0
+            entropies.append(cluster_entropy)
+
+        n_genes = sum(sizes)
+        return sum(
+            [cluster_entropy * size / n_genes for cluster_entropy, size in zip(entropies, sizes)])
+
+    def annotation_ratio(self, clustering: Clustering, n_clusters: int, ontology: tuple):
+        annotation_dict, clusters = self.init_annotation_evaluation(clustering, n_clusters, ontology)
+        sizes = []
+        ratios = []
+        for members in clusters.values():
+            n_genes=len(members)
+            sizes.append(n_genes)
+            annotations = []
+            for gene in members:
+                # if gene in annotation_dict.keys(): # Not needed as filtering is performed above
+                annotations += annotation_dict[gene]
+            max([count_anno/n_genes for count_anno in
+                                    Counter(annotations).values()])
+        #TODO
+
+    def init_annotation_evaluation(self, clustering: Clustering, n_clusters: int, ontology: tuple):
+        if self._annotation_dict[ontology] is None:
+            self.add_gene_annotations(ontology)
+        annotation_dict = self._annotation_dict[ontology]
+        clusters = clustering.get_genes_by_clusters(n_clusters, annotation_dict.keys())
+        return annotation_dict, clusters
+
+    def add_gene_annotations(self, ontology: tuple):
+        """
+        :param  ontology: from available_annotations
+        """
+        gene_dict = dict((gene_name, []) for gene_name in self._entrez_names.values())
+        gene_sets = load_gene_sets(ontology, str(self._organism))
+        for gene_set in gene_sets:
+            for gene_EID in gene_set.genes:
+                if gene_EID in self._entrez_names.keys():
+                    gene_dict[self._entrez_names[gene_EID]].append(gene_set.name)
+        for gene, sets in zip(list(gene_dict.keys()), list(gene_dict.values())):
+            if sets == []:
+                del gene_dict[gene]
+        self._annotation_dict[ontology] = gene_dict
+
 
 def calc_cosine(data1, data2, index1, index2, sim_dist, both_directions):
     similarity = SimilarityCalculator.calc_cosine(data1[index1], data2[index2])
@@ -262,18 +411,3 @@ def calc_cosine(data1, data2, index1, index2, sim_dist, both_directions):
         return similarity
     else:
         return 1 - similarity
-
-
-# TODO
-n=4
-matrix=[[0] * n for i in range(n)]
-position=0
-for i in range(0, n - 1):
-        for j in range(0, n - 1 - i):
-            element = distances[position]
-            if element<0:
-                element=0
-            position += 1
-            matrix[i][i + j + 1] = element # fill in the upper triangle
-            matrix[i + j + 1][i] = element # fill in the lower triangle
-silhouette_score(matrix,classes,metric='precomputed')
