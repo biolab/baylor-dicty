@@ -2,6 +2,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import altair as alt
 from statistics import median
+from scipy.cluster.hierarchy import dendrogram
 
 from networks.library_regulons import *
 
@@ -12,6 +13,8 @@ dataPathSaved = '/home/karin/Documents/timeTrajectories/data/correlations/replic
 
 genes = pd.read_csv(dataPath + 'mergedGenes_RPKUM.tsv', sep='\t', index_col=0)
 conditions = pd.read_csv(dataPath + 'conditions_mergedGenes.tsv', sep='\t', index_col=None)
+
+#************************************
 
 sub = genes.shape[1]
 genes_sub = genes.iloc[:, :sub]
@@ -339,7 +342,7 @@ nx.write_pajek(graph_inv, dataPathSaved + 'kN200_t0.99_scaleMinmax_log_inv.net')
 # Set parameters
 # Enough smalle N of neighbours as only interested if there is at least one highly connected neighbour
 neighbours_n = 2
-threshold = 0.995
+threshold = 0.99
 scale = 'minmax'
 use_log = True
 batches = None
@@ -347,53 +350,59 @@ batches = None
 # Calculate neighbours and make hierarchical clustering
 neighbour_calculator = NeighbourCalculator(genes)
 result = neighbour_calculator.neighbours(neighbours_n, inverse=False, scale=scale, log=use_log, batches=batches)
-# result_inv = neighbour_calculator.neighbours(neighbours_n, inverse=True, scale=scale, log=use_log, batches=batches)
+result_inv = neighbour_calculator.neighbours(neighbours_n, inverse=True, scale=scale, log=use_log, batches=batches)
 hcl = HierarchicalClustering(result, genes, threshold, inverse=False, scale=scale, log=use_log)
+hcl_inv=HierarchicalClustering(result_inv,genes,threshold,inverse=True,scale=scale,log=use_log)
+
+dendrogram(hcl_inv._hcl)
+
 ca=ClusterAnalyser(genes.index)
-# hcl_inv=HierarchicalClustering(result_inv,genes,threshold,inverse=True,scale=scale,log=use_log)
 silhouettes = []
 median_sizes = []
 entropy=[]
+ratios=[]
 n_clusters = list(range(3, 60, 6))
 for n in n_clusters:
     median_sizes.append(median(hcl.cluster_sizes(n)))
     silhouettes.append(ClusterAnalyser.silhouette(hcl, n))
-    entropy.append(ca.annotation_entropy(hcl,n,('KEGG','Pathways')))
+    entropy.append(ca.annotation_entropy(hcl,n,('KEGG', 'Pathways')))
+    ratios.append(ca.annotation_ratio(hcl, n, ('KEGG', 'Pathways')))
 
 #Taken from: https://matplotlib.org/3.1.1/gallery/ticks_and_spines/multiple_yaxis_with_spines.html
-def make_patch_spines_invisible(ax):
-    ax.set_frame_on(True)
-    ax.patch.set_visible(False)
-    for sp in ax.spines.values():
-        sp.set_visible(False)
-
-
 fig, host = plt.subplots()
 fig.subplots_adjust(right=0.75)
 
 par1 = host.twinx()
+par2 = host.twinx()
+par2.spines["right"].set_position(("axes", 1.2))
 
 p11 = host.scatter(n_clusters, silhouettes, c="b")
 p1, = host.plot(n_clusters, silhouettes, "b-",label="Silhouette")
 p22 = par1.scatter(n_clusters, median_sizes, c="r")
 p2, = par1.plot(n_clusters, median_sizes, "r-", label="Median size")
+p33 = par2.scatter(n_clusters, ratios, c="g")
+p3, = par2.plot(n_clusters, ratios, "g-",label="Annotation ratio")
 
 host.set_xlim(min(n_clusters), max(n_clusters))
 host.set_ylim(min(silhouettes), max(silhouettes))
 par1.set_ylim(min(median_sizes), max(median_sizes))
+par2.set_ylim(min(ratios), max(ratios))
 
 host.set_xlabel('N clusters')
 host.set_ylabel('Silhouette values')
 par1.set_ylabel('Median cluster size')
+par2.set_ylabel('Max annotation ratio')
 
 host.yaxis.label.set_color(p1.get_color())
 par1.yaxis.label.set_color(p2.get_color())
+par2.yaxis.label.set_color(p3.get_color())
 
 tkw = dict(size=4, width=1.5)
 host.tick_params(axis='y', colors=p1.get_color() )
 par1.tick_params(axis='y', colors=p2.get_color())
+par2.tick_params(axis='y', colors=p3.get_color())
 host.tick_params(axis='x' )
 
-lines = [p1, p2]
+#lines = [p1, p2,p3]
 
-host.legend(lines, [l.get_label() for l in lines])
+#host.legend(lines, [l.get_label() for l in lines])

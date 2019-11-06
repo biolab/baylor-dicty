@@ -4,13 +4,13 @@ import pandas as pd
 import sklearn.preprocessing as pp
 from pynndescent import NNDescent
 import numpy as np
-from statistics import mean
+from statistics import mean,median
 import networkx as nx
 import warnings
 import scipy.cluster.hierarchy as hc
 from sklearn.metrics import silhouette_score
 from collections import Counter
-from math import log
+import matplotlib.pyplot as plt
 
 from orangecontrib.bioinformatics.ncbi.gene import GeneMatcher
 from orangecontrib.bioinformatics.geneset.__init__ import (list_all, load_gene_sets)
@@ -231,60 +231,138 @@ def build_graph(similarities: dict) -> nx.Graph:
 
 
 class Clustering(ABC):
-    def __init(self):
-        self._n_genes = None
-        self._distances = None
-
-    @abstractmethod
-    def get_clusters(self, n_clusters: int):
-        pass
-
-    @abstractmethod
-    def get_distance_matrix(self):
-        pass
-
-    @abstractmethod
-    def get_genes_by_clusters(self, n_clusters: int, filter_genes: iter = None):
-        pass
-
-    def distances_to_matrix(self):
-        self._matrix = [[0] * self._n_genes for i in range(self._n_genes)]
-        position = 0
-        for i in range(0, self._n_genes - 1):
-            for j in range(0, self._n_genes - 1 - i):
-                element = self._distances[position]
-                if element < 0:
-                    element = 0
-                position += 1
-                self._matrix[i][i + j + 1] = element  # fill in the upper triangle
-                self._matrix[i + j + 1][i] = element  # fill in the lower triangle
-
-
-class HierarchicalClustering(Clustering):
-
+    """
+    Abstract class for clustering.
+    """
     def __init__(self, result: dict, genes: pd.DataFrame, threshold: float, inverse: bool, scale: str, log: bool):
+        """
+        Prepare distances (cosine) and gene information data. Use only genes with at least one close neighbour.
+        :param result: Closest neighbours result.
+        :param genes: Expression data
+        :param threshold: Retain only genes with at least one neighbour with similarity at least as big as threshold.
+        :param inverse: Distances calculated based on profiole of gene1 and inverse profile of gene2 for each gene pair.
+        :param scale: Scale expression data to common scale: 'minmax' from 0 to 1, 'mean0std1' to mean 0 and std 1
+        :param log: Log transform data before scaling.
+        """
+        index, query,gene_names= self.get_genes(result=result, genes=genes, threshold=threshold, inverse=inverse,
+                                            scale=scale,log=log)
+        self._gene_names_ordered = gene_names
+        self._n_genes = len(gene_names)
+        self._distance_matrix = [[0] * self._n_genes for count in range(self._n_genes)]
+        self.get_distances_cosine(index=index, query=query, inverse=inverse, scale=scale)
+
+    def get_genes(self, result: dict, genes: pd.DataFrame, threshold: float, inverse: bool, scale: str,
+                  log: bool) -> tuple:
+        """
+        Prepare gene data for distance calculation.
+        :param result: Closest neighbours result.
+        :param genes: Expression data
+        :param threshold: Retain only genes with at least one neighbour with similarity at least as big as threshold.
+        :param inverse: Distances calculated based on profiole of gene1 and inverse profile of gene2 for each gene pair.
+        :param scale: Scale expression data to common scale: 'minmax' from 0 to 1, 'mean0std1' to mean 0 and std 1
+        :param log: Log transform data before scaling.
+        :return: index,query - processed expression data. If inverse is False both of them are the same, else query is
+            inverse profiles data.
+        """
         result_filtered = NeighbourCalculator.filter_similarities(result, threshold)
+        if len(result_filtered) == 0:
+            raise ValueError('All genes were filtered out. Choose lower threshold.')
         genes_filtered = set((gene for pair in result_filtered.keys() for gene in pair))
         genes_data = genes.loc[genes_filtered, :]
-        self._gene_names = list(genes_data.index)
+        gene_names=list(genes_data.index)
         index, query = NeighbourCalculator.get_index_query(genes=genes_data, inverse=inverse, scale=scale, log=log)
-        self._n_genes = genes_data.shape[0]
-        self._distances = []
-        self._matrix = None
+        return index, query,gene_names
+
+    def get_distances_cosine(self, index: np.ndarray, query: np.ndarray, inverse: bool, scale: str):
+        """
+        Calculate distances (cosine) between expression profiles for each gene pair.
+        If inverse was used on minmax scaling distances matrix would not be symmetrical, thus for each unique gene pair
+        distance is calculated in both directions (eg. either gene in index/query) and averaged into final distance.
+        :param index: Expression data for gene1 from pair
+        :param query: Expression data for gene2 from pair
+        :param inverse: Was index data inversed
+        :param scale: Which scaling was used to prepare the data
+        :return:
+        """
         both_directions = False
         if inverse & (scale == 'minmax'):
             both_directions = True
         for i in range(0, self._n_genes - 1):
             for q in range(i + 1, self._n_genes):
                 # TODO This might be quicker if pdist from scipy was used when inverse was not needed
-                self._distances.append(calc_cosine(data1=index, data2=query, index1=i, index2=q, sim_dist=False,
-                                                   both_directions=both_directions))
-        self._hcl = hc.ward(np.array(self._distances))
+                distance = calc_cosine(data1=index, data2=query, index1=i, index2=q, sim_dist=False,
+                                       both_directions=both_directions)
+                self._distance_matrix[i][q] = distance
+                self._distance_matrix[q][i] = distance
 
-    def get_genes_by_clusters(self, n_clusters: int, filter_genes: iter = None):
-        clusters = hc.fcluster(self._hcl, t=n_clusters, criterion='maxclust')
-        cluster_dict = dict((gene_set, []) for gene_set in range(1, n_clusters + 1))
-        for gene, cluster in zip(self._gene_names, clusters):
+    def get_distance_matrix(self) -> list:
+        """
+        :return: Distance matrix
+        """
+        return self._distance_matrix.copy()
+
+    @abstractmethod
+    def cluster_sizes(self, splitting: float) -> list:
+        """
+        Size of each cluster
+        :param splitting: how to create clusters
+        :return: sizes
+        """
+        pass
+
+    @abstractmethod
+    def get_clusters(self, splitting: float) -> np.ndarray:
+        """
+        Cluster memberships
+        :param splitting: how to create clusters
+        :return: List of cluster memberships over genes
+        """
+        pass
+
+    @abstractmethod
+    def get_genes_by_clusters(self, splitting: float, filter_genes: iter = None) -> dict:
+        """
+        Get clusters with corresponding members.
+        :param splitting: how to create clusters
+        :param filter_genes: Report only genes (leafs) which are contained in filter_genes. If None use all genes in
+            creation of membership dictionary.
+        :return: Dict keys: cluster, values: list of genes/members
+        """
+        pass
+
+
+class HierarchicalClustering(Clustering):
+    """
+    Performs hierarchical clustering.
+    """
+
+    def __init__(self, result: dict, genes: pd.DataFrame, threshold: float, inverse: bool, scale: str, log: bool):
+        """
+        Prepare distances (cosine)  and gene information data. Use only genes with at least one close neighbour.
+        Performs clustering (Ward).
+        :param result: Closest neighbours result.
+        :param genes: Expression data
+        :param threshold: Retain only genes with at least one neighbour with similarity at least as big as threshold.
+        :param inverse: Distances calculated based on profiole of gene1 and inverse profile of gene2 for each gene pair.
+        :param scale: Scale expression data to common scale: 'minmax' from 0 to 1, 'mean0std1' to mean 0 and std 1
+        :param log: Log transform data before scaling.
+        """
+        super().__init__(result=result, genes=genes, threshold=threshold, inverse=inverse, scale=scale, log=log)
+        upper_index = np.triu_indices(self._n_genes, 1)
+        distances = np.array(self._distance_matrix)[upper_index]
+        self._hcl = hc.ward(np.array(distances))
+
+    def get_genes_by_clusters(self, splitting: int, filter_genes: iter = None) -> dict:
+        """
+        Get clusters with corresponding members.
+        :param splitting: N of clusters to create
+        :param filter_genes: Report only genes (leafs) which are contained in filter_genes. If None use all genes in
+            creation of membership dictionary.
+        :return: Dict keys: cluster, values: list of genes/members
+        """
+        clusters = hc.fcluster(self._hcl, t=splitting, criterion='maxclust')
+        cluster_dict = dict((gene_set, []) for gene_set in range(1, splitting + 1))
+        for gene, cluster in zip(self._gene_names_ordered, clusters):
             if (filter_genes is None) or (gene in filter_genes):
                 cluster_dict[cluster].append(gene)
         if filter_genes is not None:
@@ -293,23 +371,36 @@ class HierarchicalClustering(Clustering):
                     del cluster_dict[cluster]
         return cluster_dict
 
-    def get_clusters(self, n_clusters: int):
-        return hc.fcluster(self._hcl, t=n_clusters, criterion='maxclust')
+    def get_clusters(self, splitting: int) -> np.ndarray:
+        """
+        Cluster memberships
+        :param splitting: N of clusters to create
+        :return: List of cluster memberships over genes
+        """
+        return hc.fcluster(self._hcl, t=splitting, criterion='maxclust')
 
-    def get_distance_matrix(self):
-        # TODO maybe store only distance vector or matrix, as they can be converted to each other
-        if self._matrix is None:
-            self.distances_to_matrix()
-        return self._matrix.copy()
-
-    def cluster_sizes(self, n_clusters: int):
-        clusters = list(hc.fcluster(self._hcl, t=n_clusters, criterion='maxclust'))
-        return Counter(clusters).values()
+    def cluster_sizes(self, splitting: int) -> list:
+        """
+        Size of each cluster
+        :param splitting: how to create clusters
+        :return: sizes
+        """
+        clusters = list(hc.fcluster(self._hcl, t=splitting, criterion='maxclust'))
+        return list(Counter(clusters).values())
 
 
 class ClusterAnalyser:
+    """
+    Analyse clustering result.
+    """
 
-    def __init__(self, gene_names: list, organism: int = '44689', max_set_size: int = 100, min_set_size: int = 2):
+    def __init__(self, gene_names: list, organism: int = 44689, max_set_size: int = 100, min_set_size: int = 2):
+        """
+        :param gene_names: list of gene names (leafs in clustering) for which GO/KEGG annotations will be computed
+        :param organism: Organism ID
+        :param max_set_size: Max GO/KEGG set size to include in evaluation of clusters
+        :param min_set_size: Min GO/KEGG set size to include in evaluation of clusters
+        """
         self._organism = organism
         self._entrez_names = dict()
         self._max_set_size = max_set_size
@@ -319,6 +410,10 @@ class ClusterAnalyser:
         self.name_genes_entrez(gene_names=gene_names)
 
     def name_genes_entrez(self, gene_names):
+        """
+        Add entrez id to each gene name
+        :param gene_names: Gene names (eg. from dictyBase)
+        """
         matcher = GeneMatcher(self._organism)
         matcher.genes = gene_names
         for gene in matcher.genes:
@@ -327,24 +422,39 @@ class ClusterAnalyser:
             if entrez is not None:
                 self._entrez_names[entrez] = name
 
-    def available_annotations(self):
+    def available_annotations(self) -> list:
+        """
+        Which gene set types are available for this organism (e.g. GO/KEGG gene sets)
+        :return: Available gene sets
+        """
         return list(self._annotation_dict.keys())
 
     @staticmethod
-    def silhouette(clustering: Clustering, n_clusters: int):
+    def silhouette(clustering: Clustering, splitting: float) -> float:
+        """
+        Calculate mean Silhouette Coefficient over clusters  (e.g. sklearn.metrics.silhouette_score)
+        :param clustering: The clustering object
+        :param splitting: Parameter to use on clustering object's method get_clusters to obtain clusters
+            (e.g. N of clusters for hierarchical clustering)
+        :return: mean Silhouette Coefficient
+        """
         matrix = clustering.get_distance_matrix()
-        clusters = clustering.get_clusters(n_clusters)
+        clusters = clustering.get_clusters(splitting=splitting)
         return silhouette_score(matrix, clusters, metric='precomputed')
 
+    # Probably better to use annotation_ratio
     # Sources: https://stackoverflow.com/questions/35709562/how-to-calculate-clustering-entropy-a-working-example-or-software-code
     # compute_domain_entropy_by_domain_source: https://github.com/DRL/kinfin/blob/master/src/kinfin.py
-    # For cluster:
-    # p=n_in_set/n_all_annotated_sets ; n_all_annotated_sets - n of all annotations for this cluster
-    # for single cluster: -sum_over_sets(p*log2(p))
-    # For clustering:
-    # sum(entropy*member_genes/all_genes) : including only genes with annotations
-    def annotation_entropy(self, clustering: Clustering, n_clusters: int, ontology: tuple):
-        annotation_dict, clusters = self.init_annotation_evaluation(clustering, n_clusters, ontology)
+    #
+    # Use only genes (leafs) with annotations
+    # H for cluster:
+    # p=n_in_set/n_all_annotated_sets ; n_all_annotated_sets - n of all annotations for this cluster,
+    #   can be greater than number of all genes wit6h annotations
+    # H for single cluster: -sum_over_sets(p*log2(p))
+    # H for clustering: sum(entropy*member_genes/all_genes)
+    def annotation_entropy(self, clustering: Clustering, splitting: int, ontology: tuple) -> float:
+        annotation_dict, clusters = self.init_annotation_evaluation(clustering=clustering, splitting=splitting,
+                                                                    ontology=ontology)
         sizes = []
         entropies = []
         for members in clusters.values():
@@ -354,7 +464,7 @@ class ClusterAnalyser:
                 # if gene in annotation_dict.keys(): # Not needed as filtering is performed above
                 annotations += annotation_dict[gene]
             n_annotations = len(annotations)
-            cluster_entropy = -sum([count_anno / n_annotations * log(count_anno / n_annotations, 2) for count_anno in
+            cluster_entropy = -sum([count_anno / n_annotations * np.log2(count_anno / n_annotations) for count_anno in
                                     Counter(annotations).values()])
             if str(cluster_entropy) == "-0.0":
                 cluster_entropy = 0
@@ -364,45 +474,138 @@ class ClusterAnalyser:
         return sum(
             [cluster_entropy * size / n_genes for cluster_entropy, size in zip(entropies, sizes)])
 
-    def annotation_ratio(self, clustering: Clustering, n_clusters: int, ontology: tuple):
-        annotation_dict, clusters = self.init_annotation_evaluation(clustering, n_clusters, ontology)
+    def annotation_ratio(self, clustering: Clustering, splitting: int, ontology: tuple) -> float:
+        """
+        For each cluster calculate ratio of genes/members that have the most common annotation (GO/KEGG) in this cluster.
+        Compute average over clusters weighted by cluster size. Use only genes/leafs that have annotations.
+        For individual cluster: for each annotation term compute ratio of genes that have the term.
+            Select the highest ratio.
+        For clustering: sum_over_clusters(max_ratio_of_cluster*n_cluster_members/n_all_leafs)
+        :param clustering: Clustering object
+        :param splitting: Parameter to use on clustering object's method get_clusters to obtain clusters
+            (e.g. N of clusters for hierarchical clustering)
+        :param ontology: Name of ontology to use for annotations
+        :return: Average weighted max ratio.
+        """
+        annotation_dict, clusters = self.init_annotation_evaluation(clustering, splitting, ontology)
         sizes = []
         ratios = []
         for members in clusters.values():
-            n_genes=len(members)
-            sizes.append(n_genes)
+            n_members = len(members)
+            sizes.append(n_members)
             annotations = []
             for gene in members:
                 # if gene in annotation_dict.keys(): # Not needed as filtering is performed above
                 annotations += annotation_dict[gene]
-            max([count_anno/n_genes for count_anno in
-                                    Counter(annotations).values()])
-        #TODO
+            max_ration = max([count_anno / n_members for count_anno in
+                              Counter(annotations).values()])
+            ratios.append(max_ration)
+        n_genes = sum(sizes)
+        return sum(
+            [ratio * size / n_genes for ratio, size in zip(ratios, sizes)])
 
-    def init_annotation_evaluation(self, clustering: Clustering, n_clusters: int, ontology: tuple):
+    def init_annotation_evaluation(self, clustering: Clustering, splitting: int, ontology: tuple):
+        """
+        Prepare data for annotation based clustering evaluation.
+        :param clustering: Clustering object
+        :param splitting: Parameter to use on clustering object's method get_clusters to obtain clusters
+            (e.g. N of clusters for hierarchical clustering)
+        :param ontology: Name of ontology to use for annotations
+        :return: annotation_dictionary, clusters
+            annotation_dictionary - keys are gene names, values are list of gene sets (from ontology) to
+                which this gene belongs
+            clusters - dict with keys being cluster numbers and values list of gene names/members
+        """
         if self._annotation_dict[ontology] is None:
             self.add_gene_annotations(ontology)
         annotation_dict = self._annotation_dict[ontology]
-        clusters = clustering.get_genes_by_clusters(n_clusters, annotation_dict.keys())
+        clusters = clustering.get_genes_by_clusters(splitting, annotation_dict.keys())
         return annotation_dict, clusters
 
     def add_gene_annotations(self, ontology: tuple):
         """
+        Add per gene annotations for specified ontology to the self._annotation_dict
         :param  ontology: from available_annotations
         """
         gene_dict = dict((gene_name, []) for gene_name in self._entrez_names.values())
         gene_sets = load_gene_sets(ontology, str(self._organism))
         for gene_set in gene_sets:
-            for gene_EID in gene_set.genes:
-                if gene_EID in self._entrez_names.keys():
-                    gene_dict[self._entrez_names[gene_EID]].append(gene_set.name)
+            set_size = len(gene_set.genes)
+            if self._max_set_size >= set_size >= self._min_set_size:
+                for gene_EID in gene_set.genes:
+                    if gene_EID in self._entrez_names.keys():
+                        gene_dict[self._entrez_names[gene_EID]].append(gene_set.name)
         for gene, sets in zip(list(gene_dict.keys()), list(gene_dict.values())):
             if sets == []:
                 del gene_dict[gene]
         self._annotation_dict[ontology] = gene_dict
 
+    def plot_clustering_metrics(self, clustering: Clustering, splittings: list, ontology: tuple=('KEGG', 'Pathways')):
+        """
+        Analyse different values of splitting parameter used on clustering.
+        Plot silhouette values, median cluster size and average cluster-size weighted maximal annotation ratio.
+        :param clustering: Clustering object
+        Parameter to use on clustering object's method get_clusters to obtain clusters
+            (e.g. N of clusters for hierarchical clustering)
+        :param ontology: Name of ontology to use for annotations
+        """
+        silhouettes = []
+        median_sizes = []
+        ratios = []
+        for splitting in splittings:
+            median_sizes.append(median(clustering.cluster_sizes(splitting=splitting)))
+            silhouettes.append(ClusterAnalyser.silhouette(clustering= clustering,splitting= splitting))
+            ratios.append(self.annotation_ratio(clustering=clustering, splitting=splitting, ontology=ontology))
 
-def calc_cosine(data1, data2, index1, index2, sim_dist, both_directions):
+        # Taken from: https://matplotlib.org/3.1.1/gallery/ticks_and_spines/multiple_yaxis_with_spines.html
+        fig, host = plt.subplots()
+        fig.subplots_adjust(right=0.75)
+
+        par1 = host.twinx()
+        par2 = host.twinx()
+        par2.spines["right"].set_position(("axes", 1.2))
+
+        host.scatter(splittings, silhouettes, c="b")
+        p1, = host.plot(splittings, silhouettes, "b-")
+        par1.scatter(splittings, median_sizes, c="r")
+        p2, = par1.plot(splittings, median_sizes, "r-")
+        par2.scatter(splittings, ratios, c="g")
+        p3, = par2.plot(splittings, ratios, "g-")
+
+        host.set_xlim(min(splittings), max(splittings))
+        host.set_ylim(min(silhouettes), max(silhouettes))
+        par1.set_ylim(min(median_sizes), max(median_sizes))
+        par2.set_ylim(min(ratios), max(ratios))
+
+        host.set_xlabel('Splitting parameter')
+        host.set_ylabel('Mean silhouette values')
+        par1.set_ylabel('Median cluster size')
+        par2.set_ylabel('Mean max annotation ratio')
+
+        host.yaxis.label.set_color(p1.get_color())
+        par1.yaxis.label.set_color(p2.get_color())
+        par2.yaxis.label.set_color(p3.get_color())
+
+        tkw = dict(size=4, width=1.5)
+        host.tick_params(axis='y', colors=p1.get_color())
+        par1.tick_params(axis='y', colors=p2.get_color())
+        par2.tick_params(axis='y', colors=p3.get_color())
+        host.tick_params(axis='x')
+
+
+def calc_cosine(data1: np.ndarray, data2: np.ndarray, index1: int, index2: int, sim_dist: bool,
+                both_directions: bool) -> float:
+    """
+    Calculate cosine distance or similarity between 2 elements.
+    :param data1: Matrix for 1st element's data
+    :param data2: Matrix for 2nd element's data
+    :param index1: Matrix index to obtain data from matrix for 1st element
+    :param index2: Matrix index to obtain data from matrix for 2nd element
+    :param sim_dist: True: similarity, False: distance (1-similarity)
+    :param both_directions: If true calculate the metric (sim/dist) as average of metric when using index1 (i1) on
+    matrix1 (m1) and i2 on m2 and when using vice versa; e.g. avr(metric(m1[i1],m2[i2]), metric(m1[i2],m2[i1]))
+    :return: Similarity or distance
+    """
     similarity = SimilarityCalculator.calc_cosine(data1[index1], data2[index2])
     if both_directions:
         similarity2 = SimilarityCalculator.calc_cosine(data1[index2], data2[index1])
