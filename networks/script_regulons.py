@@ -342,7 +342,7 @@ nx.write_pajek(graph_inv, dataPathSaved + 'kN200_t0.99_scaleMinmax_log_inv.net')
 # Set parameters
 # Enough smalle N of neighbours as only interested if there is at least one highly connected neighbour
 neighbours_n = 2
-threshold = 0.99
+threshold = 0.995
 scale = 'minmax'
 use_log = True
 batches = None

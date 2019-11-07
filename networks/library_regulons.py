@@ -4,18 +4,22 @@ import pandas as pd
 import sklearn.preprocessing as pp
 from pynndescent import NNDescent
 import numpy as np
-from statistics import mean,median
+from statistics import mean, median
 import networkx as nx
 import warnings
 import scipy.cluster.hierarchy as hc
 from sklearn.metrics import silhouette_score
 from collections import Counter
 import matplotlib.pyplot as plt
+from scipy.cluster.hierarchy import dendrogram
 
 from orangecontrib.bioinformatics.ncbi.gene import GeneMatcher
 from orangecontrib.bioinformatics.geneset.__init__ import (list_all, load_gene_sets)
 
 from correlation_enrichment.library import GeneExpression, SimilarityCalculator
+
+SCALING = 'minmax'
+LOG = True
 
 
 class NeighbourCalculator:
@@ -29,18 +33,29 @@ class NeighbourCalculator:
     MEANSTD = 'mean0std1'
     SCALES = [MINMAX, MEANSTD]
 
-    def __init__(self, genes: pd.DataFrame, remove_zero: bool = True):
+    def __init__(self, genes: pd.DataFrame, remove_zero: bool = True, conditions: pd.DataFrame = None,
+                 conditions_names_column=None):
         """
         :param genes: Data frame of genes in rows and conditions in columns. Index is treated as gene names
         :param remove_zero: Remove genes that have all expression values 0.
             If batches are latter specified there may be all 0 rows within individual batches.
+        :param conditions: data frame with conditions for genes subseting, measurements (M) in rows;
+            conditions table dimensions are M*D (D are description types).
+            Rows should have same order  as genes table  columns (specified upon initialisation, dimension G(genes)*M) -
+            column names of gene table and specified column in conditions table should match.
+        :param conditions_names_column: conditions table column that matches genes index - tests that have same order
         """
         GeneExpression.check_numeric(genes)
         if remove_zero:
             genes = genes[(genes != 0).any(axis=1)]
         self._genes = genes
+        if conditions is not None:
+            if list(conditions.loc[:, conditions_names_column]) != list(self._genes.columns):
+                raise ValueError('Conditions table row order must match genes table column order.')
+        self.conditions = conditions
 
-    def neighbours(self, n_neighbours: int, inverse: bool, scale: str, log: bool, batches: list = None):
+    def neighbours(self, n_neighbours: int, inverse: bool, scale: str = SCALING, log: bool = LOG,
+                   batches: list = None) -> dict:
         """
         Calculates neighbours of genes on whole gene data or its subset by column.
         :param n_neighbours: Number of neighbours to obtain for each gene
@@ -88,7 +103,7 @@ class NeighbourCalculator:
         return self.parse_neighbours(neighbours=neighbours, distances=distances)
 
     @classmethod
-    def get_index_query(cls, genes: pd.DataFrame, inverse: bool, scale: str, log: bool):
+    def get_index_query(cls, genes: pd.DataFrame, inverse: bool, scale: str, log: bool) -> tuple:
         """
         Get gene data scaled to be index or query for neighbour search.
         :param genes: Gene data for index and query.
@@ -118,7 +133,7 @@ class NeighbourCalculator:
         return genes_index, genes_query
 
     @staticmethod
-    def minmax_scale(genes: pd.DataFrame):
+    def minmax_scale(genes: pd.DataFrame) -> np.ndarray:
         """
         Scale each row from 0 to 1.
         :param genes: data
@@ -127,7 +142,7 @@ class NeighbourCalculator:
         return pp.minmax_scale(genes, axis=1)
 
     @staticmethod
-    def meanstd_scale(genes):
+    def meanstd_scale(genes) -> np.ndarray:
         """
         Scale each row to mean 0 and std 1.
         :param genes: data
@@ -217,6 +232,148 @@ class NeighbourCalculator:
         """
         return dict(filter(lambda elem: elem[1] >= similarity_threshold, results.items()))
 
+    def compare_conditions(self, neighbours_n: int, inverse: bool,
+                           scale: str, use_log: bool, thresholds: list, filter_column, filter_column_values_sub: list,
+                           filter_column_values_test: list, batch_column=None):
+        """
+        Evaluates pattern similarity calculation preprocessing and parameters based on difference between subset and test set.
+        Computes MSE from differences between similarities of subset gene pairs and corresponding test gene pairs.
+        :param neighbours_n: N of calculated neighbours for each gene
+        :param inverse: find neighbours with opposite profile
+        :param scale: 'minmax' (from 0 to 1) or 'mean0std1' (to mean 0 and std 1)
+        :param use_log: Log transform expression values before scaling
+        :param thresholds: filter out any result with similarity below threshold, do for each threshold
+        :param filter_column: On which column of conditions should genes be subset for separation in subset and test set
+        :param filter_column_values_sub: Values of filter_column to use for subset genes
+        :param filter_column_values_test:Values of filter_column to use for test genes
+        :param batch_column: Should batches be used based on some column of conditions
+        :return: Dictionary with parameters and results, description as key, result/parameter setting as value
+        """
+        # Prepare data
+        if not batch_column:
+            batches = None
+        else:
+            batches = list(
+                (self.conditions[self.conditions[filter_column].isin(filter_column_values_sub)].loc[:, batch_column]))
+        genes_sub = self._genes.T[list(self.conditions[filter_column].isin(filter_column_values_sub))].T
+        genes_test = self._genes.T[list(self.conditions[filter_column].isin(filter_column_values_test))].T
+
+        neighbour_calculator = NeighbourCalculator(genes_sub)
+        test_index, test_query = NeighbourCalculator.get_index_query(genes_test, inverse=inverse, scale=scale,
+                                                                     log=use_log)
+        gene_names = list(genes_test.index)
+
+        # Is similarity matrix expected to be simetric or not
+        both_directions = False
+        if inverse and (scale == 'minmax'):
+            both_directions = True
+
+        # Calculate neighbours
+        result = neighbour_calculator.neighbours(neighbours_n, inverse=inverse, scale=scale, log=use_log,
+                                                 batches=batches)
+
+        # Filter neighbours on similarity
+        data_summary = []
+        for threshold in thresholds:
+            if batches is not None:
+                result_filtered = neighbour_calculator.merge_results(list(result.values()), threshold,
+                                                                     len(set(batches)))
+            else:
+                result_filtered = NeighbourCalculator.filter_similarities(result, threshold)
+
+            # Calculate MSE for each gene pair -
+            # compare similarity from gene subset to similarity of the gene pair in gene test set
+            sq_errors = []
+            for pair, similarity in result_filtered.items():
+                gene1 = pair[0]
+                gene2 = pair[1]
+
+                index1 = gene_names.index(gene1)
+                index2 = gene_names.index(gene2)
+                similarity_test = calc_cosine(test_index, test_query, index1, index2, sim_dist=True,
+                                              both_directions=both_directions)
+
+                se = (similarity - similarity_test) ** 2
+                # Happens if at least one vector has all 0 values
+                if not np.isnan(se):
+                    sq_errors.append(se)
+            if len(sq_errors) > 0:
+                mse = round(mean(sq_errors), 5)
+            else:
+                mse = float('NaN')
+            n_genes = len(set(gene for pair in result_filtered.keys() for gene in pair))
+            data_summary.append({'N neighbours': neighbours_n, 'inverse': inverse, 'use_log': use_log, 'scale': scale,
+                                 'threshold': threshold, 'batches': batch_column, 'MSE': mse,
+                                 'N pairs': len(result_filtered), 'N genes': n_genes})
+        return data_summary
+
+    def plot_select_threshold(self, thresholds: list, filter_column,
+                              filter_column_values_sub: list,
+                              filter_column_values_test: list, neighbours_n: int = 100, inverse: bool = False,
+                              scale: str = SCALING, use_log: bool = LOG, batch_column=None):
+        """
+        Plots number of retained genes and MSE based on filtering threshold.
+        Parameters are the same as in compare_conditions.
+        """
+        filtering_summary = self.compare_conditions(neighbours_n=neighbours_n, inverse=inverse,
+                                                    scale=scale, thresholds=thresholds, filter_column=filter_column,
+                                                    filter_column_values_sub=filter_column_values_sub,
+                                                    filter_column_values_test=filter_column_values_test,
+                                                    batch_column=batch_column, use_log=use_log)
+        pandas_multi_y_plot(pd.DataFrame(filtering_summary), 'threshold', ['N genes', 'MSE'])
+
+
+# Source: https://matplotlib.org/3.1.1/gallery/ticks_and_spines/multiple_yaxis_with_spines.html
+def pandas_multi_y_plot(data: pd.DataFrame, x_col, y_cols: list = None, adjust_right_border=None):
+    """
+    Plot line plot with scatter points with multiple y axes
+    :param data:
+    :param x_col: Col names from DF for x
+    :param y_cols: Col names from DF for y, if None plot all except x
+    :param adjust_right_border: Move plotting area to left to allow more space for y axes
+    :return:
+    """
+    # Get default color style from pandas - can be changed to any other color list
+    if y_cols is None:
+        y_cols = list(data.columns)
+        y_cols.remove(x_col)
+    if len(y_cols) == 0:
+        return
+
+    colors = getattr(getattr(pd.plotting, '_matplotlib').style, '_get_standard_colors')(num_colors=len(y_cols))
+    fig, host = plt.subplots()
+    if adjust_right_border is None:
+        adjust_right_border = 0.2 * (len(y_cols) - 2) + 0.05
+    fig.subplots_adjust(right=1 - adjust_right_border)
+    x = data.loc[:, x_col]
+    host.set_xlim(min(x), max(x))
+    host.set_xlabel(x_col)
+
+    # First axis
+    y = data.loc[:, y_cols[0]]
+    color = colors[0]
+    host.scatter(x, y, color=color)
+    host.plot(x, y, color=color)
+    host.set_ylim(min(y), max(y))
+    host.set_ylabel(y_cols[0])
+    host.yaxis.label.set_color(color)
+    host.tick_params(axis='y', colors=color)
+
+    for n in range(1, len(y_cols)):
+        # Multiple y-axes
+        y = data.loc[:, y_cols[n]]
+        color = colors[n % len(colors)]
+        ax_new = host.twinx()
+        ax_new.spines["right"].set_position(("axes", 1 + 0.2 * (n - 1)))
+        ax_new.scatter(x, y, color=color)
+        ax_new.plot(x, y, color=color)
+        ax_new.set_ylim(min(y), max(y))
+        ax_new.set_ylabel(y_cols[n])
+        ax_new.yaxis.label.set_color(color)
+        ax_new.tick_params(axis='y', colors=color)
+
+    return host
+
 
 def build_graph(similarities: dict) -> nx.Graph:
     """
@@ -234,6 +391,7 @@ class Clustering(ABC):
     """
     Abstract class for clustering.
     """
+
     def __init__(self, result: dict, genes: pd.DataFrame, threshold: float, inverse: bool, scale: str, log: bool):
         """
         Prepare distances (cosine) and gene information data. Use only genes with at least one close neighbour.
@@ -244,8 +402,8 @@ class Clustering(ABC):
         :param scale: Scale expression data to common scale: 'minmax' from 0 to 1, 'mean0std1' to mean 0 and std 1
         :param log: Log transform data before scaling.
         """
-        index, query,gene_names= self.get_genes(result=result, genes=genes, threshold=threshold, inverse=inverse,
-                                            scale=scale,log=log)
+        index, query, gene_names = self.get_genes(result=result, genes=genes, threshold=threshold, inverse=inverse,
+                                                  scale=scale, log=log)
         self._gene_names_ordered = gene_names
         self._n_genes = len(gene_names)
         self._distance_matrix = [[0] * self._n_genes for count in range(self._n_genes)]
@@ -269,9 +427,9 @@ class Clustering(ABC):
             raise ValueError('All genes were filtered out. Choose lower threshold.')
         genes_filtered = set((gene for pair in result_filtered.keys() for gene in pair))
         genes_data = genes.loc[genes_filtered, :]
-        gene_names=list(genes_data.index)
+        gene_names = list(genes_data.index)
         index, query = NeighbourCalculator.get_index_query(genes=genes_data, inverse=inverse, scale=scale, log=log)
-        return index, query,gene_names
+        return index, query, gene_names
 
     def get_distances_cosine(self, index: np.ndarray, query: np.ndarray, inverse: bool, scale: str):
         """
@@ -330,13 +488,23 @@ class Clustering(ABC):
         """
         pass
 
+    def plot_cluster_sizes(self, splitting: float):
+        """
+        Distribution of cluster sizes
+        :param splitting: how to create clusters
+         """
+        plt.hist(self.cluster_sizes(splitting=splitting),bins=100)
+        plt.xlabel('Cluster size')
+        plt.ylabel('Cluster count')
+
 
 class HierarchicalClustering(Clustering):
     """
     Performs hierarchical clustering.
     """
 
-    def __init__(self, result: dict, genes: pd.DataFrame, threshold: float, inverse: bool, scale: str, log: bool):
+    def __init__(self, result: dict, genes: pd.DataFrame, threshold: float, inverse: bool, scale: str = SCALING,
+                 log: bool = LOG):
         """
         Prepare distances (cosine)  and gene information data. Use only genes with at least one close neighbour.
         Performs clustering (Ward).
@@ -355,13 +523,13 @@ class HierarchicalClustering(Clustering):
     def get_genes_by_clusters(self, splitting: int, filter_genes: iter = None) -> dict:
         """
         Get clusters with corresponding members.
-        :param splitting: N of clusters to create
+        :param splitting: Height of cutting
         :param filter_genes: Report only genes (leafs) which are contained in filter_genes. If None use all genes in
             creation of membership dictionary.
         :return: Dict keys: cluster, values: list of genes/members
         """
-        clusters = hc.fcluster(self._hcl, t=splitting, criterion='maxclust')
-        cluster_dict = dict((gene_set, []) for gene_set in range(1, splitting + 1))
+        clusters = self.get_clusters(splitting=splitting)
+        cluster_dict = dict((gene_set, []) for gene_set in range(1, len(clusters)))
         for gene, cluster in zip(self._gene_names_ordered, clusters):
             if (filter_genes is None) or (gene in filter_genes):
                 cluster_dict[cluster].append(gene)
@@ -374,19 +542,23 @@ class HierarchicalClustering(Clustering):
     def get_clusters(self, splitting: int) -> np.ndarray:
         """
         Cluster memberships
-        :param splitting: N of clusters to create
+        :param splitting: Height of cutting
         :return: List of cluster memberships over genes
         """
-        return hc.fcluster(self._hcl, t=splitting, criterion='maxclust')
+        return hc.fcluster(self._hcl, t=splitting, criterion='distance')
 
     def cluster_sizes(self, splitting: int) -> list:
         """
         Size of each cluster
-        :param splitting: how to create clusters
+        :param splitting: Height of cutting
         :return: sizes
         """
-        clusters = list(hc.fcluster(self._hcl, t=splitting, criterion='maxclust'))
+        clusters = list(self.get_clusters(splitting=splitting))
         return list(Counter(clusters).values())
+
+    def plot_clustering(self, cutting_distance: float):
+        dendrogram(Z=self._hcl, color_threshold=cutting_distance, no_labels=True)
+        plt.ylabel('Distance')
 
 
 class ClusterAnalyser:
@@ -540,7 +712,7 @@ class ClusterAnalyser:
                 del gene_dict[gene]
         self._annotation_dict[ontology] = gene_dict
 
-    def plot_clustering_metrics(self, clustering: Clustering, splittings: list, ontology: tuple=('KEGG', 'Pathways')):
+    def plot_clustering_metrics(self, clustering: Clustering, splittings: list, ontology: tuple = ('KEGG', 'Pathways')):
         """
         Analyse different values of splitting parameter used on clustering.
         Plot silhouette values, median cluster size and average cluster-size weighted maximal annotation ratio.
@@ -552,45 +724,18 @@ class ClusterAnalyser:
         silhouettes = []
         median_sizes = []
         ratios = []
+        n_clusters = []
         for splitting in splittings:
-            median_sizes.append(median(clustering.cluster_sizes(splitting=splitting)))
-            silhouettes.append(ClusterAnalyser.silhouette(clustering= clustering,splitting= splitting))
+            cluster_sizes = clustering.cluster_sizes(splitting=splitting)
+            median_sizes.append(median(cluster_sizes))
+            n_clusters.append(len(cluster_sizes))
+            silhouettes.append(ClusterAnalyser.silhouette(clustering=clustering, splitting=splitting))
             ratios.append(self.annotation_ratio(clustering=clustering, splitting=splitting, ontology=ontology))
+        data = pd.DataFrame({'Splitting parameter': splittings, 'Mean silhouette values': silhouettes,
+                             'Mean max annotation ratio': ratios, 'Median cluster size': median_sizes,
+                             'N clusters': n_clusters})
 
-        # Taken from: https://matplotlib.org/3.1.1/gallery/ticks_and_spines/multiple_yaxis_with_spines.html
-        fig, host = plt.subplots()
-        fig.subplots_adjust(right=0.75)
-
-        par1 = host.twinx()
-        par2 = host.twinx()
-        par2.spines["right"].set_position(("axes", 1.2))
-
-        host.scatter(splittings, silhouettes, c="b")
-        p1, = host.plot(splittings, silhouettes, "b-")
-        par1.scatter(splittings, median_sizes, c="r")
-        p2, = par1.plot(splittings, median_sizes, "r-")
-        par2.scatter(splittings, ratios, c="g")
-        p3, = par2.plot(splittings, ratios, "g-")
-
-        host.set_xlim(min(splittings), max(splittings))
-        host.set_ylim(min(silhouettes), max(silhouettes))
-        par1.set_ylim(min(median_sizes), max(median_sizes))
-        par2.set_ylim(min(ratios), max(ratios))
-
-        host.set_xlabel('Splitting parameter')
-        host.set_ylabel('Mean silhouette values')
-        par1.set_ylabel('Median cluster size')
-        par2.set_ylabel('Mean max annotation ratio')
-
-        host.yaxis.label.set_color(p1.get_color())
-        par1.yaxis.label.set_color(p2.get_color())
-        par2.yaxis.label.set_color(p3.get_color())
-
-        tkw = dict(size=4, width=1.5)
-        host.tick_params(axis='y', colors=p1.get_color())
-        par1.tick_params(axis='y', colors=p2.get_color())
-        par2.tick_params(axis='y', colors=p3.get_color())
-        host.tick_params(axis='x')
+        pandas_multi_y_plot(data=data, x_col='Splitting parameter', y_cols=None, adjust_right_border=0.35)
 
 
 def calc_cosine(data1: np.ndarray, data2: np.ndarray, index1: int, index2: int, sim_dist: bool,
