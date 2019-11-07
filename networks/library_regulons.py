@@ -519,7 +519,7 @@ class ClusterAnalyser:
         if self._annotation_dict[ontology] is None:
             self.add_gene_annotations(ontology)
         annotation_dict = self._annotation_dict[ontology]
-        clusters = clustering.get_genes_by_clusters(splitting, annotation_dict.keys())
+        clusters = clustering.get_genes_by_clusters(splitting=splitting, filter_genes=annotation_dict.keys())
         return annotation_dict, clusters
 
     def add_gene_annotations(self, ontology: tuple):

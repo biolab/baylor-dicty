@@ -1,5 +1,8 @@
 import unittest
 from unittest import mock
+from unittest.mock import patch
+
+from orangecontrib.bioinformatics.geneset.utils import GeneSet
 
 from networks.library_regulons import *
 
@@ -268,20 +271,52 @@ class TestClusterAnalyser(unittest.TestCase):
     result = {('DDB_G0267178', 'DDB_G0267180'): 1, ('DDB_G0267182', 'DDB_G0267180'): 1,
               ('DDB_G0267182', 'DDB_G0267184'): 0}
     threshold = 0
+    max_set_size = 10
+    min_set_size = 4
 
     hcl = HierarchicalClustering(result=result, genes=genes, threshold=threshold, inverse=False,
                                  scale='minmax', log=False)
-    ca = ClusterAnalyser(gene_names=gene_names, organism=44689, max_set_size=100, min_set_size=40)
+    ca = ClusterAnalyser(gene_names=gene_names, organism=44689, max_set_size=max_set_size, min_set_size=min_set_size)
 
     # TODO test init for correct passing/saving of arguments
 
     def test_gene_names_entrez(self):
+        # Correct EIDs are added to the gene names
         self.assertDictEqual(self.ca._entrez_names, {'8617794': 'DDB_G0267178', '8615783': 'DDB_G0267180',
                                                      '8615779': 'DDB_G0267182', '8615780': 'DDB_G0267184'})
 
-    def test_add_gene_annotations(self):
-        self.ca.add_gene_annotations(('KEGG','Pathways'))
-        # TODO
+    @patch('networks.library_regulons.load_gene_sets')
+    def test_add_gene_annotations(self, mock_load_gene_sets):
+        # GO annotation is added to genes and gene sets of wrong size are not used
+        gs1 = GeneSet(name='a', genes=['8617794'] + ['.'] * self.max_set_size)
+        gs2 = GeneSet(name='b', genes=['8617794', '8615783'] + ['.'] * (self.max_set_size - 2))
+        gs3 = GeneSet(name='c', genes=['8617794'] + ['.'] * (self.min_set_size - 1))
+        gs4 = GeneSet(name='d', genes=['8617794'] + ['.'] * (self.min_set_size - 2))
+        gene_sets = [gs1, gs2, gs3, gs4]
+        mock_load_gene_sets.return_value = gene_sets
+
+        self.ca.add_gene_annotations(('KEGG', 'Pathways'))
+        ontology = ('X', 'Y')
+        self.ca.add_gene_annotations(ontology)
+        self.assertDictEqual(self.ca._annotation_dict[ontology], {'DDB_G0267178': ['b', 'c'], 'DDB_G0267180': ['b']})
+
+    def test_init_annotation_evaluation(self):
+        # Returns correct annotation dictionary and annotated gene names filtered clustering
+        expected_dict = {'DDB_G0267178': ['a'], 'DDB_G0267182': ['b']}
+        self.ca._annotation_dict[('mock', 'mock')] = expected_dict
+        annotation_dict, clusters = self.ca.init_annotation_evaluation(self.hcl, 2, ('mock', 'mock'))
+        self.assertDictEqual(annotation_dict, expected_dict)
+        self.assertDictEqual(clusters, {1: ['DDB_G0267178'], 2: ['DDB_G0267182']})
+
+    def test_annotation_ratio(self):
+        # Maximal ratio is selected and weighted by cluster size (containing only annotated genes)
+        self.ca._annotation_dict[('mock', 'mock')] = {'DDB_G0267178': ['a', 'b'], 'DDB_G0267180': ['a'],
+                                                      'DDB_G0267182': ['b']}
+        self.assertAlmostEqual(self.ca.annotation_ratio(self.hcl,2,('mock', 'mock')),1)
+        self.ca._annotation_dict[('mock', 'mock')] = {'DDB_G0267178': ['b'], 'DDB_G0267180': ['a'],
+                                                      'DDB_G0267182': ['b']}
+        self.assertAlmostEqual(self.ca.annotation_ratio(self.hcl, 2, ('mock', 'mock')), (0.5*2/3 + 1/3))
+
 
 class TestOther(unittest.TestCase):
 
