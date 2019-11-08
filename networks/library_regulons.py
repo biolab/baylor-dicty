@@ -296,8 +296,14 @@ class NeighbourCalculator:
             in_sub_test = len(match)
             only_sub = len(gene_names_sub ^ match)
             only_test = len(gene_names_test ^ match)
-            recall_sub=in_sub_test/(in_sub_test+only_test)
-            recall_test = in_sub_test / (in_sub_test + only_sub)
+            if in_sub_test+only_test <1:
+                recall_sub=float('NaN')
+            else:
+                recall_sub=in_sub_test/(in_sub_test+only_test)
+            if in_sub_test+only_sub <1:
+                recall_test=float('NaN')
+            else:
+                recall_test = in_sub_test / (in_sub_test + only_sub)
             f_val=2*recall_sub*recall_test/(recall_sub+recall_test)
             # Calculate MSE for each gene pair -
             # compare similarity from gene subset to similarity of the gene pair in gene test set
