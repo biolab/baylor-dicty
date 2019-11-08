@@ -12,6 +12,7 @@ from sklearn.metrics import silhouette_score
 from collections import Counter
 import matplotlib.pyplot as plt
 from scipy.cluster.hierarchy import dendrogram
+from openTSNE import TSNE
 
 from orangecontrib.bioinformatics.ncbi.gene import GeneMatcher
 from orangecontrib.bioinformatics.geneset.__init__ import (list_all, load_gene_sets)
@@ -234,7 +235,7 @@ class NeighbourCalculator:
 
     def compare_conditions(self, neighbours_n: int, inverse: bool,
                            scale: str, use_log: bool, thresholds: list, filter_column, filter_column_values_sub: list,
-                           filter_column_values_test: list, batch_column=None):
+                           filter_column_values_test: list, batch_column=None,do_mse:bool=True):
         """
         Evaluates pattern similarity calculation preprocessing and parameters based on difference between subset and test set.
         Computes MSE from differences between similarities of subset gene pairs and corresponding test gene pairs.
@@ -247,6 +248,7 @@ class NeighbourCalculator:
         :param filter_column_values_sub: Values of filter_column to use for subset genes
         :param filter_column_values_test:Values of filter_column to use for test genes
         :param batch_column: Should batches be used based on some column of conditions
+        :param do_mse: Should MSE calculation be performed
         :return: Dictionary with parameters and results, description as key, result/parameter setting as value
         """
         # Prepare data
@@ -259,6 +261,7 @@ class NeighbourCalculator:
         genes_test = self._genes.T[list(self.conditions[filter_column].isin(filter_column_values_test))].T
 
         neighbour_calculator = NeighbourCalculator(genes_sub)
+        neighbour_calculator_test = NeighbourCalculator(genes_test)
         test_index, test_query = NeighbourCalculator.get_index_query(genes_test, inverse=inverse, scale=scale,
                                                                      log=use_log)
         gene_names = list(genes_test.index)
@@ -271,32 +274,48 @@ class NeighbourCalculator:
         # Calculate neighbours
         result = neighbour_calculator.neighbours(neighbours_n, inverse=inverse, scale=scale, log=use_log,
                                                  batches=batches)
+        result_test = neighbour_calculator_test.neighbours(neighbours_n, inverse=inverse, scale=scale, log=use_log,
+                                                 batches=batches)
 
         # Filter neighbours on similarity
         data_summary = []
         for threshold in thresholds:
             if batches is not None:
-                result_filtered = neighbour_calculator.merge_results(list(result.values()), threshold,
+                result_filtered = NeighbourCalculator.merge_results(list(result.values()), threshold,
+                                                                     len(set(batches)))
+                result_filtered_test = NeighbourCalculator.merge_results(list(result_test.values()), threshold,
                                                                      len(set(batches)))
             else:
                 result_filtered = NeighbourCalculator.filter_similarities(result, threshold)
+                result_filtered_test = NeighbourCalculator.filter_similarities(result_test, threshold)
 
+            # Find genes retained in each result
+            gene_names_sub={gene for pair in result_filtered for gene in pair}
+            gene_names_test = {gene for pair in result_filtered_test for gene in pair}
+            match = gene_names_sub & gene_names_test
+            in_sub_test = len(match)
+            only_sub = len(gene_names_sub ^ match)
+            only_test = len(gene_names_test ^ match)
+            recall_sub=in_sub_test/(in_sub_test+only_test)
+            recall_test = in_sub_test / (in_sub_test + only_sub)
+            f_val=2*recall_sub*recall_test/(recall_sub+recall_test)
             # Calculate MSE for each gene pair -
             # compare similarity from gene subset to similarity of the gene pair in gene test set
             sq_errors = []
-            for pair, similarity in result_filtered.items():
-                gene1 = pair[0]
-                gene2 = pair[1]
+            if do_mse:
+                for pair, similarity in result_filtered.items():
+                    gene1 = pair[0]
+                    gene2 = pair[1]
 
-                index1 = gene_names.index(gene1)
-                index2 = gene_names.index(gene2)
-                similarity_test = calc_cosine(test_index, test_query, index1, index2, sim_dist=True,
-                                              both_directions=both_directions)
+                    index1 = gene_names.index(gene1)
+                    index2 = gene_names.index(gene2)
+                    similarity_test = calc_cosine(test_index, test_query, index1, index2, sim_dist=True,
+                                                  both_directions=both_directions)
 
-                se = (similarity - similarity_test) ** 2
-                # Happens if at least one vector has all 0 values
-                if not np.isnan(se):
-                    sq_errors.append(se)
+                    se = (similarity - similarity_test) ** 2
+                    # Happens if at least one vector has all 0 values
+                    if not np.isnan(se):
+                        sq_errors.append(se)
             if len(sq_errors) > 0:
                 mse = round(mean(sq_errors), 5)
             else:
@@ -304,23 +323,26 @@ class NeighbourCalculator:
             n_genes = len(set(gene for pair in result_filtered.keys() for gene in pair))
             data_summary.append({'N neighbours': neighbours_n, 'inverse': inverse, 'use_log': use_log, 'scale': scale,
                                  'threshold': threshold, 'batches': batch_column, 'MSE': mse,
-                                 'N pairs': len(result_filtered), 'N genes': n_genes})
+                                 'N pairs': len(result_filtered), 'N genes': n_genes,'F value':f_val})
         return data_summary
 
     def plot_select_threshold(self, thresholds: list, filter_column,
                               filter_column_values_sub: list,
-                              filter_column_values_test: list, neighbours_n: int = 100, inverse: bool = False,
+                              filter_column_values_test: list, neighbours_n: int = 2, inverse: bool = False,
                               scale: str = SCALING, use_log: bool = LOG, batch_column=None):
         """
         Plots number of retained genes and MSE based on filtering threshold.
         Parameters are the same as in compare_conditions.
         """
-        filtering_summary = self.compare_conditions(neighbours_n=neighbours_n, inverse=inverse,
-                                                    scale=scale, thresholds=thresholds, filter_column=filter_column,
-                                                    filter_column_values_sub=filter_column_values_sub,
-                                                    filter_column_values_test=filter_column_values_test,
-                                                    batch_column=batch_column, use_log=use_log)
-        pandas_multi_y_plot(pd.DataFrame(filtering_summary), 'threshold', ['N genes', 'MSE'])
+        filtering_summary = pd.DataFrame(self.compare_conditions(neighbours_n=neighbours_n, inverse=inverse,
+                                                                 scale=scale, thresholds=thresholds,
+                                                                 filter_column=filter_column,
+                                                                 filter_column_values_sub=filter_column_values_sub,
+                                                                 filter_column_values_test=filter_column_values_test,
+                                                                 batch_column=batch_column, use_log=use_log,
+                                                                 do_mse=False))
+        pandas_multi_y_plot(filtering_summary, 'threshold', ['N genes', 'F value'])
+        return filtering_summary
 
 
 # Source: https://matplotlib.org/3.1.1/gallery/ticks_and_spines/multiple_yaxis_with_spines.html
@@ -473,11 +495,10 @@ class Clustering(ABC):
         """
         Cluster memberships
         :param splitting: how to create clusters
-        :return: List of cluster memberships over genes
+        :return: List of cluster memberships over genes (cluster numbers in same order as gene names)
         """
         pass
 
-    @abstractmethod
     def get_genes_by_clusters(self, splitting: float, filter_genes: iter = None) -> dict:
         """
         Get clusters with corresponding members.
@@ -486,16 +507,35 @@ class Clustering(ABC):
             creation of membership dictionary.
         :return: Dict keys: cluster, values: list of genes/members
         """
-        pass
+        clusters = self.get_clusters(splitting=splitting)
+        cluster_dict = dict((gene_set, []) for gene_set in range(1, len(clusters)))
+        for gene, cluster in zip(self._gene_names_ordered, clusters):
+            if (filter_genes is None) or (gene in filter_genes):
+                cluster_dict[cluster].append(gene)
+        if filter_genes is not None:
+            for cluster, gene_list in zip(list(cluster_dict.keys()), list(cluster_dict.values())):
+                if len(gene_list) == 0:
+                    del cluster_dict[cluster]
+        return cluster_dict
 
     def plot_cluster_sizes(self, splitting: float):
         """
         Distribution of cluster sizes
         :param splitting: how to create clusters
          """
-        plt.hist(self.cluster_sizes(splitting=splitting),bins=100)
+        plt.hist(self.cluster_sizes(splitting=splitting), bins=100)
         plt.xlabel('Cluster size')
         plt.ylabel('Cluster count')
+
+    def save_clusters(self, splitting: float, file: str):
+        """
+        Save gene names with corresponding cluster number in tsv.
+        :param splitting: how to create clusters
+        :param file: File name
+        """
+        clusters = self.get_clusters(splitting=splitting)
+        data = pd.DataFrame({'genes': list(self._gene_names_ordered), 'cluster': list(clusters)})
+        data.to_csv(file, sep='\t', index=False)
 
 
 class HierarchicalClustering(Clustering):
@@ -519,25 +559,6 @@ class HierarchicalClustering(Clustering):
         upper_index = np.triu_indices(self._n_genes, 1)
         distances = np.array(self._distance_matrix)[upper_index]
         self._hcl = hc.ward(np.array(distances))
-
-    def get_genes_by_clusters(self, splitting: int, filter_genes: iter = None) -> dict:
-        """
-        Get clusters with corresponding members.
-        :param splitting: Height of cutting
-        :param filter_genes: Report only genes (leafs) which are contained in filter_genes. If None use all genes in
-            creation of membership dictionary.
-        :return: Dict keys: cluster, values: list of genes/members
-        """
-        clusters = self.get_clusters(splitting=splitting)
-        cluster_dict = dict((gene_set, []) for gene_set in range(1, len(clusters)))
-        for gene, cluster in zip(self._gene_names_ordered, clusters):
-            if (filter_genes is None) or (gene in filter_genes):
-                cluster_dict[cluster].append(gene)
-        if filter_genes is not None:
-            for cluster, gene_list in zip(list(cluster_dict.keys()), list(cluster_dict.values())):
-                if len(gene_list) == 0:
-                    del cluster_dict[cluster]
-        return cluster_dict
 
     def get_clusters(self, splitting: int) -> np.ndarray:
         """
@@ -612,9 +633,11 @@ class ClusterAnalyser:
         """
         matrix = clustering.get_distance_matrix()
         clusters = clustering.get_clusters(splitting=splitting)
-        return silhouette_score(matrix, clusters, metric='precomputed')
+        if 1 < len(set(clusters)) < len(clusters):
+            return silhouette_score(matrix, clusters, metric='precomputed')
+        else:
+            return None
 
-    # Probably better to use annotation_ratio
     # Sources: https://stackoverflow.com/questions/35709562/how-to-calculate-clustering-entropy-a-working-example-or-software-code
     # compute_domain_entropy_by_domain_source: https://github.com/DRL/kinfin/blob/master/src/kinfin.py
     #
@@ -624,6 +647,7 @@ class ClusterAnalyser:
     #   can be greater than number of all genes wit6h annotations
     # H for single cluster: -sum_over_sets(p*log2(p))
     # H for clustering: sum(entropy*member_genes/all_genes)
+    # Probably better to use annotation_ratio
     def annotation_entropy(self, clustering: Clustering, splitting: int, ontology: tuple) -> float:
         annotation_dict, clusters = self.init_annotation_evaluation(clustering=clustering, splitting=splitting,
                                                                     ontology=ontology)
@@ -736,6 +760,7 @@ class ClusterAnalyser:
                              'N clusters': n_clusters})
 
         pandas_multi_y_plot(data=data, x_col='Splitting parameter', y_cols=None, adjust_right_border=0.35)
+        return data
 
 
 def calc_cosine(data1: np.ndarray, data2: np.ndarray, index1: int, index2: int, sim_dist: bool,
@@ -759,3 +784,13 @@ def calc_cosine(data1: np.ndarray, data2: np.ndarray, index1: int, index2: int, 
         return similarity
     else:
         return 1 - similarity
+
+
+def plot_tsne(data: pd.DataFrame, perplexity=30, classes=None):
+    tsne = TSNE(perplexity=perplexity, initialization="pca", metric="cosine", n_jobs=8, random_state=3)
+    embedding = tsne.fit(data)
+    x = [x[0] for x in embedding]
+    y = [x[1] for x in embedding]
+    if classes is None:
+        classes = [0] * embedding.shape[0]
+    plt.scatter(x, y, c=classes, s=1)

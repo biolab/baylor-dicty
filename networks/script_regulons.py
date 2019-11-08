@@ -342,7 +342,7 @@ nx.write_pajek(graph_inv, dataPathSaved + 'kN200_t0.99_scaleMinmax_log_inv.net')
 # Set parameters
 # Enough smalle N of neighbours as only interested if there is at least one highly connected neighbour
 neighbours_n = 2
-threshold = 0.995
+threshold = 0.99
 scale = 'minmax'
 use_log = True
 batches = None
@@ -353,6 +353,8 @@ result = neighbour_calculator.neighbours(neighbours_n, inverse=False, scale=scal
 result_inv = neighbour_calculator.neighbours(neighbours_n, inverse=True, scale=scale, log=use_log, batches=batches)
 hcl = HierarchicalClustering(result, genes, threshold, inverse=False, scale=scale, log=use_log)
 hcl_inv=HierarchicalClustering(result_inv,genes,threshold,inverse=True,scale=scale,log=use_log)
+
+hcl_gene_data=genes.loc[hcl._gene_names_ordered,:]
 
 dendrogram(hcl_inv._hcl)
 
