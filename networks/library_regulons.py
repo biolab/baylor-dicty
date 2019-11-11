@@ -12,8 +12,14 @@ from sklearn.metrics import silhouette_score
 from collections import Counter
 import matplotlib.pyplot as plt
 from scipy.cluster.hierarchy import dendrogram
-from openTSNE import TSNE
+import openTSNE as ot
+from sklearn.cluster import DBSCAN
+from community import best_partition as louvain
+import random
+from collections import OrderedDict
+from sklearn.mixture import GaussianMixture
 
+import Orange.clustering.louvain as orange_louvain_graph
 from orangecontrib.bioinformatics.ncbi.gene import GeneMatcher
 from orangecontrib.bioinformatics.geneset.__init__ import (list_all, load_gene_sets)
 
@@ -104,7 +110,7 @@ class NeighbourCalculator:
         return self.parse_neighbours(neighbours=neighbours, distances=distances)
 
     @classmethod
-    def get_index_query(cls, genes: pd.DataFrame, inverse: bool, scale: str, log: bool) -> tuple:
+    def get_index_query(cls, genes: pd.DataFrame, inverse: bool, scale: str=SCALING, log: bool=LOG) -> tuple:
         """
         Get gene data scaled to be index or query for neighbour search.
         :param genes: Gene data for index and query.
@@ -235,7 +241,7 @@ class NeighbourCalculator:
 
     def compare_conditions(self, neighbours_n: int, inverse: bool,
                            scale: str, use_log: bool, thresholds: list, filter_column, filter_column_values_sub: list,
-                           filter_column_values_test: list, batch_column=None,do_mse:bool=True):
+                           filter_column_values_test: list, batch_column=None, do_mse: bool = True):
         """
         Evaluates pattern similarity calculation preprocessing and parameters based on difference between subset and test set.
         Computes MSE from differences between similarities of subset gene pairs and corresponding test gene pairs.
@@ -275,36 +281,36 @@ class NeighbourCalculator:
         result = neighbour_calculator.neighbours(neighbours_n, inverse=inverse, scale=scale, log=use_log,
                                                  batches=batches)
         result_test = neighbour_calculator_test.neighbours(neighbours_n, inverse=inverse, scale=scale, log=use_log,
-                                                 batches=batches)
+                                                           batches=batches)
 
         # Filter neighbours on similarity
         data_summary = []
         for threshold in thresholds:
             if batches is not None:
                 result_filtered = NeighbourCalculator.merge_results(list(result.values()), threshold,
-                                                                     len(set(batches)))
+                                                                    len(set(batches)))
                 result_filtered_test = NeighbourCalculator.merge_results(list(result_test.values()), threshold,
-                                                                     len(set(batches)))
+                                                                         len(set(batches)))
             else:
                 result_filtered = NeighbourCalculator.filter_similarities(result, threshold)
                 result_filtered_test = NeighbourCalculator.filter_similarities(result_test, threshold)
 
             # Find genes retained in each result
-            gene_names_sub={gene for pair in result_filtered for gene in pair}
+            gene_names_sub = {gene for pair in result_filtered for gene in pair}
             gene_names_test = {gene for pair in result_filtered_test for gene in pair}
             match = gene_names_sub & gene_names_test
             in_sub_test = len(match)
             only_sub = len(gene_names_sub ^ match)
             only_test = len(gene_names_test ^ match)
-            if in_sub_test+only_test <1:
-                recall_sub=float('NaN')
+            if in_sub_test + only_test < 1:
+                recall_sub = float('NaN')
             else:
-                recall_sub=in_sub_test/(in_sub_test+only_test)
-            if in_sub_test+only_sub <1:
-                recall_test=float('NaN')
+                recall_sub = in_sub_test / (in_sub_test + only_test)
+            if in_sub_test + only_sub < 1:
+                recall_test = float('NaN')
             else:
                 recall_test = in_sub_test / (in_sub_test + only_sub)
-            f_val=2*recall_sub*recall_test/(recall_sub+recall_test)
+            f_val = 2 * recall_sub * recall_test / (recall_sub + recall_test)
             # Calculate MSE for each gene pair -
             # compare similarity from gene subset to similarity of the gene pair in gene test set
             sq_errors = []
@@ -329,7 +335,7 @@ class NeighbourCalculator:
             n_genes = len(set(gene for pair in result_filtered.keys() for gene in pair))
             data_summary.append({'N neighbours': neighbours_n, 'inverse': inverse, 'use_log': use_log, 'scale': scale,
                                  'threshold': threshold, 'batches': batch_column, 'MSE': mse,
-                                 'N pairs': len(result_filtered), 'N genes': n_genes,'F value':f_val})
+                                 'N pairs': len(result_filtered), 'N genes': n_genes, 'F value': f_val})
         return data_summary
 
     def plot_select_threshold(self, thresholds: list, filter_column,
@@ -420,7 +426,8 @@ class Clustering(ABC):
     Abstract class for clustering.
     """
 
-    def __init__(self, result: dict, genes: pd.DataFrame, threshold: float, inverse: bool, scale: str, log: bool):
+    # TODO edit init
+    def __init__(self, distance_matrix: np.array, gene_names: list, data: np.ndarray):
         """
         Prepare distances (cosine) and gene information data. Use only genes with at least one close neighbour.
         :param result: Closest neighbours result.
@@ -430,14 +437,30 @@ class Clustering(ABC):
         :param scale: Scale expression data to common scale: 'minmax' from 0 to 1, 'mean0std1' to mean 0 and std 1
         :param log: Log transform data before scaling.
         """
-        index, query, gene_names = self.get_genes(result=result, genes=genes, threshold=threshold, inverse=inverse,
-                                                  scale=scale, log=log)
         self._gene_names_ordered = gene_names
         self._n_genes = len(gene_names)
-        self._distance_matrix = [[0] * self._n_genes for count in range(self._n_genes)]
-        self.get_distances_cosine(index=index, query=query, inverse=inverse, scale=scale)
+        self._distance_matrix = distance_matrix
+        self._data = data
 
-    def get_genes(self, result: dict, genes: pd.DataFrame, threshold: float, inverse: bool, scale: str,
+    @classmethod
+    def from_knn_result(cls, result: dict, genes: pd.DataFrame, threshold: float, inverse: bool, scale: str, log: bool,
+                        **kwargs):
+        distance_matrix, gene_names, data = Clustering.get_clustering_data(result=result, genes=genes,
+                                                                           threshold=threshold, inverse=inverse,
+                                                                           scale=scale, log=log)
+        return cls(distance_matrix=distance_matrix, gene_names=gene_names, data=data)
+
+    @staticmethod
+    def get_clustering_data(result: dict, genes: pd.DataFrame, threshold: float, inverse: bool, scale: str=SCALING,
+                            log: bool=LOG):
+        index, query, gene_names = Clustering.get_genes(result=result, genes=genes, threshold=threshold,
+                                                        inverse=inverse,
+                                                        scale=scale, log=log)
+        distance_matrix = Clustering.get_distances_cosine(index=index, query=query, inverse=inverse, scale=scale)
+        return distance_matrix, gene_names, np.array(index)
+
+    @staticmethod
+    def get_genes(result: dict, genes: pd.DataFrame, threshold: float, inverse: bool, scale: str,
                   log: bool) -> tuple:
         """
         Prepare gene data for distance calculation.
@@ -459,7 +482,8 @@ class Clustering(ABC):
         index, query = NeighbourCalculator.get_index_query(genes=genes_data, inverse=inverse, scale=scale, log=log)
         return index, query, gene_names
 
-    def get_distances_cosine(self, index: np.ndarray, query: np.ndarray, inverse: bool, scale: str):
+    @staticmethod
+    def get_distances_cosine(index: np.ndarray, query: np.ndarray, inverse: bool, scale: str) -> np.ndarray:
         """
         Calculate distances (cosine) between expression profiles for each gene pair.
         If inverse was used on minmax scaling distances matrix would not be symmetrical, thus for each unique gene pair
@@ -470,31 +494,36 @@ class Clustering(ABC):
         :param scale: Which scaling was used to prepare the data
         :return:
         """
+        if index.shape != query.shape:
+            raise ValueError('Index and query must be of same dimensions')
+        n_genes = index.shape[0]
+        distance_matrix = [[0] * n_genes for count in range(n_genes)]
         both_directions = False
         if inverse & (scale == 'minmax'):
             both_directions = True
-        for i in range(0, self._n_genes - 1):
-            for q in range(i + 1, self._n_genes):
+        for i in range(0, n_genes - 1):
+            for q in range(i + 1, n_genes):
                 # TODO This might be quicker if pdist from scipy was used when inverse was not needed
                 distance = calc_cosine(data1=index, data2=query, index1=i, index2=q, sim_dist=False,
                                        both_directions=both_directions)
-                self._distance_matrix[i][q] = distance
-                self._distance_matrix[q][i] = distance
+                distance_matrix[i][q] = distance
+                distance_matrix[q][i] = distance
+        return np.array(distance_matrix)
 
-    def get_distance_matrix(self) -> list:
+    def get_distance_matrix(self) -> np.array:
         """
         :return: Distance matrix
         """
         return self._distance_matrix.copy()
 
-    @abstractmethod
     def cluster_sizes(self, splitting: float) -> list:
         """
         Size of each cluster
         :param splitting: how to create clusters
         :return: sizes
         """
-        pass
+        clusters = list(self.get_clusters(splitting=splitting))
+        return list(Counter(clusters).values())
 
     @abstractmethod
     def get_clusters(self, splitting: float) -> np.ndarray:
@@ -514,7 +543,7 @@ class Clustering(ABC):
         :return: Dict keys: cluster, values: list of genes/members
         """
         clusters = self.get_clusters(splitting=splitting)
-        cluster_dict = dict((gene_set, []) for gene_set in range(1, len(clusters)))
+        cluster_dict = dict((gene_set, []) for gene_set in set(clusters))
         for gene, cluster in zip(self._gene_names_ordered, clusters):
             if (filter_genes is None) or (gene in filter_genes):
                 cluster_dict[cluster].append(gene)
@@ -523,6 +552,21 @@ class Clustering(ABC):
                 if len(gene_list) == 0:
                     del cluster_dict[cluster]
         return cluster_dict
+
+    def get_clusters_by_genes(self, splitting: float, filter_genes: iter = None) -> dict:
+        """
+        Get clusters with corresponding members.
+        :param splitting: how to create clusters
+        :param filter_genes: Report only genes (leafs) which are contained in filter_genes. If None use all genes in
+            creation of membership dictionary.
+        :return: Dict keys: cluster, values: list of genes/members
+        """
+        clusters = self.get_clusters(splitting=splitting)
+        gene_dict = dict()
+        for gene, cluster in zip(self._gene_names_ordered, clusters):
+            if (filter_genes is None) or (gene in filter_genes):
+                gene_dict[gene] = cluster
+        return gene_dict
 
     def plot_cluster_sizes(self, splitting: float):
         """
@@ -549,8 +593,7 @@ class HierarchicalClustering(Clustering):
     Performs hierarchical clustering.
     """
 
-    def __init__(self, result: dict, genes: pd.DataFrame, threshold: float, inverse: bool, scale: str = SCALING,
-                 log: bool = LOG):
+    def __init__(self, distance_matrix: np.ndarray, gene_names: list,data: np.ndarray,):
         """
         Prepare distances (cosine)  and gene information data. Use only genes with at least one close neighbour.
         Performs clustering (Ward).
@@ -561,9 +604,9 @@ class HierarchicalClustering(Clustering):
         :param scale: Scale expression data to common scale: 'minmax' from 0 to 1, 'mean0std1' to mean 0 and std 1
         :param log: Log transform data before scaling.
         """
-        super().__init__(result=result, genes=genes, threshold=threshold, inverse=inverse, scale=scale, log=log)
+        super().__init__(distance_matrix=distance_matrix, gene_names=gene_names,data=data)
         upper_index = np.triu_indices(self._n_genes, 1)
-        distances = np.array(self._distance_matrix)[upper_index]
+        distances = self._distance_matrix[upper_index]
         self._hcl = hc.ward(np.array(distances))
 
     def get_clusters(self, splitting: int) -> np.ndarray:
@@ -572,20 +615,76 @@ class HierarchicalClustering(Clustering):
         :param splitting: Height of cutting
         :return: List of cluster memberships over genes
         """
-        return hc.fcluster(self._hcl, t=splitting, criterion='distance')
-
-    def cluster_sizes(self, splitting: int) -> list:
-        """
-        Size of each cluster
-        :param splitting: Height of cutting
-        :return: sizes
-        """
-        clusters = list(self.get_clusters(splitting=splitting))
-        return list(Counter(clusters).values())
+        return hc.fcluster(self._hcl, criterion='distance', **splitting)
 
     def plot_clustering(self, cutting_distance: float):
         dendrogram(Z=self._hcl, color_threshold=cutting_distance, no_labels=True)
         plt.ylabel('Distance')
+
+
+class DBSCANClustering(Clustering):
+
+    def get_clusters(self, splitting: int) -> np.ndarray:
+        """
+        Cluster memberships
+        :param splitting: eps
+        :return: List of cluster memberships over genes
+        """
+        return DBSCAN(metric='precomputed', n_jobs=4, **splitting).fit_predict(self._distance_matrix)
+
+
+class LouvainClustering(Clustering):
+
+    def __init__(self, distance_matrix: np.ndarray, gene_names: list, data: np.ndarray, orange_graph: bool,
+                 trimm: float = 0, closest: int = None):
+        super().__init__(distance_matrix=distance_matrix, gene_names=gene_names, data=data)
+        if orange_graph:
+            self._graph = orange_louvain_graph.matrix_to_knn_graph(data=data, k_neighbors=closest, metric='cosine')
+        else:
+            if closest is None:
+                if trimm < 0:
+                    trimm = 0
+                    warnings.warn('trimm must be non-negative. trimm was set to 0.', Warning)
+                adjacency_matrix = 1 - self._distance_matrix
+                adjacency_matrix[adjacency_matrix < trimm] = 0
+                np.fill_diagonal(adjacency_matrix, 0)
+            else:
+                if closest < 1 or not isinstance(closest, int):
+                    raise ValueError('Closest must be a positive int')
+                adjacency_matrix = np.zeros((self._n_genes, self._n_genes))
+                for row_idx in range(self._n_genes):
+                    sorted_neighbours = np.argsort(self._distance_matrix[row_idx])
+                    top_added = 0
+                    idx_in_top = 0
+                    while top_added < closest:
+                        if idx_in_top > self._n_genes - 1:
+                            raise ValueError('Too many specified neighbours to retain')
+                        idx = sorted_neighbours[idx_in_top]
+                        idx_in_top += 1
+                        if idx != row_idx:
+                            adjacency_matrix[row_idx][idx] = self._distance_matrix[row_idx][idx]
+                            top_added += 1
+            self._graph = nx.from_numpy_matrix(adjacency_matrix)
+
+    def get_clusters(self, splitting: int) -> np.ndarray:
+        """
+        Cluster memberships
+        :param splitting: eps
+        :return: List of cluster memberships over genes
+        """
+        clusters = louvain(graph=self._graph, **splitting)
+        return np.array(list(OrderedDict(sorted(clusters.items())).values()))
+
+
+class GaussianMixtureClustering(Clustering):
+
+    def get_clusters(self, splitting) -> np.ndarray:
+        """
+        Cluster memberships
+        :param splitting: eps
+        :return: List of cluster memberships over genes
+        """
+        return GaussianMixture(**splitting).fit_predict(self._data)
 
 
 class ClusterAnalyser:
@@ -742,7 +841,8 @@ class ClusterAnalyser:
                 del gene_dict[gene]
         self._annotation_dict[ontology] = gene_dict
 
-    def plot_clustering_metrics(self, clustering: Clustering, splittings: list, ontology: tuple = ('KEGG', 'Pathways')):
+    def plot_clustering_metrics(self, clustering: Clustering, splittings: list, x_labs:list=None,
+                                ontology: tuple = ('KEGG', 'Pathways')):
         """
         Analyse different values of splitting parameter used on clustering.
         Plot silhouette values, median cluster size and average cluster-size weighted maximal annotation ratio.
@@ -761,7 +861,9 @@ class ClusterAnalyser:
             n_clusters.append(len(cluster_sizes))
             silhouettes.append(ClusterAnalyser.silhouette(clustering=clustering, splitting=splitting))
             ratios.append(self.annotation_ratio(clustering=clustering, splitting=splitting, ontology=ontology))
-        data = pd.DataFrame({'Splitting parameter': splittings, 'Mean silhouette values': silhouettes,
+        if x_labs is None:
+            x_labs=[list(splitting.values())[0] for splitting in splittings]
+        data = pd.DataFrame({'Splitting parameter': x_labs, 'Mean silhouette values': silhouettes,
                              'Mean max annotation ratio': ratios, 'Median cluster size': median_sizes,
                              'N clusters': n_clusters})
 
@@ -792,11 +894,67 @@ def calc_cosine(data1: np.ndarray, data2: np.ndarray, index1: int, index2: int, 
         return 1 - similarity
 
 
-def plot_tsne(data: pd.DataFrame, perplexity=30, classes=None):
-    tsne = TSNE(perplexity=perplexity, initialization="pca", metric="cosine", n_jobs=8, random_state=3)
-    embedding = tsne.fit(data)
-    x = [x[0] for x in embedding]
-    y = [x[1] for x in embedding]
+# For scaled data: perplexities_range=[5,100],exaggerations=[17,1.6],momentums=[0.6,0.97]
+# For unscaled data: perplexities_range: list = [30, 100], exaggerations: list = [12, 1.5], momentums: list = [0.6, 0.9]
+def make_tsne(data: pd.DataFrame, perplexities_range: list = [5, 100], exaggerations: list = [17, 1.6],
+              momentums: list = [0.6, 0.97]):
+    if len(exaggerations) != len(momentums):
+        raise ValueError('Exagerrations and momenutms list lengths must match')
+    affinities_multiscale_mixture = ot.affinity.Multiscale(data, perplexities=perplexities_range,
+                                                           metric="cosine", n_jobs=8)
+    init = ot.initialization.pca(data)
+    embedding = ot.TSNEEmbedding(init, affinities_multiscale_mixture, negative_gradient_method="fft", n_jobs=8)
+    for exaggeration, momentum in zip(exaggerations, momentums):
+        embedding = embedding.optimize(n_iter=250, exaggeration=exaggeration, momentum=momentum)
+    return embedding
+
+
+def plot_tsne(tsne, classes=None, names=None, legend: bool = False,plotting_params:dict={'s':1}):
+    x = [x[0] for x in tsne]
+    y = [x[1] for x in tsne]
     if classes is None:
-        classes = [0] * embedding.shape[0]
-    plt.scatter(x, y, c=classes, s=1)
+        plt.scatter(x, y, s=1, alpha=0.5,**plotting_params)
+    else:
+        if names is not None and isinstance(classes, dict):
+            classes_extended = []
+            for name in names:
+                if name in classes.keys():
+                    classes_extended.append(classes[name])
+                else:
+                    classes_extended.append('NaN')
+            classes = classes_extended
+        if len(classes) != len(tsne):
+            raise ValueError('Len classes must match len tsne or classes must be dict and names must be provided')
+        class_names = set(classes)
+        all_colours = ['#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#46f0f0', '#f032e6',
+                       '#bcf60c',
+                       '#fabebe', '#008080', '#e6beff', '#9a6324', '#fffac8', '#800000', '#aaffc3', '#808000',
+                       '#ffd8b1',
+                       '#000075', '#808080', '#000000']
+        all_colours = all_colours * (len(class_names) // len(all_colours) + 1)
+        selected_colours = random.sample(all_colours, len(class_names))
+        # colour_idx = range(len(class_names))
+        colour_dict = dict(zip(class_names, selected_colours))
+        class_dict = dict((class_name, {'x': [], 'y': [], 'c': []}) for class_name in class_names)
+        for x_pos, y_pos, class_name in zip(x, y, classes):
+            class_dict[class_name]['x'].append(x_pos)
+            class_dict[class_name]['y'].append(y_pos)
+            class_dict[class_name]['c'].append(colour_dict[class_name])
+
+        fig = plt.figure()
+        ax = plt.subplot(111)
+
+        for class_name, data in class_dict.items():
+            if isinstance(list(plotting_params.values())[0],dict):
+                plotting_param=plotting_params[class_name]
+            else:
+                plotting_param=plotting_params
+            ax.scatter(data['x'], data['y'], c=data['c'],  label=class_name, **plotting_param)
+        if legend:
+            box = ax.get_position()
+            ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
+            legend=plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+            for handle in legend.legendHandles:
+                handle._sizes=[10]
+                handle.set_alpha(1)
+
