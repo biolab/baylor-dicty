@@ -22,6 +22,7 @@ from sklearn.mixture import GaussianMixture
 import Orange.clustering.louvain as orange_louvain_graph
 from orangecontrib.bioinformatics.ncbi.gene import GeneMatcher
 from orangecontrib.bioinformatics.geneset.__init__ import (list_all, load_gene_sets)
+import orangecontrib.bioinformatics.go as go
 
 from correlation_enrichment.library import GeneExpression, SimilarityCalculator
 
@@ -110,7 +111,7 @@ class NeighbourCalculator:
         return self.parse_neighbours(neighbours=neighbours, distances=distances)
 
     @classmethod
-    def get_index_query(cls, genes: pd.DataFrame, inverse: bool, scale: str=SCALING, log: bool=LOG) -> tuple:
+    def get_index_query(cls, genes: pd.DataFrame, inverse: bool, scale: str = SCALING, log: bool = LOG) -> tuple:
         """
         Get gene data scaled to be index or query for neighbour search.
         :param genes: Gene data for index and query.
@@ -451,8 +452,8 @@ class Clustering(ABC):
         return cls(distance_matrix=distance_matrix, gene_names=gene_names, data=data)
 
     @staticmethod
-    def get_clustering_data(result: dict, genes: pd.DataFrame, threshold: float, inverse: bool, scale: str=SCALING,
-                            log: bool=LOG):
+    def get_clustering_data(result: dict, genes: pd.DataFrame, threshold: float, inverse: bool, scale: str = SCALING,
+                            log: bool = LOG):
         index, query, gene_names = Clustering.get_genes(result=result, genes=genes, threshold=threshold,
                                                         inverse=inverse,
                                                         scale=scale, log=log)
@@ -577,14 +578,15 @@ class Clustering(ABC):
         plt.xlabel('Cluster size')
         plt.ylabel('Cluster count')
 
-    def save_clusters(self, splitting: float, file: str):
+    def save_clusters(self, splitting, file: str):
         """
         Save gene names with corresponding cluster number in tsv.
         :param splitting: how to create clusters
         :param file: File name
         """
-        clusters = self.get_clusters(splitting=splitting)
-        data = pd.DataFrame({'genes': list(self._gene_names_ordered), 'cluster': list(clusters)})
+        clusters = self.get_clusters_by_genes(splitting=splitting)
+        clusters=OrderedDict(clusters)
+        data = pd.DataFrame({'genes': clusters.keys(), 'cluster': clusters.values()})
         data.to_csv(file, sep='\t', index=False)
 
 
@@ -593,7 +595,7 @@ class HierarchicalClustering(Clustering):
     Performs hierarchical clustering.
     """
 
-    def __init__(self, distance_matrix: np.ndarray, gene_names: list,data: np.ndarray,):
+    def __init__(self, distance_matrix: np.ndarray, gene_names: list, data: np.ndarray, ):
         """
         Prepare distances (cosine)  and gene information data. Use only genes with at least one close neighbour.
         Performs clustering (Ward).
@@ -604,7 +606,7 @@ class HierarchicalClustering(Clustering):
         :param scale: Scale expression data to common scale: 'minmax' from 0 to 1, 'mean0std1' to mean 0 and std 1
         :param log: Log transform data before scaling.
         """
-        super().__init__(distance_matrix=distance_matrix, gene_names=gene_names,data=data)
+        super().__init__(distance_matrix=distance_matrix, gene_names=gene_names, data=data)
         upper_index = np.triu_indices(self._n_genes, 1)
         distances = self._distance_matrix[upper_index]
         self._hcl = hc.ward(np.array(distances))
@@ -688,11 +690,89 @@ class GaussianMixtureClustering(Clustering):
 
 
 class ClusterAnalyser:
+
+    def __init__(self, genes: pd.DataFrame, conditions: pd.DataFrame, organism: int, average_data_by,
+                 split_data_by ,matching):
+        self._names_entrez = name_genes_entrez(gene_names=genes.index, organism=organism, key_entrez=False)
+        self._organism = organism
+        self._average_by = average_data_by
+        self._split_by = split_data_by
+        self._data = self.preprocess_data(genes=genes, conditions=conditions, split_by=split_data_by,
+                                          average_by=average_data_by,matching=matching)
+
+    @staticmethod
+    def preprocess_data(genes: pd.DataFrame, conditions: pd.DataFrame, split_by, average_by,matching):
+        conditions=conditions.copy()
+        conditions.index=conditions[matching]
+        merged=pd.concat([genes.T,conditions],axis=1)
+        splitted = ClusterAnalyser.split_data(data=merged, split_by=split_by)
+
+        data_processed = {}
+        for split, data in splitted.items():
+            averaged = ClusterAnalyser.average_data(data=data, average_by=average_by)
+            data_processed[split] = averaged.T
+        return data_processed
+
+    @staticmethod
+    def split_data(data:pd.DataFrame, split_by: str):
+        data_splitted={}
+        groupped=data.groupby(by=split_by)
+        for group in groupped.groups.keys():
+            data_splitted[group]=(groupped.get_group(group))
+        return data_splitted
+
+    #Eg. by time if want to average for all replicates as applied after splitting
+    @staticmethod
+    def average_data(data:pd.DataFrame, average_by: str):
+        return data.groupby(average_by).mean()
+
+    def cluster_enrichment(self, gene_names: list, **enrichment_args):
+        entrez_ids = self.get_entrez_from_storage(gene_names=gene_names)
+        enriched = self.enrichment(entrez_ids=entrez_ids, organism=self._organism, **enrichment_args)
+        return enriched
+
+    def get_entrez_from_storage(self, gene_names: list):
+        entrez_ids = []
+        for name in gene_names:
+            if name in self._names_entrez.keys():
+                entrez_ids.append(self._names_entrez[name])
+        return entrez_ids
+
+    @staticmethod
+    def enrichment(entrez_ids: list, organism: int, fdr=0.25, slims: bool = True, aspect: str = None):
+        """
+
+        :param entrez_ids: entrez IDs of gene group to be analysed for enrichemnt
+        :param organism: organism ID
+        :param fdr: For retention of enriched gene sets
+        :param slims: From Orange Annotations
+        :param aspect: Which GO aspect to use. From Orange Annotations: None: all, 'Process', 'Function', 'Component'
+        :return:
+        """
+        anno = go.Annotations(organism)
+        enrichment = anno.get_enriched_terms(entrez_ids, slims_only=slims, aspect=aspect)
+        filtered = go.filter_by_p_value(enrichment, fdr)
+        enriched_data = dict()
+        for go_id, data in filtered.items():
+            terms = anno.get_annotations_by_go_id(go_id)
+            for term in terms:
+                if term.go_id == go_id:
+                    padj = data[1]
+                    enriched_data[term.go_term] = padj
+                    break
+        return enriched_data
+
+    def plot_profiles(self, gene_names: list):
+
+
+
+class ClusteringAnalyser:
     """
     Analyse clustering result.
     """
 
-    def __init__(self, gene_names: list, organism: int = 44689, max_set_size: int = 100, min_set_size: int = 2):
+    def __init__(self, gene_names: list, organism: int = 44689, max_set_size: int = 100, min_set_size: int = 2,
+                 cluster_analyser: ClusterAnalyser = None):
         """
         :param gene_names: list of gene names (leafs in clustering) for which GO/KEGG annotations will be computed
         :param organism: Organism ID
@@ -700,25 +780,12 @@ class ClusterAnalyser:
         :param min_set_size: Min GO/KEGG set size to include in evaluation of clusters
         """
         self._organism = organism
-        self._entrez_names = dict()
         self._max_set_size = max_set_size
         self._min_set_size = min_set_size
         self._annotation_dict = dict((gene_set, None) for gene_set in list_all(organism=str(self._organism)))
 
-        self.name_genes_entrez(gene_names=gene_names)
-
-    def name_genes_entrez(self, gene_names):
-        """
-        Add entrez id to each gene name
-        :param gene_names: Gene names (eg. from dictyBase)
-        """
-        matcher = GeneMatcher(self._organism)
-        matcher.genes = gene_names
-        for gene in matcher.genes:
-            name = gene.input_identifier
-            entrez = gene.gene_id
-            if entrez is not None:
-                self._entrez_names[entrez] = name
+        self._entrez_names = name_genes_entrez(gene_names=gene_names, organism=self._organism, key_entrez=True)
+        self.cluster_analyser = cluster_analyser
 
     def available_annotations(self) -> list:
         """
@@ -841,7 +908,7 @@ class ClusterAnalyser:
                 del gene_dict[gene]
         self._annotation_dict[ontology] = gene_dict
 
-    def plot_clustering_metrics(self, clustering: Clustering, splittings: list, x_labs:list=None,
+    def plot_clustering_metrics(self, clustering: Clustering, splittings: list, x_labs: list = None,
                                 ontology: tuple = ('KEGG', 'Pathways')):
         """
         Analyse different values of splitting parameter used on clustering.
@@ -859,16 +926,54 @@ class ClusterAnalyser:
             cluster_sizes = clustering.cluster_sizes(splitting=splitting)
             median_sizes.append(median(cluster_sizes))
             n_clusters.append(len(cluster_sizes))
-            silhouettes.append(ClusterAnalyser.silhouette(clustering=clustering, splitting=splitting))
+            silhouettes.append(ClusteringAnalyser.silhouette(clustering=clustering, splitting=splitting))
             ratios.append(self.annotation_ratio(clustering=clustering, splitting=splitting, ontology=ontology))
         if x_labs is None:
-            x_labs=[list(splitting.values())[0] for splitting in splittings]
+            x_labs = [list(splitting.values())[0] for splitting in splittings]
         data = pd.DataFrame({'Splitting parameter': x_labs, 'Mean silhouette values': silhouettes,
                              'Mean max annotation ratio': ratios, 'Median cluster size': median_sizes,
                              'N clusters': n_clusters})
 
         pandas_multi_y_plot(data=data, x_col='Splitting parameter', y_cols=None, adjust_right_border=0.35)
         return data
+
+    def plot_expression(self):
+        fig1, ax = plt.subplots()
+        ax.plot(range(10))
+        fig2 = plt.figure()
+
+    def move_subplots(self,fig1,fig2,subplots,locations):
+        for ax,location in zip(subplots,locations):
+            ax.remove()
+            ax.figure = fig2
+            fig2.axes.append(ax)
+            fig2.add_axes(ax)
+            dummy = fig2.add_subplot(location)
+            ax.set_position(dummy.get_position())
+            dummy.remove()
+            plt.close(fig1)
+
+
+def name_genes_entrez(gene_names: list, organism: int, key_entrez: bool) -> dict:
+    """
+    Add entrez id to each gene name
+    :param gene_names: Gene names (eg. from dictyBase)
+    :param organism: organism ID
+    :param key_entrez: True: Entrez IDs as keys and names as values, False: vice versa
+    :return: Dict of gene names and matching Entres IDs for genes that have Entrez ID
+    """
+    entrez_names = dict()
+    matcher = GeneMatcher(organism)
+    matcher.genes = gene_names
+    for gene in matcher.genes:
+        name = gene.input_identifier
+        entrez = gene.gene_id
+        if entrez is not None:
+            if key_entrez:
+                entrez_names[entrez] = name
+            else:
+                entrez_names[name] = entrez
+    return entrez_names
 
 
 def calc_cosine(data1: np.ndarray, data2: np.ndarray, index1: int, index2: int, sim_dist: bool,
@@ -909,11 +1014,11 @@ def make_tsne(data: pd.DataFrame, perplexities_range: list = [5, 100], exaggerat
     return embedding
 
 
-def plot_tsne(tsne, classes=None, names=None, legend: bool = False,plotting_params:dict={'s':1}):
+def plot_tsne(tsne, classes=None, names=None, legend: bool = False, plotting_params: dict = {'s': 1}):
     x = [x[0] for x in tsne]
     y = [x[1] for x in tsne]
     if classes is None:
-        plt.scatter(x, y, s=1, alpha=0.5,**plotting_params)
+        plt.scatter(x, y, s=1, alpha=0.5, **plotting_params)
     else:
         if names is not None and isinstance(classes, dict):
             classes_extended = []
@@ -945,16 +1050,15 @@ def plot_tsne(tsne, classes=None, names=None, legend: bool = False,plotting_para
         ax = plt.subplot(111)
 
         for class_name, data in class_dict.items():
-            if isinstance(list(plotting_params.values())[0],dict):
-                plotting_param=plotting_params[class_name]
+            if isinstance(list(plotting_params.values())[0], dict):
+                plotting_param = plotting_params[class_name]
             else:
-                plotting_param=plotting_params
-            ax.scatter(data['x'], data['y'], c=data['c'],  label=class_name, **plotting_param)
+                plotting_param = plotting_params
+            ax.scatter(data['x'], data['y'], c=data['c'], label=class_name, **plotting_param)
         if legend:
             box = ax.get_position()
             ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
-            legend=plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+            legend = plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
             for handle in legend.legendHandles:
-                handle._sizes=[10]
+                handle._sizes = [10]
                 handle.set_alpha(1)
-

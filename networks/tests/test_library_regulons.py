@@ -276,7 +276,7 @@ class TestClusterAnalyser(unittest.TestCase):
 
     hcl = HierarchicalClustering(result=result, genes=genes, threshold=threshold, inverse=False,
                                  scale='minmax', log=False)
-    ca = ClusterAnalyser(gene_names=gene_names, organism=44689, max_set_size=max_set_size, min_set_size=min_set_size)
+    ca = ClusteringAnalyser(gene_names=gene_names, organism=44689, max_set_size=max_set_size, min_set_size=min_set_size)
 
     # TODO test init for correct passing/saving of arguments
 

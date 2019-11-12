@@ -351,14 +351,14 @@ batches = None
 neighbour_calculator = NeighbourCalculator(genes)
 result = neighbour_calculator.neighbours(neighbours_n, inverse=False, scale=scale, log=use_log, batches=batches)
 result_inv = neighbour_calculator.neighbours(neighbours_n, inverse=True, scale=scale, log=use_log, batches=batches)
-hcl = HierarchicalClustering(result, genes, threshold, inverse=False, scale=scale, log=use_log)
-hcl_inv=HierarchicalClustering(result_inv,genes,threshold,inverse=True,scale=scale,log=use_log)
+hcl = HierarchicalClustering.from_knn_result(result, genes, threshold, inverse=False, scale=scale, log=use_log)
+hcl_inv=HierarchicalClustering.from_knn_result(result_inv,genes,threshold,inverse=True,scale=scale,log=use_log)
 
 hcl_gene_data=genes.loc[hcl._gene_names_ordered,:]
 
 dendrogram(hcl_inv._hcl)
 
-ca=ClusterAnalyser(genes.index)
+ca=ClusteringAnalyser(genes.index)
 silhouettes = []
 median_sizes = []
 entropy=[]
@@ -366,7 +366,7 @@ ratios=[]
 n_clusters = list(range(3, 60, 6))
 for n in n_clusters:
     median_sizes.append(median(hcl.cluster_sizes(n)))
-    silhouettes.append(ClusterAnalyser.silhouette(hcl, n))
+    silhouettes.append(ClusteringAnalyser.silhouette(hcl, n))
     entropy.append(ca.annotation_entropy(hcl,n,('KEGG', 'Pathways')))
     ratios.append(ca.annotation_ratio(hcl, n, ('KEGG', 'Pathways')))
 
