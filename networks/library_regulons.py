@@ -517,15 +517,6 @@ class Clustering(ABC):
         """
         return self._distance_matrix.copy()
 
-    def cluster_sizes(self, splitting: float) -> list:
-        """
-        Size of each cluster
-        :param splitting: how to create clusters
-        :return: sizes
-        """
-        clusters = list(self.get_clusters(splitting=splitting))
-        return list(Counter(clusters).values())
-
     @abstractmethod
     def get_clusters(self, splitting: float) -> np.ndarray:
         """
@@ -535,7 +526,17 @@ class Clustering(ABC):
         """
         pass
 
-    def get_genes_by_clusters(self, splitting: float, filter_genes: iter = None) -> dict:
+    def cluster_sizes(self, splitting: float = None, clusters=None) -> list:
+        """
+        Size of each cluster
+        :param splitting: how to create clusters
+        :return: sizes
+        """
+        if clusters is None:
+            clusters = list(self.get_clusters(splitting=splitting))
+        return list(Counter(clusters).values())
+
+    def get_genes_by_clusters(self, splitting: float = None, filter_genes: iter = None, clusters=None) -> dict:
         """
         Get clusters with corresponding members.
         :param splitting: how to create clusters
@@ -543,7 +544,8 @@ class Clustering(ABC):
             creation of membership dictionary.
         :return: Dict keys: cluster, values: list of genes/members
         """
-        clusters = self.get_clusters(splitting=splitting)
+        if clusters is None:
+            clusters = self.get_clusters(splitting=splitting)
         cluster_dict = dict((gene_set, []) for gene_set in set(clusters))
         for gene, cluster in zip(self._gene_names_ordered, clusters):
             if (filter_genes is None) or (gene in filter_genes):
@@ -554,7 +556,7 @@ class Clustering(ABC):
                     del cluster_dict[cluster]
         return cluster_dict
 
-    def get_clusters_by_genes(self, splitting: float, filter_genes: iter = None) -> dict:
+    def get_clusters_by_genes(self, splitting: float = None, filter_genes: iter = None, clusters=None) -> dict:
         """
         Get clusters with corresponding members.
         :param splitting: how to create clusters
@@ -562,30 +564,35 @@ class Clustering(ABC):
             creation of membership dictionary.
         :return: Dict keys: cluster, values: list of genes/members
         """
-        clusters = self.get_clusters(splitting=splitting)
+        if clusters is None:
+            clusters = self.get_clusters(splitting=splitting)
         gene_dict = dict()
         for gene, cluster in zip(self._gene_names_ordered, clusters):
             if (filter_genes is None) or (gene in filter_genes):
                 gene_dict[gene] = cluster
         return gene_dict
 
-    def plot_cluster_sizes(self, splitting: float):
+    def plot_cluster_sizes(self, splitting: float = None, clusters=None):
         """
         Distribution of cluster sizes
         :param splitting: how to create clusters
          """
-        plt.hist(self.cluster_sizes(splitting=splitting), bins=100)
+        if clusters is None:
+            clusters = self.get_clusters(splitting=splitting)
+        sizes = self.cluster_sizes(clusters=clusters)
+        plt.hist(sizes, bins=100)
         plt.xlabel('Cluster size')
         plt.ylabel('Cluster count')
 
-    def save_clusters(self, splitting, file: str):
+    def save_clusters(self, file: str, splitting=None, clusters=None):
         """
         Save gene names with corresponding cluster number in tsv.
         :param splitting: how to create clusters
         :param file: File name
         """
-        clusters = self.get_clusters_by_genes(splitting=splitting)
-        clusters=OrderedDict(clusters)
+        if clusters is None:
+            clusters = self.get_clusters_by_genes(splitting=splitting)
+        clusters = OrderedDict(clusters)
         data = pd.DataFrame({'genes': clusters.keys(), 'cluster': clusters.values()})
         data.to_csv(file, sep='\t', index=False)
 
@@ -692,19 +699,19 @@ class GaussianMixtureClustering(Clustering):
 class ClusterAnalyser:
 
     def __init__(self, genes: pd.DataFrame, conditions: pd.DataFrame, organism: int, average_data_by,
-                 split_data_by ,matching):
+                 split_data_by, matching):
         self._names_entrez = name_genes_entrez(gene_names=genes.index, organism=organism, key_entrez=False)
         self._organism = organism
         self._average_by = average_data_by
         self._split_by = split_data_by
         self._data = self.preprocess_data(genes=genes, conditions=conditions, split_by=split_data_by,
-                                          average_by=average_data_by,matching=matching)
+                                          average_by=average_data_by, matching=matching)
 
     @staticmethod
-    def preprocess_data(genes: pd.DataFrame, conditions: pd.DataFrame, split_by, average_by,matching):
-        conditions=conditions.copy()
-        conditions.index=conditions[matching]
-        merged=pd.concat([genes.T,conditions],axis=1)
+    def preprocess_data(genes: pd.DataFrame, conditions: pd.DataFrame, split_by, average_by, matching):
+        conditions = conditions.copy()
+        conditions.index = conditions[matching]
+        merged = pd.concat([genes.T, conditions], axis=1)
         splitted = ClusterAnalyser.split_data(data=merged, split_by=split_by)
 
         data_processed = {}
@@ -714,16 +721,16 @@ class ClusterAnalyser:
         return data_processed
 
     @staticmethod
-    def split_data(data:pd.DataFrame, split_by: str):
-        data_splitted={}
-        groupped=data.groupby(by=split_by)
+    def split_data(data: pd.DataFrame, split_by: str):
+        data_splitted = {}
+        groupped = data.groupby(by=split_by)
         for group in groupped.groups.keys():
-            data_splitted[group]=(groupped.get_group(group))
+            data_splitted[group] = (groupped.get_group(group))
         return data_splitted
 
-    #Eg. by time if want to average for all replicates as applied after splitting
+    # Eg. by time if want to average for all replicates as applied after splitting
     @staticmethod
-    def average_data(data:pd.DataFrame, average_by: str):
+    def average_data(data: pd.DataFrame, average_by: str):
         return data.groupby(average_by).mean()
 
     def cluster_enrichment(self, gene_names: list, **enrichment_args):
@@ -762,8 +769,8 @@ class ClusterAnalyser:
                     break
         return enriched_data
 
-   # def plot_profiles(self, gene_names: list):
 
+# def plot_profiles(self, gene_names: list):
 
 
 class ClusteringAnalyser:
@@ -937,13 +944,34 @@ class ClusteringAnalyser:
         pandas_multi_y_plot(data=data, x_col='Splitting parameter', y_cols=None, adjust_right_border=0.35)
         return data
 
+    def analyse_clustering(self, clustering: Clustering, splittings,tsne_data,**tsne_plot):
+        clusters = clustering.get_clusters(splittings=splittings)
+        genes_by_cluster = clustering.get_genes_by_clusters(clusters=clusters)
+        clusters_by_genes = clustering.get_clusters_by_genes(clusters=clusters)
+        tsne_clusters = {'classes': clusters_by_genes}
+        plot_tsne(**{**tsne_data, **tsne_plot, **tsne_clusters})
+        data = []
+        for cluster, members in genes_by_cluster.items():
+            data['cluster'] = cluster
+            data['size'] = len(members)
+            enriched = self.cluster_analyser.cluster_enrichment(gene_names=members)
+            enriched = self.parse_dict(dictionary=enriched)
+            data['enriched']=enriched
+        return data
+
+    def parse_dict(self, dictionary, sep_item: str = '\n'):
+        parsed = ''
+        for k, v in dictionary.items():
+            parsed += k + ': ' + sep_item
+        return parsed
+
     def plot_expression(self):
         fig1, ax = plt.subplots()
         ax.plot(range(10))
         fig2 = plt.figure()
 
-    def move_subplots(self,fig1,fig2,subplots,locations):
-        for ax,location in zip(subplots,locations):
+    def move_subplots(self, fig1, fig2, subplots, locations):
+        for ax, location in zip(subplots, locations):
             ax.remove()
             ax.figure = fig2
             fig2.axes.append(ax)
@@ -1062,3 +1090,7 @@ def plot_tsne(tsne, classes=None, names=None, legend: bool = False, plotting_par
             for handle in legend.legendHandles:
                 handle._sizes = [10]
                 handle.set_alpha(1)
+
+
+def make_tsne_data(tsne, names):
+    return {'tsne': tsne, 'names': names}
