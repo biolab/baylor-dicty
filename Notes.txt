@@ -222,3 +222,7 @@ and gtaI_bio2_12hr (MSE count,RPKUM).
 Boxplots: Expression of gtaI_bio1_20hr has one highly expressed gene, but otherwise seems normal.
 Expression of gtaI_bio2_12hr seems normal.
 Thus none of them were excluded.
+****************************
+Regulons: closest neighbours scaling: minmax+inverse:
+The result can be different based on which vector is inversed.
+Could not find a way to solve this thus used average.
