@@ -762,7 +762,7 @@ class ClusterAnalyser:
                     break
         return enriched_data
 
-    def plot_profiles(self, gene_names: list):
+   # def plot_profiles(self, gene_names: list):
 
 
 
