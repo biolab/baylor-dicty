@@ -461,8 +461,8 @@ class Clustering(ABC):
         return distance_matrix, gene_names, np.array(index)
 
     @staticmethod
-    def get_genes(result: dict, genes: pd.DataFrame, threshold: float, inverse: bool, scale: str,
-                  log: bool) -> tuple:
+    def get_genes(result: dict, genes: pd.DataFrame, threshold: float, inverse: bool, scale: str = SCALING,
+                  log: bool = LOG, return_query: bool = True) -> tuple:
         """
         Prepare gene data for distance calculation.
         :param result: Closest neighbours result.
@@ -481,7 +481,10 @@ class Clustering(ABC):
         genes_data = genes.loc[genes_filtered, :]
         gene_names = list(genes_data.index)
         index, query = NeighbourCalculator.get_index_query(genes=genes_data, inverse=inverse, scale=scale, log=log)
-        return index, query, gene_names
+        if return_query:
+            return index, query, gene_names
+        else:
+            return index, gene_names
 
     @staticmethod
     def get_distances_cosine(index: np.ndarray, query: np.ndarray, inverse: bool, scale: str) -> np.ndarray:
@@ -591,9 +594,11 @@ class Clustering(ABC):
         :param file: File name
         """
         if clusters is None:
-            clusters = self.get_clusters_by_genes(splitting=splitting)
-        clusters = OrderedDict(clusters)
-        data = pd.DataFrame({'genes': clusters.keys(), 'cluster': clusters.values()})
+            clusters_named = self.get_clusters_by_genes(splitting=splitting)
+        else:
+            clusters_named = self.get_clusters_by_genes(clusters=clusters)
+        clusters_named = OrderedDict(clusters_named)
+        data = pd.DataFrame({'genes': list(clusters_named.keys()), 'cluster': list(clusters_named.values())})
         data.to_csv(file, sep='\t', index=False)
 
 
@@ -675,6 +680,10 @@ class LouvainClustering(Clustering):
                             top_added += 1
             self._graph = nx.from_numpy_matrix(adjacency_matrix)
 
+    @classmethod
+    def from_orange_graph(cls, data: np.ndarray, gene_names: list, neighbours: int = 40):
+        return cls(distance_matrix=None, gene_names=gene_names, data=data, orange_graph=True, closest=neighbours)
+
     def get_clusters(self, splitting: int) -> np.ndarray:
         """
         Cluster memberships
@@ -746,7 +755,7 @@ class ClusterAnalyser:
         return entrez_ids
 
     @staticmethod
-    def enrichment(entrez_ids: list, organism: int, fdr=0.25, slims: bool = True, aspect: str = None):
+    def enrichment(entrez_ids: list, organism: int, fdr=0.25, slims: bool = True, aspect: str = None) -> OrderedDict:
         """
 
         :param entrez_ids: entrez IDs of gene group to be analysed for enrichemnt
@@ -754,7 +763,7 @@ class ClusterAnalyser:
         :param fdr: For retention of enriched gene sets
         :param slims: From Orange Annotations
         :param aspect: Which GO aspect to use. From Orange Annotations: None: all, 'Process', 'Function', 'Component'
-        :return:
+        :return: Dict: key Go term, value FDR. Sorted by FDR ascendingly.
         """
         anno = go.Annotations(organism)
         enrichment = anno.get_enriched_terms(entrez_ids, slims_only=slims, aspect=aspect)
@@ -767,10 +776,41 @@ class ClusterAnalyser:
                     padj = data[1]
                     enriched_data[term.go_term] = padj
                     break
+        enriched_data = OrderedDict(sorted(enriched_data.items(), key=lambda x: x[1]))
         return enriched_data
 
+    def plot_profiles(self, gene_names: list, fig=None, rows: int = 1, row: int = 1, row_label: str = None):
+        if fig is None:
+            fig = plt.figure()
+        n_subplots = len(self._data)
+        fig.set_size_inches(n_subplots * 2, rows * 4)
+        subplots = []
+        subplot_counter = 1
+        for data_name, data_sub in self._data.items():
+            ax = fig.add_subplot(rows, n_subplots, n_subplots * (row - 1) + subplot_counter)
+            if row_label is not None and subplot_counter == 1:
+                ax.set_ylabel(row_label, rotation=0)
+            subplot_counter += 1
+            subplots.append(ax)
+            ax.set_title(data_name, fontdict={'fontsize': 8})
+            ax.tick_params(axis="x", labelsize=8)
+            ax.tick_params(axis="y", labelsize=6)
+            # If y axis ticks are to be removed
+            #ax.tick_params(axis='y', which='both', length=0)
+            #plt.setp(ax.get_yticklabels(), visible=False)
+            data_genes = data_sub.loc[gene_names, :]
+            x = data_genes.columns
+            ax.set_xlim([min(x), max(x)])
+            y_median = log_transform_series(data_genes.median())
+            for gene_data in data_genes.iterrows():
+                y = log_transform_series(gene_data[1])
+                ax.plot(x, y, alpha=0.3, c='gray')
+            ax.plot(x, y_median, c='black')
+        return fig, subplots
 
-# def plot_profiles(self, gene_names: list):
+
+def log_transform_series(series):
+    return np.log10(series.to_numpy() + 1)
 
 
 class ClusteringAnalyser:
@@ -944,42 +984,37 @@ class ClusteringAnalyser:
         pandas_multi_y_plot(data=data, x_col='Splitting parameter', y_cols=None, adjust_right_border=0.35)
         return data
 
-    def analyse_clustering(self, clustering: Clustering, splittings,tsne_data,**tsne_plot):
-        clusters = clustering.get_clusters(splittings=splittings)
+    def analyse_clustering(self, clustering: Clustering, tsne_data, tsne_plot=None, clusters=None, splitting=None):
+        if splitting is None and clusters is None:
+            raise ValueError('Either splitting or clusters must be given')
+        if clusters is None:
+            clusters = clustering.get_clusters(splitting=splitting)
         genes_by_cluster = clustering.get_genes_by_clusters(clusters=clusters)
         clusters_by_genes = clustering.get_clusters_by_genes(clusters=clusters)
         tsne_clusters = {'classes': clusters_by_genes}
-        plot_tsne(**{**tsne_data, **tsne_plot, **tsne_clusters})
+        plot_tsne(**{**tsne_data, 'legend': True, 'plotting_params': tsne_plot, **tsne_clusters})
         data = []
+        fig = plt.figure()
+        subsets = len(genes_by_cluster)
+        subset_count = 1
         for cluster, members in genes_by_cluster.items():
-            data['cluster'] = cluster
-            data['size'] = len(members)
+            data_cluster = dict()
+            data_cluster['cluster'] = cluster
+            data_cluster['size'] = len(members)
             enriched = self.cluster_analyser.cluster_enrichment(gene_names=members)
             enriched = self.parse_dict(dictionary=enriched)
-            data['enriched']=enriched
-        return data
+            data_cluster['enriched FDR'] = enriched
+            data.append(data_cluster)
+            self.cluster_analyser.plot_profiles(gene_names=members, fig=fig, rows=subsets, row=subset_count,
+                                                row_label=str(cluster))
+            subset_count += 1
+        return pd.DataFrame(data), clusters_by_genes
 
     def parse_dict(self, dictionary, sep_item: str = '\n'):
         parsed = ''
         for k, v in dictionary.items():
-            parsed += k + ': ' + sep_item
+            parsed += str(k) + ': ' + str(v) + sep_item
         return parsed
-
-    def plot_expression(self):
-        fig1, ax = plt.subplots()
-        ax.plot(range(10))
-        fig2 = plt.figure()
-
-    def move_subplots(self, fig1, fig2, subplots, locations):
-        for ax, location in zip(subplots, locations):
-            ax.remove()
-            ax.figure = fig2
-            fig2.axes.append(ax)
-            fig2.add_axes(ax)
-            dummy = fig2.add_subplot(location)
-            ax.set_position(dummy.get_position())
-            dummy.remove()
-            plt.close(fig1)
 
 
 def name_genes_entrez(gene_names: list, organism: int, key_entrez: bool) -> dict:
@@ -1030,11 +1065,11 @@ def calc_cosine(data1: np.ndarray, data2: np.ndarray, index1: int, index2: int, 
 # For scaled data: perplexities_range=[5,100],exaggerations=[17,1.6],momentums=[0.6,0.97]
 # For unscaled data: perplexities_range: list = [30, 100], exaggerations: list = [12, 1.5], momentums: list = [0.6, 0.9]
 def make_tsne(data: pd.DataFrame, perplexities_range: list = [5, 100], exaggerations: list = [17, 1.6],
-              momentums: list = [0.6, 0.97]):
+              momentums: list = [0.6, 0.97], random_state=0):
     if len(exaggerations) != len(momentums):
         raise ValueError('Exagerrations and momenutms list lengths must match')
     affinities_multiscale_mixture = ot.affinity.Multiscale(data, perplexities=perplexities_range,
-                                                           metric="cosine", n_jobs=8)
+                                                           metric="cosine", n_jobs=8, random_state=random_state)
     init = ot.initialization.pca(data)
     embedding = ot.TSNEEmbedding(init, affinities_multiscale_mixture, negative_gradient_method="fft", n_jobs=8)
     for exaggeration, momentum in zip(exaggerations, momentums):

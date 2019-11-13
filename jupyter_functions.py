@@ -1,5 +1,6 @@
 import random
 from networks.library_regulons import *
+from IPython.core.display import HTML,display
 
 def sample_from_list(available,sample1:int):
     """
@@ -45,3 +46,6 @@ def obtained_genes_by_n_neighbours(neighbour_calculator:NeighbourCalculator, nei
                 {'n_neighbours': n_neighbours, 'threshold': threshold, 'intersect': in_both, 'unique_smaller': in_smaller,
                  'unique_larger': in_larger})
     return pd.DataFrame(results)
+
+def display_newline_df(df:pd.DataFrame):
+    return display( HTML( df.to_html(index=False).replace("\\n","<br>") ) )
