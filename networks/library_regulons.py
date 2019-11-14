@@ -1002,7 +1002,7 @@ class ClusteringAnalyser:
             data_cluster['cluster'] = cluster
             data_cluster['size'] = len(members)
             enriched = self.cluster_analyser.cluster_enrichment(gene_names=members)
-            enriched = self.parse_dict(dictionary=enriched)
+            enriched = self.parse_enrichment_dict(dictionary=enriched)
             data_cluster['enriched FDR'] = enriched
             data.append(data_cluster)
             self.cluster_analyser.plot_profiles(gene_names=members, fig=fig, rows=subsets, row=subset_count,
@@ -1010,10 +1010,10 @@ class ClusteringAnalyser:
             subset_count += 1
         return pd.DataFrame(data), clusters_by_genes
 
-    def parse_dict(self, dictionary, sep_item: str = '\n'):
+    def parse_enrichment_dict(self, dictionary, sep_item: str = '\n'):
         parsed = ''
         for k, v in dictionary.items():
-            parsed += str(k) + ': ' + str(v) + sep_item
+            parsed += k + ': ' + "{:.3E}".format(v) + sep_item
         return parsed
 
 
@@ -1129,3 +1129,12 @@ def plot_tsne(tsne, classes=None, names=None, legend: bool = False, plotting_par
 
 def make_tsne_data(tsne, names):
     return {'tsne': tsne, 'names': names}
+
+
+def preprocess_for_Orange(genes: pd.DataFrame, threshold: float,  scale: str = SCALING,
+                  log: bool = LOG):
+    neighbour_calculator = NeighbourCalculator(genes)
+    result = neighbour_calculator.neighbours(n_neighbours=2, inverse=False, scale=scale, log=log, batches=None)
+    genes_pp,gene_names=Clustering.get_genes(result=result, genes=genes, threshold=threshold, inverse=False,
+                                             scale=scale, log=log, return_query=False)
+    return pd.DataFrame(genes_pp,index=gene_names,columns=genes.columns)

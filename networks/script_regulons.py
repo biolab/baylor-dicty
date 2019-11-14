@@ -408,3 +408,10 @@ host.tick_params(axis='x' )
 #lines = [p1, p2,p3]
 
 #host.legend(lines, [l.get_label() for l in lines])
+
+#*********************************
+
+# Get genes for orange:
+genes_orange=preprocess_for_Orange(genes=genes, threshold=0.99)
+genes_orange.to_csv('/home/karin/Documents/timeTrajectories/data/regulons/genes_preprocessed_orange.tsv',sep='\t')
+
