@@ -412,6 +412,46 @@ host.tick_params(axis='x' )
 #*********************************
 
 # Get genes for orange:
-genes_orange=preprocess_for_Orange(genes=genes, threshold=0.99)
-genes_orange.to_csv('/home/karin/Documents/timeTrajectories/data/regulons/genes_preprocessed_orange.tsv',sep='\t')
+genes_orange_scaled,genes_orange_avg,patterns=preprocess_for_Orange(genes=genes, threshold=0.99,conditions=conditions,
+                                                           split_by='Strain',average_by='Time',matching='Measurment',
+                                                                    strain_pattern='AX4')
+genes_orange_scaled.to_csv('/home/karin/Documents/timeTrajectories/data/regulons/genes_scaled_orange.tsv',sep='\t')
+# Transpose so that column names unique (else Orange problems)
+genes_orange_avg.T.to_csv('/home/karin/Documents/timeTrajectories/data/regulons/genes_averaged_orange.tsv',sep='\t')
+patterns.to_csv('/home/karin/Documents/timeTrajectories/data/regulons/gene_patterns_orange.tsv',sep='\t',index=False)
 
+#********************
+# Check how many hypothetical and pseudogenes are in onthologies
+#Get gene descriptions and EIDs
+entrez_descriptions = dict()
+matcher = GeneMatcher(44689)
+matcher.genes = genes.index
+for gene in matcher.genes:
+    description = gene.description
+    entrez = gene.gene_id
+    if entrez is not None:
+        #Key: EID, val: list [description, n GOs]
+        entrez_descriptions[entrez]=[description,0]
+#For each gene set
+for ontology in list_all(organism=str(44689)):
+    gene_sets = load_gene_sets(ontology, '44689')
+    for gene_set in gene_sets:
+        for gene_EID in gene_set.genes:
+            if gene_EID in entrez_descriptions.keys():
+                entrez_descriptions[gene_EID][1]+=1
+
+hypothetical=[]
+pseudo=[]
+annotated=[]
+for description,n_terms in entrez_descriptions.values():
+    if 'hypothetical' in description:
+        hypothetical.append(n_terms)
+    elif 'pseudo' in description:
+        pseudo.append(n_terms)
+    else:
+        annotated.append(n_terms)
+
+# Result (from 12740 entrez terms there were 12740 entries in each of 3 lists - no duplicates/no genes in more than 1 lists):
+# annotated: all: 4721, without GO term 1237
+# pseudo: all: 159, without GO term: 157
+# hypothetical: all: 7860, without GO term: 6434

@@ -18,6 +18,7 @@ from community import best_partition as louvain
 import random
 from collections import OrderedDict
 from sklearn.mixture import GaussianMixture
+from scipy.integrate import cumtrapz
 
 import Orange.clustering.louvain as orange_louvain_graph
 from orangecontrib.bioinformatics.ncbi.gene import GeneMatcher
@@ -707,17 +708,19 @@ class GaussianMixtureClustering(Clustering):
 
 class ClusterAnalyser:
 
-    def __init__(self, genes: pd.DataFrame, conditions: pd.DataFrame, organism: int, average_data_by,
-                 split_data_by, matching):
+    def __init__(self, genes: pd.DataFrame, conditions: pd.DataFrame, average_data_by,
+                 split_data_by, matching, control: str, organism: int = 44689):
         self._names_entrez = name_genes_entrez(gene_names=genes.index, organism=organism, key_entrez=False)
         self._organism = organism
         self._average_by = average_data_by
         self._split_by = split_data_by
-        self._data = self.preprocess_data(genes=genes, conditions=conditions, split_by=split_data_by,
-                                          average_by=average_data_by, matching=matching)
+        self._data = self.preprocess_data_by_groups(genes=genes, conditions=conditions, split_by=split_data_by,
+                                                    average_by=average_data_by, matching=matching)
+        self._control = control
+        self._pattern_characteristics = self.pattern_characteristics(data=self._data[control])
 
     @staticmethod
-    def preprocess_data(genes: pd.DataFrame, conditions: pd.DataFrame, split_by, average_by, matching):
+    def preprocess_data_by_groups(genes: pd.DataFrame, conditions: pd.DataFrame, split_by, average_by, matching):
         conditions = conditions.copy()
         conditions.index = conditions[matching]
         merged = pd.concat([genes.T, conditions], axis=1)
@@ -741,6 +744,51 @@ class ClusterAnalyser:
     @staticmethod
     def average_data(data: pd.DataFrame, average_by: str):
         return data.groupby(average_by).mean()
+
+    @staticmethod
+    def pattern_characteristics(data: pd.DataFrame):
+        pattern_data = []
+        for row in data.iterrows():
+            gene = row[1]
+            mass_centre = ClusterAnalyser.mass_centre(gene)
+            peak = ClusterAnalyser.peak(gene)
+            n_atleast = ClusterAnalyser.n_atleast(data=gene, ratio_from_below=0.5)
+            pattern_data.append({'Gene': row[0], 'Mass_centre': mass_centre, 'Peak': peak, 'N_atleast': n_atleast})
+        return pd.DataFrame(pattern_data)
+
+    @staticmethod
+    def mass_centre(data: pd.Series):
+        x = list(data.index)
+        y = data.values
+        cumulative_masses = cumtrapz(y=y, x=x, initial=0)
+        index2 = 0
+        half = cumulative_masses.max() / 2
+        center = None
+        for mass in cumulative_masses:
+            if mass > half:
+                break
+            elif mass == half:
+                center = x[index2]
+                break
+            else:
+                index2 += 1
+        if center is None:
+            mass1 = cumulative_masses[index2 - 1]
+            mass2 = cumulative_masses[index2]
+            x1 = x[index2 - 1]
+            x2 = x[index2]
+            proportion = (half - mass1) / (mass2 - mass1)
+            center = (x2 - x1) * proportion + x1
+        return center
+
+    @staticmethod
+    def peak(data: pd.Series):
+        return data.sort_values().index[data.shape[0] - 1]
+
+    @staticmethod
+    def n_atleast(data: pd.Series, ratio_from_below: float):
+        threshold = (data.max() - data.min()) * ratio_from_below + data.min()
+        return data[data >= threshold].shape[0]
 
     def cluster_enrichment(self, gene_names: list, **enrichment_args):
         entrez_ids = self.get_entrez_from_storage(gene_names=gene_names)
@@ -796,8 +844,8 @@ class ClusterAnalyser:
             ax.tick_params(axis="x", labelsize=8)
             ax.tick_params(axis="y", labelsize=6)
             # If y axis ticks are to be removed
-            #ax.tick_params(axis='y', which='both', length=0)
-            #plt.setp(ax.get_yticklabels(), visible=False)
+            # ax.tick_params(axis='y', which='both', length=0)
+            # plt.setp(ax.get_yticklabels(), visible=False)
             data_genes = data_sub.loc[gene_names, :]
             x = data_genes.columns
             ax.set_xlim([min(x), max(x)])
@@ -1131,10 +1179,35 @@ def make_tsne_data(tsne, names):
     return {'tsne': tsne, 'names': names}
 
 
-def preprocess_for_Orange(genes: pd.DataFrame, threshold: float,  scale: str = SCALING,
-                  log: bool = LOG):
+def preprocess_for_Orange(genes: pd.DataFrame, threshold: float, conditions: pd.DataFrame, split_by, average_by,
+                          matching, strain_pattern:str, scale: str = SCALING, log: bool = LOG):
+    genes_scaled = get_Orange_scaled(genes=genes, threshold=threshold, scale=scale, log=log)
+    genes_selected=genes.loc[genes_scaled.index, :]
+    genes_averaged = get_Orange_averaged(genes=genes_selected, conditions=conditions,
+                                         split_by=split_by, average_by=average_by, matching=matching)
+
+    patterns=get_Orange_pattern(genes_averaged=genes_averaged,strain=strain_pattern)
+    return genes_scaled, genes_averaged,patterns
+
+
+def get_Orange_scaled(genes: pd.DataFrame, threshold: float, scale: str = SCALING,
+                      log: bool = LOG):
     neighbour_calculator = NeighbourCalculator(genes)
     result = neighbour_calculator.neighbours(n_neighbours=2, inverse=False, scale=scale, log=log, batches=None)
-    genes_pp,gene_names=Clustering.get_genes(result=result, genes=genes, threshold=threshold, inverse=False,
-                                             scale=scale, log=log, return_query=False)
-    return pd.DataFrame(genes_pp,index=gene_names,columns=genes.columns)
+    genes_pp, gene_names = Clustering.get_genes(result=result, genes=genes, threshold=threshold, inverse=False,
+                                                scale=scale, log=log, return_query=False)
+    return pd.DataFrame(genes_pp, index=gene_names, columns=genes.columns)
+
+
+def get_Orange_averaged(genes: pd.DataFrame, conditions: pd.DataFrame, split_by, average_by, matching):
+    by_strain = ClusterAnalyser.preprocess_data_by_groups(genes=genes, conditions=conditions, split_by=split_by,
+                                                          average_by=average_by, matching=matching)
+    strains_data = []
+    for strain, data in by_strain.items():
+        strain_data = pd.DataFrame({'Strain': [strain] * data.shape[1]}, index=data.columns).T.append(data)
+        strains_data.append(strain_data)
+    return pd.concat(strains_data, axis=1)
+
+def get_Orange_pattern(genes_averaged:pd.DataFrame,strain:str):
+    genes_strain=genes_averaged.T[genes_averaged.T['Strain']==strain].T.drop('Strain')
+    return ClusterAnalyser.pattern_characteristics(data=genes_strain)
