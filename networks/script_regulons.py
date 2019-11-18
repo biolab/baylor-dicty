@@ -455,3 +455,13 @@ for description,n_terms in entrez_descriptions.values():
 # annotated: all: 4721, without GO term 1237
 # pseudo: all: 159, without GO term: 157
 # hypothetical: all: 7860, without GO term: 6434
+
+#*****************
+#Inverse neighbours graph with batches
+batches=list(conditions['Replicate'])
+# Calculate neighbours and make graphs
+neighbour_calculator = NeighbourCalculator(genes)
+result_inv = neighbour_calculator.neighbours(200, inverse=True,  batches=batches,remove_batch_zero=True)
+result_filtered_inv=NeighbourCalculator.merge_results(list(result_inv.values()), 0.9, len(set(batches)))
+graph_inv = build_graph(result_filtered_inv)
+nx.write_pajek(graph_inv, dataPathSaved + 'kN200_t0.99_scaleMinmax_log_inv.net')

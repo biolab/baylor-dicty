@@ -64,7 +64,7 @@ class NeighbourCalculator:
         self.conditions = conditions
 
     def neighbours(self, n_neighbours: int, inverse: bool, scale: str = SCALING, log: bool = LOG,
-                   batches: list = None) -> dict:
+                   batches: list = None, remove_batch_zero: bool = True) -> dict:
         """
         Calculates neighbours of genes on whole gene data or its subset by column.
         :param n_neighbours: Number of neighbours to obtain for each gene
@@ -73,6 +73,7 @@ class NeighbourCalculator:
         :param log: Should expression data be log2 transformed
         :param batches: Should comparisons be made for each batch separately.
             Batches should be a list of batch group names for each column (eg. length of batches is n columns of genes).
+        :param remove_batch_zero: Remove genes that have all expression values 0 for each batch individually.
         :return: Dict with gene names as tupple keys (smaller by alphabet is first tuple value) and
             values representing cosine similarity. If batches are used such dicts are returned for each batch
             in form of dict with batch names as keys and above mentioned dicts as values.
@@ -88,13 +89,17 @@ class NeighbourCalculator:
             batches = np.array(batches)
             results = dict()
             for batch in batch_groups:
+                print(batch)
                 genes_sub = genes.T[batches == batch].T
+                if remove_batch_zero:
+                    genes_sub = genes_sub[(genes_sub != 0).any(axis=1)]
                 result = self.calculate_neighbours(genes=genes_sub, n_neighbours=n_neighbours, inverse=inverse,
-                                                   scale=scale, log=log)
+                                                   scale=scale, log=log, description=batch)
                 results[batch] = result
             return results
 
-    def calculate_neighbours(self, genes, n_neighbours: int, inverse: bool, scale: str, log: bool) -> dict:
+    def calculate_neighbours(self, genes, n_neighbours: int, inverse: bool, scale: str, log: bool,
+                             description: str = '') -> dict:
         """
         Calculate neighbours of genes.
         :param genes: Data frame as in init
@@ -102,12 +107,22 @@ class NeighbourCalculator:
         :param inverse: Calculate most similar neighbours (False) or neighbours with inverse profile (True)
         :param scale: Scale expression by gene with 'minmax' (min=0, max=1) or 'mean0std1' (mean=0, std=1)
         :param log: Should expression data be log2 transformed
+        :param description: If an error ocurs in KNN index formation report this with error
         :return: Dict with gene names as tuple keys (smaller by alphabet is first tuple value) and
             values representing cosine similarity
         """
         genes_index, genes_query = self.get_index_query(genes=genes, inverse=inverse, scale=scale, log=log)
         # Can set speed-quality trade-off, default is ok
-        index = NNDescent(genes_index, metric='cosine', n_jobs=4)
+        try:
+            index = NNDescent(genes_index, metric='cosine', n_jobs=4)
+        except ValueError:
+            try:
+                index = NNDescent(genes_index, metric='cosine', tree_init=False,n_jobs=4)
+                warnings.warn(
+                    'Dataset '+ description+ ' index computed without tree initialisation',
+                    Warning)
+            except ValueError:
+                raise ValueError('Dataset '+ description+ ' can not be processed by pydescent')
         neighbours, distances = index.query(genes_query.tolist(), k=n_neighbours)
         return self.parse_neighbours(neighbours=neighbours, distances=distances)
 

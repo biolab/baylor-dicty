@@ -26,7 +26,7 @@ def obtained_genes_by_n_neighbours(neighbour_calculator:NeighbourCalculator, nei
     :param neighbours_size_larger: N neighbours to use as test, larger number
     :param neighbours_sizes_smaller: N neighbours to compare against the larger number
     :param thresholds: similarity threshold for gene retantion
-    :return: parameters, genes retained in both, only in smaller, only in larger
+    :return: Data frame with: parameters, genes retained in both, only in smaller, only in larger
     """
     inverse = False
     neighbours_larger_all = neighbour_calculator.neighbours(n_neighbours=neighbours_size_larger, inverse=inverse)
@@ -48,4 +48,9 @@ def obtained_genes_by_n_neighbours(neighbour_calculator:NeighbourCalculator, nei
     return pd.DataFrame(results)
 
 def display_newline_df(df:pd.DataFrame):
+    """
+    Display pd Data Frame so that new line characters are used to make new line in jupyter notebook
+    :param df:
+    :return:
+    """
     return display( HTML( df.to_html(index=False).replace("\\n","<br>") ) )

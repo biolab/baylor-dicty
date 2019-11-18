@@ -8,6 +8,8 @@ from networks.library_regulons import *
 
 GENES = pd.DataFrame(np.random.rand(100, 20))
 
+# TODO change tests from changed methods
+# TODO add missing tests
 
 class TestNeighbourCalculator(unittest.TestCase):
     nc = NeighbourCalculator(GENES)
