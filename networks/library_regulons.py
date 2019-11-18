@@ -245,8 +245,9 @@ class NeighbourCalculator:
                            scale: str, use_log: bool, thresholds: list, filter_column, filter_column_values_sub: list,
                            filter_column_values_test: list, batch_column=None, do_mse: bool = True):
         """
-        Evaluates pattern similarity calculation preprocessing and parameters based on difference between subset and test set.
-        Computes MSE from differences between similarities of subset gene pairs and corresponding test gene pairs.
+        Evaluates pattern similarity calculation preprocessing and parameters based on difference between subset and
+        test set. Computes MSE from differences between similarities of subset gene pairs and corresponding test gene
+        pairs.
         :param neighbours_n: N of calculated neighbours for each gene
         :param inverse: find neighbours with opposite profile
         :param scale: 'minmax' (from 0 to 1) or 'mean0std1' (to mean 0 and std 1)
@@ -367,7 +368,6 @@ def pandas_multi_y_plot(data: pd.DataFrame, x_col, y_cols: list = None, adjust_r
     :param x_col: Col names from DF for x
     :param y_cols: Col names from DF for y, if None plot all except x
     :param adjust_right_border: Move plotting area to left to allow more space for y axes
-    :return:
     """
     # Get default color style from pandas - can be changed to any other color list
     if y_cols is None:
@@ -428,25 +428,24 @@ class Clustering(ABC):
     Abstract class for clustering.
     """
 
-    # TODO edit init
     def __init__(self, distance_matrix: np.array, gene_names: list, data: np.ndarray):
-        """
-        Prepare distances (cosine) and gene information data. Use only genes with at least one close neighbour.
-        :param result: Closest neighbours result.
-        :param genes: Expression data
-        :param threshold: Retain only genes with at least one neighbour with similarity at least as big as threshold.
-        :param inverse: Distances calculated based on profiole of gene1 and inverse profile of gene2 for each gene pair.
-        :param scale: Scale expression data to common scale: 'minmax' from 0 to 1, 'mean0std1' to mean 0 and std 1
-        :param log: Log transform data before scaling.
-        """
         self._gene_names_ordered = gene_names
         self._n_genes = len(gene_names)
         self._distance_matrix = distance_matrix
         self._data = data
 
     @classmethod
-    def from_knn_result(cls, result: dict, genes: pd.DataFrame, threshold: float, inverse: bool, scale: str, log: bool,
-                        **kwargs):
+    def from_knn_result(cls, result: dict, genes: pd.DataFrame, threshold: float, inverse: bool, scale: str, log: bool):
+        """
+        Initialize class from  knn result - prepare data.
+        :param result: Closest neighbours result.
+        :param genes: Expression data
+        :param threshold: Retain only genes with at least one neighbour with similarity at least as big as threshold.
+        :param inverse: Distances calculated based on profile of gene1 and inverse profile of gene2 for each gene pair.
+        :param scale: Scale expression data to common scale: 'minmax' from 0 to 1, 'mean0std1' to mean 0 and std 1
+        :param log: Log transform data before scaling.
+        :return:
+        """
         distance_matrix, gene_names, data = Clustering.get_clustering_data(result=result, genes=genes,
                                                                            threshold=threshold, inverse=inverse,
                                                                            scale=scale, log=log)
@@ -454,7 +453,17 @@ class Clustering(ABC):
 
     @staticmethod
     def get_clustering_data(result: dict, genes: pd.DataFrame, threshold: float, inverse: bool, scale: str = SCALING,
-                            log: bool = LOG):
+                            log: bool = LOG) -> tuple:
+        """
+        Prepare data for clustering
+        :param result: Closest neighbours result.
+        :param genes: Expression data
+        :param threshold: Retain only genes with at least one neighbour with similarity at least as big as threshold.
+        :param inverse: Distances calculated based on profile of gene1 and inverse profile of gene2 for each gene pair.
+        :param scale: Scale expression data to common scale: 'minmax' from 0 to 1, 'mean0std1' to mean 0 and std 1
+        :param log: Log transform data before scaling.
+        :return: Distance matrix, gene names specifiing rows/columns in distance matrix, preprocessed expression data
+        """
         index, query, gene_names = Clustering.get_genes(result=result, genes=genes, threshold=threshold,
                                                         inverse=inverse,
                                                         scale=scale, log=log)
@@ -472,6 +481,7 @@ class Clustering(ABC):
         :param inverse: Distances calculated based on profiole of gene1 and inverse profile of gene2 for each gene pair.
         :param scale: Scale expression data to common scale: 'minmax' from 0 to 1, 'mean0std1' to mean 0 and std 1
         :param log: Log transform data before scaling.
+        :param return_query: Should query be returned (or only index)
         :return: index,query - processed expression data. If inverse is False both of them are the same, else query is
             inverse profiles data.
         """
@@ -497,7 +507,7 @@ class Clustering(ABC):
         :param query: Expression data for gene2 from pair
         :param inverse: Was index data inversed
         :param scale: Which scaling was used to prepare the data
-        :return:
+        :return: Distance matrix
         """
         if index.shape != query.shape:
             raise ValueError('Index and query must be of same dimensions')
@@ -522,7 +532,7 @@ class Clustering(ABC):
         return self._distance_matrix.copy()
 
     @abstractmethod
-    def get_clusters(self, splitting: float) -> np.ndarray:
+    def get_clusters(self, **splitting) -> np.ndarray:
         """
         Cluster memberships
         :param splitting: how to create clusters
@@ -530,22 +540,24 @@ class Clustering(ABC):
         """
         pass
 
-    def cluster_sizes(self, splitting: float = None, clusters=None) -> list:
+    def cluster_sizes(self, splitting: dict = None, clusters=None) -> list:
         """
-        Size of each cluster
-        :param splitting: how to create clusters
+        Get sizes of clusters
+        :param splitting: how to create clusters, needed if clusters is not give
+        :param clusters: Predefined clusters, as returned by get_clusters
         :return: sizes
         """
         if clusters is None:
             clusters = list(self.get_clusters(splitting=splitting))
         return list(Counter(clusters).values())
 
-    def get_genes_by_clusters(self, splitting: float = None, filter_genes: iter = None, clusters=None) -> dict:
+    def get_genes_by_clusters(self, splitting: dict = None, filter_genes: iter = None, clusters=None) -> dict:
         """
         Get clusters with corresponding members.
-        :param splitting: how to create clusters
+        :param splitting: how to create clusters, needed if clusters is not give
         :param filter_genes: Report only genes (leafs) which are contained in filter_genes. If None use all genes in
             creation of membership dictionary.
+        :param clusters: Predefined clusters, as returned by get_clusters
         :return: Dict keys: cluster, values: list of genes/members
         """
         if clusters is None:
@@ -560,12 +572,13 @@ class Clustering(ABC):
                     del cluster_dict[cluster]
         return cluster_dict
 
-    def get_clusters_by_genes(self, splitting: float = None, filter_genes: iter = None, clusters=None) -> dict:
+    def get_clusters_by_genes(self, splitting: dict = None, filter_genes: iter = None, clusters=None) -> dict:
         """
         Get clusters with corresponding members.
-        :param splitting: how to create clusters
+        :param splitting: how to create clusters, needed if clusters is not give
         :param filter_genes: Report only genes (leafs) which are contained in filter_genes. If None use all genes in
             creation of membership dictionary.
+        :param clusters: Predefined clusters, as returned by get_clusters
         :return: Dict keys: cluster, values: list of genes/members
         """
         if clusters is None:
@@ -579,7 +592,8 @@ class Clustering(ABC):
     def plot_cluster_sizes(self, splitting: float = None, clusters=None):
         """
         Distribution of cluster sizes
-        :param splitting: how to create clusters
+        :param splitting: how to create clusters, needed if clusters is not give
+        :param clusters: Predefined clusters, as returned by get_clusters
          """
         if clusters is None:
             clusters = self.get_clusters(splitting=splitting)
@@ -591,8 +605,9 @@ class Clustering(ABC):
     def save_clusters(self, file: str, splitting=None, clusters=None):
         """
         Save gene names with corresponding cluster number in tsv.
-        :param splitting: how to create clusters
+        :param splitting: how to create clusters, needed if clusters is not give
         :param file: File name
+        :param clusters: Predefined clusters, as returned by get_clusters
         """
         if clusters is None:
             clusters_named = self.get_clusters_by_genes(splitting=splitting)
@@ -610,39 +625,36 @@ class HierarchicalClustering(Clustering):
 
     def __init__(self, distance_matrix: np.ndarray, gene_names: list, data: np.ndarray, ):
         """
-        Prepare distances (cosine)  and gene information data. Use only genes with at least one close neighbour.
         Performs clustering (Ward).
-        :param result: Closest neighbours result.
-        :param genes: Expression data
-        :param threshold: Retain only genes with at least one neighbour with similarity at least as big as threshold.
-        :param inverse: Distances calculated based on profiole of gene1 and inverse profile of gene2 for each gene pair.
-        :param scale: Scale expression data to common scale: 'minmax' from 0 to 1, 'mean0std1' to mean 0 and std 1
-        :param log: Log transform data before scaling.
         """
         super().__init__(distance_matrix=distance_matrix, gene_names=gene_names, data=data)
         upper_index = np.triu_indices(self._n_genes, 1)
         distances = self._distance_matrix[upper_index]
         self._hcl = hc.ward(np.array(distances))
 
-    def get_clusters(self, splitting: int) -> np.ndarray:
+    def get_clusters(self, **splitting) -> np.ndarray:
         """
         Cluster memberships
-        :param splitting: Height of cutting
+        :param splitting: Tree cutting parameters from scipy clustering fcluster
         :return: List of cluster memberships over genes
         """
         return hc.fcluster(self._hcl, criterion='distance', **splitting)
 
     def plot_clustering(self, cutting_distance: float):
+        """
+        Plot dendrogram with coloured clusters
+        :param cutting_distance: Distance to cut at
+        """
         dendrogram(Z=self._hcl, color_threshold=cutting_distance, no_labels=True)
         plt.ylabel('Distance')
 
 
 class DBSCANClustering(Clustering):
 
-    def get_clusters(self, splitting: int) -> np.ndarray:
+    def get_clusters(self, splitting) -> np.ndarray:
         """
         Cluster memberships
-        :param splitting: eps
+        :param splitting: sklearn DBSCAN clustering parameters, excluding metric and n_jobs
         :return: List of cluster memberships over genes
         """
         return DBSCAN(metric='precomputed', n_jobs=4, **splitting).fit_predict(self._distance_matrix)
@@ -652,6 +664,19 @@ class LouvainClustering(Clustering):
 
     def __init__(self, distance_matrix: np.ndarray, gene_names: list, data: np.ndarray, orange_graph: bool,
                  trimm: float = 0, closest: int = None):
+        """
+        Prepare graph for Louvain clustering. Graph construction can be perfomed in different ways, as described below.
+        If orange_graph=False use 1-distances as similarity for graph weights, else use Jaccard index.
+        :param distance_matrix: Cosine Distances between samples, square matrix
+        :param gene_names: List of names specifying what each row/column in distance matrix represents
+        :param data: Preprocessed data
+        :param orange_graph: Should graph be constructed with orange graph constructor
+        :param trimm: When orange graph is not used, if closest is None the graph will be constructed based on all
+            edges that would have 1-distance (weight) at least as big as trimm
+        :param closest: If orange_graph=False use that many closest neighbours from similarity transformed distance
+            matrix to construct the graph (weighs are similarities), if orange_graph=True use that many neighbours to
+            compute Jaccard index between nodes, which is used as a weight
+        """
         super().__init__(distance_matrix=distance_matrix, gene_names=gene_names, data=data)
         if orange_graph:
             self._graph = orange_louvain_graph.matrix_to_knn_graph(data=data, k_neighbors=closest, metric='cosine')
@@ -683,12 +708,19 @@ class LouvainClustering(Clustering):
 
     @classmethod
     def from_orange_graph(cls, data: np.ndarray, gene_names: list, neighbours: int = 40):
+        """
+        Initialize graph with KNN calculation and Jaccard index from Orange.
+        (Distance matrix does not need to be computed).
+        :param data: Data used for KNN computation (e.g. already preprocessed), samples in rows, feature in columns
+        :param gene_names: Names specifying what is in each row of data
+        :param neighbours: How many neighbours to use
+        """
         return cls(distance_matrix=None, gene_names=gene_names, data=data, orange_graph=True, closest=neighbours)
 
-    def get_clusters(self, splitting: int) -> np.ndarray:
+    def get_clusters(self, **splitting) -> np.ndarray:
         """
         Cluster memberships
-        :param splitting: eps
+        :param splitting: Parameters passed to community.best_partition clustering
         :return: List of cluster memberships over genes
         """
         clusters = louvain(graph=self._graph, **splitting)
@@ -696,20 +728,44 @@ class LouvainClustering(Clustering):
 
 
 class GaussianMixtureClustering(Clustering):
+    """
+    Can not be performed with inverse (oposite profile neighbours) - uses only self._data in fitting
+    """
 
-    def get_clusters(self, splitting) -> np.ndarray:
+    def get_clusters(self, **splitting) -> np.ndarray:
         """
         Cluster memberships
-        :param splitting: eps
+        :param splitting: sklearn.mixture.GaussianMixture parameters
         :return: List of cluster memberships over genes
         """
         return GaussianMixture(**splitting).fit_predict(self._data)
 
 
 class ClusterAnalyser:
+    """
+    Analyses individual clusters/gene lists
+    """
+    PATTERN_SAMPLE = 'Gene'
+    PATTERN_PEAK = 'Peak'
+    PATTERM_MASS_CENTRE = 'Mass_centre'
+    PATTERN_N_ATLEAST = 'N_atleast'
 
     def __init__(self, genes: pd.DataFrame, conditions: pd.DataFrame, average_data_by,
                  split_data_by, matching, control: str, organism: int = 44689):
+        """
+        Data required to analyse clusters
+        :param genes: Expression data, genes in rows, measurements in columns, dimensions G*M
+        :param conditions: Description (columns) of each measurements (rows), dimensions M*D
+        :param average_data_by: Conditions column name. When multiple replicates are present, average their data.
+            This is done after splitting. Name of column in conditions DataFrame that has identical values for all
+            replicates and will be used for splitting. Eg if conditions contains Strain, Replicate and Time and data is
+            to be split by Strain and then average data across replicates in individual time points average_data_by
+            would be Time
+        :param split_data_by: Name of column in conditions DataFrame used for splitting the data
+        :param matching: Which column in conditions matches column names in genes
+        :param control: Which name from names loacted in split_data_by column will be used for pattern characteristics
+        :param organism: Organism ID
+        """
         self._names_entrez = name_genes_entrez(gene_names=genes.index, organism=organism, key_entrez=False)
         self._organism = organism
         self._average_by = average_data_by
@@ -720,7 +776,21 @@ class ClusterAnalyser:
         self._pattern_characteristics = self.pattern_characteristics(data=self._data[control])
 
     @staticmethod
-    def preprocess_data_by_groups(genes: pd.DataFrame, conditions: pd.DataFrame, split_by, average_by, matching):
+    def preprocess_data_by_groups(genes: pd.DataFrame, conditions: pd.DataFrame, split_by, average_by,
+                                  matching) -> dict:
+        """
+        Split and then average data by groups
+        :param genes: Expression data, genes in rows, measurements in columns, dimensions G*M
+        :param conditions: Description (columns) of each measurements (rows), dimensions M*D
+        :param split_by:
+        :param average_by: Conditions column name. When multiple replicates are present, average their data.
+            This is done after splitting. Name of column in conditions DataFrame that has identical values for all
+            replicates and will be used for splitting. Eg if conditions contains Strain, Replicate and Time and data is
+            to be split by Strain and then average data across replicates in individual time points average_data_by
+            would be Time
+        :param matching: Which column in conditions matches column names in genes
+        :return: Dict with keys being values from split_by column and values being data, averaged by average_by
+        """
         conditions = conditions.copy()
         conditions.index = conditions[matching]
         merged = pd.concat([genes.T, conditions], axis=1)
@@ -733,7 +803,13 @@ class ClusterAnalyser:
         return data_processed
 
     @staticmethod
-    def split_data(data: pd.DataFrame, split_by: str):
+    def split_data(data: pd.DataFrame, split_by: str) -> dict:
+        """
+        Split data by column
+        :param data: Data to be split by values of a column
+        :param split_by: Column name for splitting
+        :return: Key: split_by column value, value: data of this split_by column value
+        """
         data_splitted = {}
         groupped = data.groupby(by=split_by)
         for group in groupped.groups.keys():
@@ -742,22 +818,55 @@ class ClusterAnalyser:
 
     # Eg. by time if want to average for all replicates as applied after splitting
     @staticmethod
-    def average_data(data: pd.DataFrame, average_by: str):
+    def average_data(data: pd.DataFrame, average_by: str) -> pd.DataFrame:
+        """
+        Average data by column
+        :param data: Data to be averaged by values of a column (eg. multiple rows are averaged)
+        :param average_by: Column name for averaging
+        :return: Data Frame with index being average_by column values and retaining only  features that can be averaged
+            (numeric)
+        """
         return data.groupby(average_by).mean()
 
     @staticmethod
-    def pattern_characteristics(data: pd.DataFrame):
+    def pattern_characteristics(data: pd.DataFrame) -> pd.DataFrame:
+        """
+        Compute expression pattern characteristics for each row across all features  (e.g. pattern, must be numeric).
+        Characteristics are: peak (which column has max value), mass center (at which column would be mass centre if
+        values are mass measurements from continuous distribution), N features (that have value equal to or greater
+        than value at the middle of min and max value across features).
+        :param data: genes in rows, pattern through columns, values must be numeric,
+            column names must be numeric, used for mass_centre and peak calculation.
+            Values are sorted by column names (ascending) to get pattern for mass center.
+        :return: Data Frame with rows being samples and columns specifying sample, mass_centre, peak, and N features
+            with value at least as big as above described threshold
+        """
         pattern_data = []
         for row in data.iterrows():
             gene = row[1]
             mass_centre = ClusterAnalyser.mass_centre(gene)
             peak = ClusterAnalyser.peak(gene)
             n_atleast = ClusterAnalyser.n_atleast(data=gene, ratio_from_below=0.5)
-            pattern_data.append({'Gene': row[0], 'Mass_centre': mass_centre, 'Peak': peak, 'N_atleast': n_atleast})
+            pattern_data.append({ClusterAnalyser.PATTERN_SAMPLE: row[0],
+                                 ClusterAnalyser.PATTERM_MASS_CENTRE: mass_centre,
+                                 ClusterAnalyser.PATTERN_PEAK: peak,
+                                 ClusterAnalyser.PATTERN_N_ATLEAST: n_atleast})
         return pd.DataFrame(pattern_data)
 
     @staticmethod
-    def mass_centre(data: pd.Series):
+    def mass_centre(data: pd.Series) -> float:
+        """
+        Mass center of series which represents samples from continuous distribution.
+        Masses between two x values (indcies) are computed as trapezoids and converted to cumulative mass.
+        Half of total mass lies on an interval x1, x2 of cumulative mass function. Mass centre is obtained by
+        determining  on which proportion of lower and upper cumulative mass (y1, y2) of the interval lies value equal to
+        half of total mass. This proportion is used to obtain centre from x1, x2.
+        :param data: Series with indices being x values of continuous function and values being y values/masses.
+            Values and indices must be numeric
+            Data is sorted ascendingly by index before calculation of mass center
+        :return: Mass center
+        """
+        data = data.sort_index()
         x = list(data.index)
         y = data.values
         cumulative_masses = cumtrapz(y=y, x=x, initial=0)
@@ -783,19 +892,44 @@ class ClusterAnalyser:
 
     @staticmethod
     def peak(data: pd.Series):
+        """
+        Where (index) lies max value of series
+        :param data: Series with numerical values
+        :return: peak location (index name)
+        """
         return data.sort_values().index[data.shape[0] - 1]
 
     @staticmethod
-    def n_atleast(data: pd.Series, ratio_from_below: float):
+    def n_atleast(data: pd.Series, ratio_from_below: float) -> int:
+        """
+        N of values greater or equal to threshold. Threshold is between min and max value based on ratio_from_bellow:
+        threshold  = (max - min) * ratio_from_below + min
+        :param data: numerical series
+        :param ratio_from_below: Where between min and max to put threshold, as specified above
+        :return: N of values equal or greater than threshold
+        """
         threshold = (data.max() - data.min()) * ratio_from_below + data.min()
         return data[data >= threshold].shape[0]
 
     def cluster_enrichment(self, gene_names: list, **enrichment_args):
+        """
+        Is cluster enriched for ontology terms
+        :param gene_names: Gene names
+        :param enrichment_args: Passed to ClusterAnalyser.enrichment
+        :return: As returned by ClusterAnalyser.enrichment
+        """
         entrez_ids = self.get_entrez_from_storage(gene_names=gene_names)
         enriched = self.enrichment(entrez_ids=entrez_ids, organism=self._organism, **enrichment_args)
         return enriched
 
-    def get_entrez_from_storage(self, gene_names: list):
+    def get_entrez_from_storage(self, gene_names: list) -> list:
+        """
+        Convert gene names to Entrez IDs as stored in ClusterAnalyser instance
+        (based on gene names and organism specified in init).
+        If EntrezID is not present ignore the name
+        :param gene_names: Gene names
+        :return: Entrez IDs
+        """
         entrez_ids = []
         for name in gene_names:
             if name in self._names_entrez.keys():
@@ -805,13 +939,13 @@ class ClusterAnalyser:
     @staticmethod
     def enrichment(entrez_ids: list, organism: int, fdr=0.25, slims: bool = True, aspect: str = None) -> OrderedDict:
         """
-
+        Calulate onthology enrichment for list of genes
         :param entrez_ids: entrez IDs of gene group to be analysed for enrichemnt
         :param organism: organism ID
         :param fdr: For retention of enriched gene sets
         :param slims: From Orange Annotations
         :param aspect: Which GO aspect to use. From Orange Annotations: None: all, 'Process', 'Function', 'Component'
-        :return: Dict: key Go term, value FDR. Sorted by FDR ascendingly.
+        :return: Dict: key ontology term, value FDR. Sorted by FDR ascendingly.
         """
         anno = go.Annotations(organism)
         enrichment = anno.get_enriched_terms(entrez_ids, slims_only=slims, aspect=aspect)
@@ -828,6 +962,16 @@ class ClusterAnalyser:
         return enriched_data
 
     def plot_profiles(self, gene_names: list, fig=None, rows: int = 1, row: int = 1, row_label: str = None):
+        """
+        Plot profiles of genes. Done separately for each value of split_data_by column, as specified on init.
+        Plots the graphs in one row. Plots profiles in gray and adds median profile in black.
+        :param gene_names: To obtain expression profiles from data given on init (genes in rows).
+        :param fig: Plots can be added to existing figure. If None a new figure is created.
+        :param rows: Specify N of subplot rows in figure
+        :param row: Which row to use for plotting
+        :param row_label: How to name the row of subplots. If None no name is added.
+        :return:
+        """
         if fig is None:
             fig = plt.figure()
         n_subplots = len(self._data)
@@ -857,7 +1001,12 @@ class ClusterAnalyser:
         return fig, subplots
 
 
-def log_transform_series(series):
+def log_transform_series(series) -> np.ndarray:
+    """
+    Transform series with log10(value+1)
+    :param series: data
+    :return: Log transformed
+    """
     return np.log10(series.to_numpy() + 1)
 
 
@@ -873,6 +1022,7 @@ class ClusteringAnalyser:
         :param organism: Organism ID
         :param max_set_size: Max GO/KEGG set size to include in evaluation of clusters
         :param min_set_size: Min GO/KEGG set size to include in evaluation of clusters
+        :param cluster_analyser: ClusterAnalyser to use for analysis of individual clusters
         """
         self._organism = organism
         self._max_set_size = max_set_size
@@ -890,13 +1040,13 @@ class ClusteringAnalyser:
         return list(self._annotation_dict.keys())
 
     @staticmethod
-    def silhouette(clustering: Clustering, splitting: float) -> float:
+    def silhouette(clustering: Clustering, splitting: dict) -> float:
         """
         Calculate mean Silhouette Coefficient over clusters  (e.g. sklearn.metrics.silhouette_score)
         :param clustering: The clustering object
-        :param splitting: Parameter to use on clustering object's method get_clusters to obtain clusters
-            (e.g. N of clusters for hierarchical clustering)
-        :return: mean Silhouette Coefficient
+        :param splitting: Parameters to use on clustering object's method get_clusters to obtain clusters
+        :return: mean Silhouette Coefficient. If there is a single cluster or each
+         element is in separate cluster None is returned
         """
         matrix = clustering.get_distance_matrix()
         clusters = clustering.get_clusters(splitting=splitting)
@@ -915,7 +1065,7 @@ class ClusteringAnalyser:
     # H for single cluster: -sum_over_sets(p*log2(p))
     # H for clustering: sum(entropy*member_genes/all_genes)
     # Probably better to use annotation_ratio
-    def annotation_entropy(self, clustering: Clustering, splitting: int, ontology: tuple) -> float:
+    def annotation_entropy(self, clustering: Clustering, splitting: dict, ontology: tuple) -> float:
         annotation_dict, clusters = self.init_annotation_evaluation(clustering=clustering, splitting=splitting,
                                                                     ontology=ontology)
         sizes = []
@@ -937,7 +1087,7 @@ class ClusteringAnalyser:
         return sum(
             [cluster_entropy * size / n_genes for cluster_entropy, size in zip(entropies, sizes)])
 
-    def annotation_ratio(self, clustering: Clustering, splitting: int, ontology: tuple) -> float:
+    def annotation_ratio(self, clustering: Clustering, splitting: dict, ontology: tuple) -> float:
         """
         For each cluster calculate ratio of genes/members that have the most common annotation (GO/KEGG) in this cluster.
         Compute average over clusters weighted by cluster size. Use only genes/leafs that have annotations.
@@ -950,7 +1100,8 @@ class ClusteringAnalyser:
         :param ontology: Name of ontology to use for annotations
         :return: Average weighted max ratio.
         """
-        annotation_dict, clusters = self.init_annotation_evaluation(clustering, splitting, ontology)
+        annotation_dict, clusters = self.init_annotation_evaluation(clustering=clustering, splitting=splitting,
+                                                                    ontology=ontology)
         sizes = []
         ratios = []
         for members in clusters.values():
@@ -967,7 +1118,7 @@ class ClusteringAnalyser:
         return sum(
             [ratio * size / n_genes for ratio, size in zip(ratios, sizes)])
 
-    def init_annotation_evaluation(self, clustering: Clustering, splitting: int, ontology: tuple):
+    def init_annotation_evaluation(self, clustering: Clustering, splitting: dict, ontology: tuple):
         """
         Prepare data for annotation based clustering evaluation.
         :param clustering: Clustering object
@@ -1011,6 +1162,8 @@ class ClusteringAnalyser:
         :param clustering: Clustering object
         Parameter to use on clustering object's method get_clusters to obtain clusters
             (e.g. N of clusters for hierarchical clustering)
+        :param splittings: list of parameter dictionaries for clustering
+        :param x_labs: Labels to put on plot x axis, if None uses first value from each splittings dict
         :param ontology: Name of ontology to use for annotations
         """
         silhouettes = []
@@ -1032,7 +1185,20 @@ class ClusteringAnalyser:
         pandas_multi_y_plot(data=data, x_col='Splitting parameter', y_cols=None, adjust_right_border=0.35)
         return data
 
-    def analyse_clustering(self, clustering: Clustering, tsne_data, tsne_plot=None, clusters=None, splitting=None):
+    def analyse_clustering(self, clustering: Clustering, tsne_data: dict, tsne_plot: dict = None,
+                           clusters: np.ndarray = None, splitting: dict = None) -> tuple:
+        """
+        Analyse specific clustering result. Plots tsne with coloured clusters, plots expression profiles of genes in
+        each cluster and returns DataFrame with cluster size and gene ontology enrichment and
+        cluster number for each gene
+        :param clustering: Clustering object
+        :param tsne_data: tsne data as returned by make_tsne_data
+        :param tsne_plot: tsne plotting params
+        :param clusters: Pre-specified clusters as returned from Clustering.get_clusters
+        :param splitting: If clusters=None use this to obtain clusters from Clustering
+        :return: tuple of: DataFrame with cluster size and gene onthology enrichment; dict with samples as keys and
+            cluster numbers as values
+        """
         if splitting is None and clusters is None:
             raise ValueError('Either splitting or clusters must be given')
         if clusters is None:
@@ -1058,7 +1224,15 @@ class ClusteringAnalyser:
             subset_count += 1
         return pd.DataFrame(data), clusters_by_genes
 
-    def parse_enrichment_dict(self, dictionary, sep_item: str = '\n'):
+    @staticmethod
+    def parse_enrichment_dict(dictionary, sep_item: str = '\n'):
+        """
+        Convert enrichment dictionary into string. Each item is added to the string, followed by sep_item.
+        Key and value are separated by ": ".  Value is rounded to 3 decimal places in scientific notation.
+        :param dictionary: Enrichment dictionary
+        :param sep_item: How to separate items
+        :return: String of items
+        """
         parsed = ''
         for k, v in dictionary.items():
             parsed += k + ': ' + "{:.3E}".format(v) + sep_item
@@ -1113,7 +1287,19 @@ def calc_cosine(data1: np.ndarray, data2: np.ndarray, index1: int, index2: int, 
 # For scaled data: perplexities_range=[5,100],exaggerations=[17,1.6],momentums=[0.6,0.97]
 # For unscaled data: perplexities_range: list = [30, 100], exaggerations: list = [12, 1.5], momentums: list = [0.6, 0.9]
 def make_tsne(data: pd.DataFrame, perplexities_range: list = [5, 100], exaggerations: list = [17, 1.6],
-              momentums: list = [0.6, 0.97], random_state=0):
+              momentums: list = [0.6, 0.97], random_state=0) -> ot.TSNEEmbedding:
+    """
+    Make tsne embedding. Uses openTSNE Multiscale followed by optimizations. Each optimization has exaggeration and
+    momentum parameter - these are used sequentially from exaggerations and momenutms lists, which must be of same
+    lengths. There are as many optimizations as are lengths of optimization parameter lists.
+    :param data: Samples in rows,features in columns. Must be numeric
+    :param perplexities_range: Used for openTSNE.affinity.Multiscale
+    :param exaggerations: List of exaggeration parameters for sequential optimizations
+    :param momentums: List of momentum parameters for sequential optimizations
+    :param random_state: random state
+    :return: Embedding: functions as list of lists, where 1st object in nested list is x position and 2nd is y.
+        There is one nested list for each sample
+    """
     if len(exaggerations) != len(momentums):
         raise ValueError('Exagerrations and momenutms list lengths must match')
     affinities_multiscale_mixture = ot.affinity.Multiscale(data, perplexities=perplexities_range,
@@ -1125,7 +1311,18 @@ def make_tsne(data: pd.DataFrame, perplexities_range: list = [5, 100], exaggerat
     return embedding
 
 
-def plot_tsne(tsne, classes=None, names=None, legend: bool = False, plotting_params: dict = {'s': 1}):
+def plot_tsne(tsne: ot.TSNEEmbedding, classes: dict = None, names: list = None, legend: bool = False,
+              plotting_params: dict = {'s': 1}):
+    """
+    Plot tsne embedding
+    :param tsne: Embedding, as returned by make_tsne
+    :param classes: If not None colour each item in tSNE embedding by class.
+    Keys: names matching names of tSNE embedding, values: class
+    :param names: List of names for items in tSNE embedding
+    :param legend: Should legend be added
+    :param plotting_params: plt.scatter parameters
+    :return:
+    """
     x = [x[0] for x in tsne]
     y = [x[1] for x in tsne]
     if classes is None:
@@ -1158,7 +1355,7 @@ def plot_tsne(tsne, classes=None, names=None, legend: bool = False, plotting_par
             class_dict[class_name]['c'].append(colour_dict[class_name])
 
         fig = plt.figure()
-        ax = plt.subplot(111)
+        ax = fig.subplot(111)
 
         for class_name, data in class_dict.items():
             if isinstance(list(plotting_params.values())[0], dict):
@@ -1176,22 +1373,50 @@ def plot_tsne(tsne, classes=None, names=None, legend: bool = False, plotting_par
 
 
 def make_tsne_data(tsne, names):
+    """
+    Put together tsne embedding and corresponding item names
+    :param tsne: embedding
+    :param names: item names, ordered as embedding items
+    :return: Dict with tsne and names items
+    """
     return {'tsne': tsne, 'names': names}
 
 
-def preprocess_for_Orange(genes: pd.DataFrame, threshold: float, conditions: pd.DataFrame, split_by, average_by,
-                          matching, strain_pattern:str, scale: str = SCALING, log: bool = LOG):
-    genes_scaled = get_Orange_scaled(genes=genes, threshold=threshold, scale=scale, log=log)
-    genes_selected=genes.loc[genes_scaled.index, :]
-    genes_averaged = get_Orange_averaged(genes=genes_selected, conditions=conditions,
+def preprocess_for_orange(genes: pd.DataFrame, threshold: float, conditions: pd.DataFrame, split_by, average_by,
+                          matching, group: str, scale: str = SCALING, log: bool = LOG) -> tuple:
+    """
+    Get data of genes with close neighbours: preprocessed data, data splitted and averaged, and expression
+    pattern characteristics
+    :param genes: Expression data, genes in rows, measurements in columns, dimensions G*M
+    :param threshold: Include only genes that have closest neighbour with similarity equal to or greater than threshold.
+    :param conditions: Specifies what each measurment name means, dismensions M*D, where D are metadata columns
+    :param split_by: By which column from conditions should expression data be split
+    :param average_by: By which column from conditions should expression data be averaged
+    :param matching: Which column from conditions matches genes column names
+    :param group: Which name from split_by column to use for pattern calculation, done on split averaged data
+    :param scale: How to scale data  for neighbour calculation and returning of preprocessed data
+    :param log: Use log transformation  for neighbour calculation and returning of preprocessed data
+    :return: preprocessed data, splitted and averaged data, expression pattern characteristics data
+    """
+    genes_scaled = get_orange_scaled(genes=genes, threshold=threshold, scale=scale, log=log)
+    genes_selected = genes.loc[genes_scaled.index, :]
+    genes_averaged = get_orange_averaged(genes=genes_selected, conditions=conditions,
                                          split_by=split_by, average_by=average_by, matching=matching)
 
-    patterns=get_Orange_pattern(genes_averaged=genes_averaged,strain=strain_pattern)
-    return genes_scaled, genes_averaged,patterns
+    patterns = get_orange_pattern(genes_averaged=genes_averaged, group=group)
+    return genes_scaled, genes_averaged, patterns
 
 
-def get_Orange_scaled(genes: pd.DataFrame, threshold: float, scale: str = SCALING,
-                      log: bool = LOG):
+def get_orange_scaled(genes: pd.DataFrame, threshold: float, scale: str = SCALING,
+                      log: bool = LOG) -> pd.DataFrame:
+    """
+    Get preprocessed expression data for orange, retaining genes that have very close neighbours
+    :param genes: Expression data, genes in rows, measurments in columns
+    :param threshold: Retain only genes that have closest neighbour with similarity at least threshold
+    :param scale: How to scale data  for neighbour calculation and returning
+    :param log: Log transform data   for neighbour calculation and returning
+    :return: Preprocessed genes with close neighbours
+    """
     neighbour_calculator = NeighbourCalculator(genes)
     result = neighbour_calculator.neighbours(n_neighbours=2, inverse=False, scale=scale, log=log, batches=None)
     genes_pp, gene_names = Clustering.get_genes(result=result, genes=genes, threshold=threshold, inverse=False,
@@ -1199,15 +1424,32 @@ def get_Orange_scaled(genes: pd.DataFrame, threshold: float, scale: str = SCALIN
     return pd.DataFrame(genes_pp, index=gene_names, columns=genes.columns)
 
 
-def get_Orange_averaged(genes: pd.DataFrame, conditions: pd.DataFrame, split_by, average_by, matching):
+def get_orange_averaged(genes: pd.DataFrame, conditions: pd.DataFrame, split_by, average_by, matching):
+    """
+    Split expression data by groups and average it by replicates within groups.
+    :param genes: Expression data, genes in rows, measurements in columns, dimensions G*M
+    :param conditions: Specifies what each measurment name means, dismensions M*D, where D are metadata columns
+    :param split_by: By which column from conditions should expression data be split
+    :param average_by: By which column from conditions should expression data be averaged
+    :param matching: Which column from conditions matches genes column names
+    :return: Data frame with rows as genes and column names being values of average_by column and additional row named
+    Group, denoting from which splitting group the averaged data comes.
+    """
     by_strain = ClusterAnalyser.preprocess_data_by_groups(genes=genes, conditions=conditions, split_by=split_by,
                                                           average_by=average_by, matching=matching)
     strains_data = []
     for strain, data in by_strain.items():
-        strain_data = pd.DataFrame({'Strain': [strain] * data.shape[1]}, index=data.columns).T.append(data)
+        strain_data = pd.DataFrame({'Group': [strain] * data.shape[1]}, index=data.columns).T.append(data)
         strains_data.append(strain_data)
     return pd.concat(strains_data, axis=1)
 
-def get_Orange_pattern(genes_averaged:pd.DataFrame,strain:str):
-    genes_strain=genes_averaged.T[genes_averaged.T['Strain']==strain].T.drop('Strain')
+
+def get_orange_pattern(genes_averaged: pd.DataFrame, group: str) -> pd.DataFrame:
+    """
+
+    :param genes_averaged: Data as returned from  get_orange_averaged
+    :param group: Which group from Group row in genes_averaged to use for determination of expression pattern
+    :return: Data frame as returned from ClusterAnalyser.pattern_characteristics
+    """
+    genes_strain = genes_averaged.T[genes_averaged.T['Group'] == group].T.drop('Group')
     return ClusterAnalyser.pattern_characteristics(data=genes_strain)

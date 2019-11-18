@@ -412,8 +412,8 @@ host.tick_params(axis='x' )
 #*********************************
 
 # Get genes for orange:
-genes_orange_scaled,genes_orange_avg,patterns=preprocess_for_Orange(genes=genes, threshold=0.99,conditions=conditions,
-                                                           split_by='Strain',average_by='Time',matching='Measurment',
+genes_orange_scaled,genes_orange_avg,patterns=preprocess_for_orange(genes=genes, threshold=0.99, conditions=conditions,
+                                                                    split_by='Strain', average_by='Time', matching='Measurment',
                                                                     strain_pattern='AX4')
 genes_orange_scaled.to_csv('/home/karin/Documents/timeTrajectories/data/regulons/genes_scaled_orange.tsv',sep='\t')
 # Transpose so that column names unique (else Orange problems)
