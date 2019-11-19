@@ -1,20 +1,25 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import altair as alt
-from statistics import median
+from statistics import median, mean
 from scipy.cluster.hierarchy import dendrogram
+import pickle as pkl
+import glob
 
 from networks.library_regulons import *
+import jupyter_functions as jf
+from networks.functionsDENet import loadPickle,savePickle
 
 # Script parts are to be run separately as needed
 
 dataPath = '/home/karin/Documents/timeTrajectories/data/RPKUM/combined/'
 dataPathSaved = '/home/karin/Documents/timeTrajectories/data/correlations/replicates/'
+path_inverse = '/home/karin/Documents/timeTrajectories/data/regulons/inverseReplicate/'
 
 genes = pd.read_csv(dataPath + 'mergedGenes_RPKUM.tsv', sep='\t', index_col=0)
 conditions = pd.read_csv(dataPath + 'conditions_mergedGenes.tsv', sep='\t', index_col=None)
 
-#************************************
+# ************************************
 
 sub = genes.shape[1]
 genes_sub = genes.iloc[:, :sub]
@@ -352,25 +357,25 @@ neighbour_calculator = NeighbourCalculator(genes)
 result = neighbour_calculator.neighbours(neighbours_n, inverse=False, scale=scale, log=use_log, batches=batches)
 result_inv = neighbour_calculator.neighbours(neighbours_n, inverse=True, scale=scale, log=use_log, batches=batches)
 hcl = HierarchicalClustering.from_knn_result(result, genes, threshold, inverse=False, scale=scale, log=use_log)
-hcl_inv=HierarchicalClustering.from_knn_result(result_inv,genes,threshold,inverse=True,scale=scale,log=use_log)
+hcl_inv = HierarchicalClustering.from_knn_result(result_inv, genes, threshold, inverse=True, scale=scale, log=use_log)
 
-hcl_gene_data=genes.loc[hcl._gene_names_ordered,:]
+hcl_gene_data = genes.loc[hcl._gene_names_ordered, :]
 
 dendrogram(hcl_inv._hcl)
 
-ca=ClusteringAnalyser(genes.index)
+ca = ClusteringAnalyser(genes.index)
 silhouettes = []
 median_sizes = []
-entropy=[]
-ratios=[]
+entropy = []
+ratios = []
 n_clusters = list(range(3, 60, 6))
 for n in n_clusters:
     median_sizes.append(median(hcl.cluster_sizes(n)))
     silhouettes.append(ClusteringAnalyser.silhouette(hcl, n))
-    entropy.append(ca.annotation_entropy(hcl,n,('KEGG', 'Pathways')))
+    entropy.append(ca.annotation_entropy(hcl, n, ('KEGG', 'Pathways')))
     ratios.append(ca.annotation_ratio(hcl, n, ('KEGG', 'Pathways')))
 
-#Taken from: https://matplotlib.org/3.1.1/gallery/ticks_and_spines/multiple_yaxis_with_spines.html
+# Taken from: https://matplotlib.org/3.1.1/gallery/ticks_and_spines/multiple_yaxis_with_spines.html
 fig, host = plt.subplots()
 fig.subplots_adjust(right=0.75)
 
@@ -379,11 +384,11 @@ par2 = host.twinx()
 par2.spines["right"].set_position(("axes", 1.2))
 
 p11 = host.scatter(n_clusters, silhouettes, c="b")
-p1, = host.plot(n_clusters, silhouettes, "b-",label="Silhouette")
+p1, = host.plot(n_clusters, silhouettes, "b-", label="Silhouette")
 p22 = par1.scatter(n_clusters, median_sizes, c="r")
 p2, = par1.plot(n_clusters, median_sizes, "r-", label="Median size")
 p33 = par2.scatter(n_clusters, ratios, c="g")
-p3, = par2.plot(n_clusters, ratios, "g-",label="Annotation ratio")
+p3, = par2.plot(n_clusters, ratios, "g-", label="Annotation ratio")
 
 host.set_xlim(min(n_clusters), max(n_clusters))
 host.set_ylim(min(silhouettes), max(silhouettes))
@@ -400,29 +405,31 @@ par1.yaxis.label.set_color(p2.get_color())
 par2.yaxis.label.set_color(p3.get_color())
 
 tkw = dict(size=4, width=1.5)
-host.tick_params(axis='y', colors=p1.get_color() )
+host.tick_params(axis='y', colors=p1.get_color())
 par1.tick_params(axis='y', colors=p2.get_color())
 par2.tick_params(axis='y', colors=p3.get_color())
-host.tick_params(axis='x' )
+host.tick_params(axis='x')
 
-#lines = [p1, p2,p3]
+# lines = [p1, p2,p3]
 
-#host.legend(lines, [l.get_label() for l in lines])
+# host.legend(lines, [l.get_label() for l in lines])
 
-#*********************************
+# *********************************
 
 # Get genes for orange:
-genes_orange_scaled,genes_orange_avg,patterns=preprocess_for_orange(genes=genes, threshold=0.99, conditions=conditions,
-                                                                    split_by='Strain', average_by='Time', matching='Measurment',
-                                                                    strain_pattern='AX4')
-genes_orange_scaled.to_csv('/home/karin/Documents/timeTrajectories/data/regulons/genes_scaled_orange.tsv',sep='\t')
+genes_orange_scaled, genes_orange_avg, patterns = preprocess_for_orange(genes=genes, threshold=0.99,
+                                                                        conditions=conditions,
+                                                                        split_by='Strain', average_by='Time',
+                                                                        matching='Measurment',
+                                                                        strain_pattern='AX4')
+genes_orange_scaled.to_csv('/home/karin/Documents/timeTrajectories/data/regulons/genes_scaled_orange.tsv', sep='\t')
 # Transpose so that column names unique (else Orange problems)
-genes_orange_avg.T.to_csv('/home/karin/Documents/timeTrajectories/data/regulons/genes_averaged_orange.tsv',sep='\t')
-patterns.to_csv('/home/karin/Documents/timeTrajectories/data/regulons/gene_patterns_orange.tsv',sep='\t',index=False)
+genes_orange_avg.T.to_csv('/home/karin/Documents/timeTrajectories/data/regulons/genes_averaged_orange.tsv', sep='\t')
+patterns.to_csv('/home/karin/Documents/timeTrajectories/data/regulons/gene_patterns_orange.tsv', sep='\t', index=False)
 
-#********************
+# ********************
 # Check how many hypothetical and pseudogenes are in onthologies
-#Get gene descriptions and EIDs
+# Get gene descriptions and EIDs
 entrez_descriptions = dict()
 matcher = GeneMatcher(44689)
 matcher.genes = genes.index
@@ -430,20 +437,20 @@ for gene in matcher.genes:
     description = gene.description
     entrez = gene.gene_id
     if entrez is not None:
-        #Key: EID, val: list [description, n GOs]
-        entrez_descriptions[entrez]=[description,0]
-#For each gene set
+        # Key: EID, val: list [description, n GOs]
+        entrez_descriptions[entrez] = [description, 0]
+# For each gene set
 for ontology in list_all(organism=str(44689)):
     gene_sets = load_gene_sets(ontology, '44689')
     for gene_set in gene_sets:
         for gene_EID in gene_set.genes:
             if gene_EID in entrez_descriptions.keys():
-                entrez_descriptions[gene_EID][1]+=1
+                entrez_descriptions[gene_EID][1] += 1
 
-hypothetical=[]
-pseudo=[]
-annotated=[]
-for description,n_terms in entrez_descriptions.values():
+hypothetical = []
+pseudo = []
+annotated = []
+for description, n_terms in entrez_descriptions.values():
     if 'hypothetical' in description:
         hypothetical.append(n_terms)
     elif 'pseudo' in description:
@@ -456,12 +463,161 @@ for description,n_terms in entrez_descriptions.values():
 # pseudo: all: 159, without GO term: 157
 # hypothetical: all: 7860, without GO term: 6434
 
-#*****************
-#Inverse neighbours graph with batches
-batches=list(conditions['Replicate'])
-# Calculate neighbours and make graphs
-neighbour_calculator = NeighbourCalculator(genes)
-result_inv = neighbour_calculator.neighbours(200, inverse=True,  batches=batches,remove_batch_zero=True)
-result_filtered_inv=NeighbourCalculator.merge_results(list(result_inv.values()), 0.9, len(set(batches)))
-graph_inv = build_graph(result_filtered_inv)
-nx.write_pajek(graph_inv, dataPathSaved + 'kN200_t0.99_scaleMinmax_log_inv.net')
+# *****************
+# Inverse neighbours graph with batches
+batches = list(conditions['Strain'])
+batches = np.array(batches)
+
+
+# Calculate neighbours
+for batch in set(batches):
+    #print(batch)
+    genes_sub = genes.T[batches == batch].T
+    neighbour_calculator = NeighbourCalculator(genes_sub)
+    result_inv = neighbour_calculator.neighbours(200, inverse=True)
+    output = open(path_inverse +'raw/'+ batch + '.pkl', 'wb')
+    pkl.dump(result_inv, output)
+    output.close()
+
+# Combine neighbours
+
+files = [f for f in glob.glob(path_inverse+'raw/' + "*.pkl")]
+
+
+# result_inv=[]
+# for f in files:
+#     pkl_file = open(f, 'rb')
+#     result_inv.append(pkl.load(pkl_file))
+#     pkl_file.close()
+#
+#
+#
+# summary=[]
+# for threshold in [0.6,0.8, 0.85, 0.9, 0.95]:
+#     for present in [5, 10, 15, 20]:
+#         result_filtered = NeighbourCalculator.merge_results(result_inv, threshold, present)
+#         pairs=len(result_filtered)
+#         print(threshold,present,pairs)
+#         summary.append({'threshold':threshold,'present':present,'N_pairs':pairs})
+#
+
+def merge_from_file(files: list, similarity_threshold: float):
+    merged_results = {}
+    for f in files:
+        print(f)
+        result=loadPickle(f)
+        for pair, similarity in result.items():
+            if similarity >= similarity_threshold:
+                if pair not in merged_results.keys():
+                    merged_results[pair] = []
+                merged_results[pair].append(similarity)
+    return merged_results
+
+
+def filter_merged_N_present(merged: dict, min_present: int):
+    filter_merged = {}
+    for pair, similarities in merged.items():
+        if len(similarities) >= min_present:
+            filter_merged[pair] = similarities
+    return filter_merged
+
+
+def process_results_files(files, threshold, min_present, save: str = None):
+    merged_results = merge_from_file(files=files, similarity_threshold=threshold)
+    filtered_present = filter_merged_N_present(merged=merged_results, min_present=min_present)
+    if save is None:
+        return filtered_present
+    else:
+        savePickle(save,filtered_present)
+
+
+merged_results = merge_from_file(files, similarity_threshold=0.6)
+# Plot dist in how many reps present
+# distn_present=[]
+# for similarities in merged_results.values():
+#     distn_present.append(len(similarities))
+# plt.hist(distn_present,bins=49)
+
+# Remove results present in less than 10 replicates:
+filter_merged = filter_merged_N_present(merged_results, min_present=10)
+# Save filtered
+
+savePickle(path_inverse + 'merged_T0_6_min10.pkl',filter_merged)
+
+# Load filtered
+result=loadPickle(path_inverse + 'merged_T0_6_min10.pkl')
+# Check how many connections is retained at different thresholds
+summary = []
+for threshold in [0.6, 0.8, 0.9, 0.95]:
+    for present in [10, 20, 30, 40, 45]:
+
+        pairs = 0
+        genes_retained = set()
+        for pair, similarities in result.items():
+            retained_similarities = [item for item in similarities if item >= threshold]
+            if len(retained_similarities) >= present:
+                pairs += 1
+                genes_retained.add(pair[0])
+                genes_retained.add(pair[1])
+        n_genes = len(genes_retained)
+        print(threshold, present, pairs, n_genes)
+        summary.append({'threshold': threshold, 'present': present, 'N_pairs': pairs, 'N_genes': n_genes})
+summary = pd.DataFrame(summary)
+# Result: By replicate.
+#     threshold  present  N_pairs  N_genes
+# 0        0.60       10   711795    11216
+# 1        0.60       20    29922     4731
+# 2        0.60       30      656      507
+# 3        0.60       40        0        0
+# 4        0.60       45        0        0
+# 5        0.80       10   711070    11213
+# 6        0.80       20    29903     4729
+# 7        0.80       30      655      505
+# 8        0.80       40        0        0
+# 9        0.80       45        0        0
+# 10       0.90       10   573170    10589
+# 11       0.90       20    24803     3944
+# 12       0.90       30      517      411
+# 13       0.90       40        0        0
+# 14       0.90       45        0        0
+# 15       0.95       10   224402     7054
+# 16       0.95       20     7530     1673
+# 17       0.95       30       90      102
+# 18       0.95       40        0        0
+# 19       0.95       45        0        0
+
+# Filter result
+present = 30
+threshold = 0.9
+filtered = {}
+for pair, similarities in result.items():
+    retained_similarities = [item for item in similarities if item >= threshold]
+    if len(retained_similarities) >= present:
+        filtered[pair] = mean(retained_similarities)
+graph = build_graph(filtered)
+nx.write_pajek(graph, path_inverse + 'kN200_t0_9_min30Rep_inv.net')
+
+# Make results from randomly selected reps
+sample1,sample2=jf.sample_from_list(files,25)
+count_sample=1
+for sample in [sample1,sample2]:
+    process_results_files(files=sample, threshold=0.6, min_present=10, save=path_inverse + 'merged_T0_6_min10_sample'+
+                                                                   str(count_sample)+'.pkl')
+    count_sample+=1
+
+
+# Compare which genes retained:
+sample1=loadPickle(path_inverse + 'merged_T0_6_min10_sample1.pkl')
+sample2=loadPickle(path_inverse + 'merged_T0_6_min10_sample2.pkl')
+summary=NeighbourCalculator.compare_threshold_batched(sample1,sample2,[0.8,0.9,0.925,0.95,0.99],[5,10,12,14,15,16,17])
+
+# Plot
+summary1=summary.astype({'min_present':'category'})
+base = alt.Chart(summary1).encode(x='threshold')
+
+f_val_plot = base.mark_point(shape='circle').encode( y='f_val',color=alt.Color('min_present'))
+n_genes_plot = base.mark_point(shape='square').encode(y='n_genes1',color=alt.Color('min_present'))
+
+#Graph containing actual data only (using independent scales)
+combined_graph = (f_val_plot + n_genes_plot).resolve_scale(y='independent')
+combined_graph.interactive().serve()

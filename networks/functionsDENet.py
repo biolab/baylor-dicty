@@ -25,7 +25,10 @@ def savePickle(file, object):
 
 
 def loadPickle(file):
-    return pickle.load(open(file, 'rb'))
+    pkl_file = open(file, 'rb')
+    result = pickle.load(pkl_file)
+    pkl_file.close()
+    return result
 
 
 def formatFilePrefix(prefix):

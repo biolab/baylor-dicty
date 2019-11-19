@@ -89,7 +89,6 @@ class NeighbourCalculator:
             batches = np.array(batches)
             results = dict()
             for batch in batch_groups:
-                print(batch)
                 genes_sub = genes.T[batches == batch].T
                 if remove_batch_zero:
                     genes_sub = genes_sub[(genes_sub != 0).any(axis=1)]
@@ -117,12 +116,12 @@ class NeighbourCalculator:
             index = NNDescent(genes_index, metric='cosine', n_jobs=4)
         except ValueError:
             try:
-                index = NNDescent(genes_index, metric='cosine', tree_init=False,n_jobs=4)
+                index = NNDescent(genes_index, metric='cosine', tree_init=False, n_jobs=4)
                 warnings.warn(
-                    'Dataset '+ description+ ' index computed without tree initialisation',
+                    'Dataset ' + description + ' index computed without tree initialisation',
                     Warning)
             except ValueError:
-                raise ValueError('Dataset '+ description+ ' can not be processed by pydescent')
+                raise ValueError('Dataset ' + description + ' can not be processed by pydescent')
         neighbours, distances = index.query(genes_query.tolist(), k=n_neighbours)
         return self.parse_neighbours(neighbours=neighbours, distances=distances)
 
@@ -247,6 +246,18 @@ class NeighbourCalculator:
         return merged
 
     @staticmethod
+    def filter_similarities_batched(results: dict, similarity_threshold: float = 0, min_present: int = 1) -> dict:
+        """
+
+        """
+        retained = {}
+        for pair, similarities in results.items():
+            retained_similarities = [item for item in similarities if item >= similarity_threshold]
+            if len(retained_similarities) >= min_present:
+                retained[pair] = mean(retained_similarities)
+        return retained
+
+    @staticmethod
     def filter_similarities(results: dict, similarity_threshold: float) -> dict:
         """
         Filter out pairs that have similarity below threshold.
@@ -316,19 +327,7 @@ class NeighbourCalculator:
             # Find genes retained in each result
             gene_names_sub = {gene for pair in result_filtered for gene in pair}
             gene_names_test = {gene for pair in result_filtered_test for gene in pair}
-            match = gene_names_sub & gene_names_test
-            in_sub_test = len(match)
-            only_sub = len(gene_names_sub ^ match)
-            only_test = len(gene_names_test ^ match)
-            if in_sub_test + only_test < 1:
-                recall_sub = float('NaN')
-            else:
-                recall_sub = in_sub_test / (in_sub_test + only_test)
-            if in_sub_test + only_sub < 1:
-                recall_test = float('NaN')
-            else:
-                recall_test = in_sub_test / (in_sub_test + only_sub)
-            f_val = 2 * recall_sub * recall_test / (recall_sub + recall_test)
+            f_val = NeighbourCalculator.f_value(set1=gene_names_sub, set2=gene_names_test)
             # Calculate MSE for each gene pair -
             # compare similarity from gene subset to similarity of the gene pair in gene test set
             sq_errors = []
@@ -356,6 +355,23 @@ class NeighbourCalculator:
                                  'N pairs': len(result_filtered), 'N genes': n_genes, 'F value': f_val})
         return data_summary
 
+    @staticmethod
+    def f_value(set1, set2):
+        match = set1 & set2
+        n_both = len(match)
+        n_only1 = len(set1 ^ match)
+        n_only2 = len(set2 ^ match)
+        if n_both + n_only2 < 1:
+            recall1 = float('NaN')
+        else:
+            recall1 = n_both / (n_both + n_only2)
+        if n_both + n_only1 < 1:
+            recall2 = float('NaN')
+        else:
+            recall2 = n_both / (n_both + n_only1)
+        f_val = 2 * recall1 * recall2 / (recall1 + recall2)
+        return f_val
+
     def plot_select_threshold(self, thresholds: list, filter_column,
                               filter_column_values_sub: list,
                               filter_column_values_test: list, neighbours_n: int = 2, inverse: bool = False,
@@ -373,6 +389,29 @@ class NeighbourCalculator:
                                                                  do_mse=False))
         pandas_multi_y_plot(filtering_summary, 'threshold', ['N genes', 'F value'])
         return filtering_summary
+
+    @staticmethod
+    def compare_threshold_batched(sample1: dict, sample2: dict, similarity_thresholds: list,
+                                  min_present_thresholds: list):
+        summary = []
+        for threshold in similarity_thresholds:
+            for min_present in min_present_thresholds:
+                print(threshold,min_present)
+                filtered1 = NeighbourCalculator.filter_similarities_batched(results=sample1,
+                                                                            similarity_threshold=threshold,
+                                                                            min_present=min_present)
+                n_pairs1 = len(filtered1)
+                genes1 = set(gene for pair in filtered1.keys() for gene in pair)
+                n_genes1 = len(genes1)
+                filtered2 = NeighbourCalculator.filter_similarities_batched(results=sample2,
+                                                                            similarity_threshold=threshold,
+                                                                            min_present=min_present)
+                genes2 = set(gene for pair in filtered2.keys() for gene in pair)
+                f_val = NeighbourCalculator.f_value(set1=genes1, set2=genes2)
+                summary.append(
+                    {'threshold': threshold, 'min_present': min_present, 'n_pairs1': n_pairs1, 'n_genes1': n_genes1,
+                     'f_val': f_val})
+        return pd.DataFrame(summary)
 
 
 # Source: https://matplotlib.org/3.1.1/gallery/ticks_and_spines/multiple_yaxis_with_spines.html
