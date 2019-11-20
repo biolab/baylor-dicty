@@ -226,3 +226,10 @@ Thus none of them were excluded.
 Regulons: closest neighbours scaling: minmax+inverse:
 The result can be different based on which vector is inversed.
 Could not find a way to solve this thus used average.
+
+*************************
+Regulons with clustering on selected genes:
+Select genes params: gene_selection.ipynb
+Select clustering: tsne_clusters.ipynb
+For Orange regulons use Louvain with Jaccard index (40 neighbours): minmax, log, 2 closest neighbours for selection of genes.
+For inverse find KNN of each replicate: 200 neighbours, minmax, log, remove all 0. Merge results retaining sim>=0.6 and present in min 10 replicates.

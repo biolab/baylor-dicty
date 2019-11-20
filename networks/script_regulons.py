@@ -463,11 +463,13 @@ for description, n_terms in entrez_descriptions.values():
 # pseudo: all: 159, without GO term: 157
 # hypothetical: all: 7860, without GO term: 6434
 
-# *****************
-# Inverse neighbours graph with batches
+#****************************************
+# *********************************
+# Inverse regulons
+
+#***********Data from batches by replicate
 batches = list(conditions['Strain'])
 batches = np.array(batches)
-
 
 # Calculate neighbours
 for batch in set(batches):
@@ -504,7 +506,7 @@ files = [f for f in glob.glob(path_inverse+'raw/' + "*.pkl")]
 def merge_from_file(files: list, similarity_threshold: float):
     merged_results = {}
     for f in files:
-        print(f)
+        #print(f)
         result=loadPickle(f)
         for pair, similarity in result.items():
             if similarity >= similarity_threshold:
@@ -544,6 +546,9 @@ filter_merged = filter_merged_N_present(merged_results, min_present=10)
 
 savePickle(path_inverse + 'merged_T0_6_min10.pkl',filter_merged)
 
+
+#****************************
+#***********Parameters
 # Load filtered
 result=loadPickle(path_inverse + 'merged_T0_6_min10.pkl')
 # Check how many connections is retained at different thresholds
@@ -589,35 +594,74 @@ summary = pd.DataFrame(summary)
 # Filter result
 present = 30
 threshold = 0.9
-filtered = {}
-for pair, similarities in result.items():
-    retained_similarities = [item for item in similarities if item >= threshold]
-    if len(retained_similarities) >= present:
-        filtered[pair] = mean(retained_similarities)
-graph = build_graph(filtered)
+filtered = NeighbourCalculator.filter_similarities_batched(results=result,similarity_threshold=threshold,min_present=present)
+graph= build_graph(filtered)
 nx.write_pajek(graph, path_inverse + 'kN200_t0_9_min30Rep_inv.net')
 
-# Make results from randomly selected reps
-sample1,sample2=jf.sample_from_list(files,25)
+# Make results from randomly selected reps, if similar sized samples
+sample1_files,sample2_files=jf.sample_from_list(files,25)
 count_sample=1
-for sample in [sample1,sample2]:
-    process_results_files(files=sample, threshold=0.6, min_present=10, save=path_inverse + 'merged_T0_6_min10_sample'+
-                                                                   str(count_sample)+'.pkl')
+threshold=0.6
+min_present=5
+for sample in [sample1_files,sample2_files]:
+    process_results_files(files=sample, threshold=threshold, min_present=min_present, save=path_inverse +'merged_T'+
+                                                                                 str(threshold).replace('.','_')+'_min'+str(min_present)
+                                                                            +'_sample'+str(count_sample)+'_Nsample'
+                                                                            +str(len(sample))+'.pkl')
     count_sample+=1
-
+#Sample1: ['acaA_bio2.pkl', 'cudA_r3.pkl', 'gtaG_r2.pkl', 'ecmA_bio1.pkl', 'acaA_bio1.pkl', 'tagB_bio1.pkl', 'tgrB1C1_r2.pkl', 'tgrB1_r2.pkl', 'comH_r1.pkl', 'AX4_r1.pkl', 'pkaCoeAX4_r2.pkl', 'pkaR_bio2.pkl', 'amiB_r1.pkl', 'gtaC_r41A.pkl', 'mybB_bio1.pkl', 'tgrC1_r2.pkl', 'AX4_FDpool02.pkl', 'AX4_pool21.pkl', 'pkaCoeAX4_r3.pkl', 'pkaR_bio1.pkl', 'gtaG_r1.pkl', 'AX4_bio2.pkl', 'gtaC_r21A.pkl', 'tagB_bio2.pkl', 'mybBGFP_bio1.pkl']
+#Sample2: ['AX4_bio1.pkl', 'mybB_bio2.pkl', 'gbfA_r3.pkl', 'tgrC1_r1.pkl', 'gtaC_r47B.pkl', 'ac3pkaCoe_r2.pkl', 'ecmA_bio2.pkl', 'gbfA_r1.pkl', 'AX4_r2.pkl', 'dgcA_r2.pkl', 'ac3pkaCoe_r1.pkl', 'tgrB1C1_r1.pkl', 'gtaI_bio1.pkl', 'AX4_FDpool01.pkl', 'mybBGFP_bio2.pkl', 'AX4_bio3.pkl', 'tgrB1_r1.pkl', 'AX4_pool19.pkl', 'gtaC_r27B.pkl', 'gtaI_bio2.pkl', 'comH_r2.pkl', 'dgcA_r1.pkl', 'cudA_r2.pkl', 'amiB_r2.pkl']
+# Make results from randomly selected reps, if differently sized samples:
+process_results_files(files=sample1_files, threshold=0.6, min_present=20, save=path_inverse +
+                                                                            'merged_T0_6_min20_sample1_Nsample'
+                                                                            +str(len(sample1_files))+'.pkl')
+process_results_files(files=sample2_files, threshold=0.6, min_present=1, save=path_inverse +
+                                                                        'merged_T0_6_min1_sample2_Nsample'+
+                                                                        str(len(sample2_files))+'.pkl')
 
 # Compare which genes retained:
-sample1=loadPickle(path_inverse + 'merged_T0_6_min10_sample1.pkl')
-sample2=loadPickle(path_inverse + 'merged_T0_6_min10_sample2.pkl')
-summary=NeighbourCalculator.compare_threshold_batched(sample1,sample2,[0.8,0.9,0.925,0.95,0.99],[5,10,12,14,15,16,17])
+sample1=loadPickle(path_inverse + 'merged_T0_6_min5_sample1_Nsample25.pkl')
+sample2=loadPickle(path_inverse + 'merged_T0_6_min5_sample2_Nsample24.pkl')
+summary=NeighbourCalculator.plot_threshold_batched(sample1,sample2,[0.8,0.9,0.925,0.94,0.95,0.97,0.99],[5,10,12,14,15,16,17])
+results_all=loadPickle(path_inverse + 'merged_T0_6_min10.pkl')
 
-# Plot
-summary1=summary.astype({'min_present':'category'})
-base = alt.Chart(summary1).encode(x='threshold')
+#summary2=NeighbourCalculator.compare_threshold_batched(sample1,sample2,[0.8,0.9,0.925,0.94,0.95,0.97,0.99],[20,25,28,29,30,32],2)
 
-f_val_plot = base.mark_point(shape='circle').encode( y='f_val',color=alt.Color('min_present'))
-n_genes_plot = base.mark_point(shape='square').encode(y='n_genes1',color=alt.Color('min_present'))
+# Testing with half-half samples can use F value, recall. However, hard to estimate where to put N Present in whole population.
+# If testing on split with one sample almost as large as population then recall and F value dont make much sense as
+# most genes retained in smaller sample if N present=1 - better if it must be present in more than 1 sample even in smaller population.
 
-#Graph containing actual data only (using independent scales)
-combined_graph = (f_val_plot + n_genes_plot).resolve_scale(y='independent')
-combined_graph.interactive().serve()
+
+#********************************
+#**********Inverse regulons construction
+filtered = NeighbourCalculator.filter_similarities_batched(results=results_all,similarity_threshold=0.95,min_present=25)
+graph= build_graph(filtered)
+nx.write_pajek(graph, path_inverse + 'kN200_t0_95_min25Rep_inv.net')
+
+genes_pp,gene_names=Clustering.get_genes(result=filtered, genes=genes, threshold=None,
+                                                                    inverse=True,return_query=False)
+#print('Selected genes:',len(gene_names))
+
+embedding=make_tsne(genes_pp, perplexities_range= [5, 100], exaggerations = [17, 1.6],
+              momentums = [0.6, 0.97])
+tsne_data_selected=make_tsne_data(tsne=embedding, names=gene_names)
+
+cluster_analyser=ClusterAnalyser(genes=genes, conditions=conditions, organism=44689, average_data_by='Time',
+                 split_data_by='Strain', matching='Measurment',control='AX4')
+clustering_analyser=ClusteringAnalyser(gene_names=genes.index,cluster_analyser=cluster_analyser)
+
+
+louvain_selected=LouvainClustering.from_orange_graph(data=genes_pp,gene_names=gene_names,neighbours=50)
+clusters_selected=louvain_selected.get_clusters(resolution=0.8,random_state=0)
+
+cluster_data_selected,membership_selected=clustering_analyser.analyse_clustering(clustering=louvain_selected,
+                                                             clusters=clusters_selected,
+                                                       tsne_data=tsne_data_selected,tsne_plot={'s':2,'alpha':0.4})
+# jf.display_newline_df(cluster_data_selected)
+
+nx.draw_spring(graph,with_labels = False,node_size=2,width=0.5)
+
+embedding2=make_tsne(genes_pp, perplexities_range= [5, 100], exaggerations = [5, 1.6],
+              momentums = [0.6, 0.8])
+embedding2=make_tsne(genes_pp, perplexities_range= [5, 50], exaggerations = [10, 1.6],
+              momentums = [0.6, 0.97])
