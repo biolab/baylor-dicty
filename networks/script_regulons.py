@@ -665,3 +665,5 @@ embedding2=make_tsne(genes_pp, perplexities_range= [5, 100], exaggerations = [5,
               momentums = [0.6, 0.8])
 embedding2=make_tsne(genes_pp, perplexities_range= [5, 50], exaggerations = [10, 1.6],
               momentums = [0.6, 0.97])
+embedding2=make_tsne(genes_pp, perplexities_range= [5, 50], exaggerations = [15, 1.6],
+              momentums = [0.6, 0.8])
