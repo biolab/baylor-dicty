@@ -428,10 +428,12 @@ class NeighbourCalculator:
                     n_pairs2 = len(filtered2)
                     n_genes2 = len(genes2)
 
-                    f_val = NeighbourCalculator.f_value(set1=genes1, set2=genes2)
+                    f_val_genes = NeighbourCalculator.f_value(set1=genes1, set2=genes2)
+                    f_val_pairs = NeighbourCalculator.f_value(set(filtered1.keys()), set(filtered2.keys()))
                     summary.append(
                         {'threshold': threshold, 'min_present': min_present, 'n_pairs1': n_pairs1, 'n_genes1': n_genes1,
-                         'n_pairs2': n_pairs2, 'n_genes2': n_genes2, 'f_val': f_val})
+                         'n_pairs2': n_pairs2, 'n_genes2': n_genes2, 'f_val_genes': f_val_genes,
+                         'f_val_pairs': f_val_pairs})
                 else:
                     n_genes1 = len(genes1)
                     if n_genes1 < 1:
@@ -444,56 +446,99 @@ class NeighbourCalculator:
         return pd.DataFrame(summary)
 
     @staticmethod
-    def plot_threshold_batched(sample1: dict, sample2: dict, similarity_thresholds: list,
-                               min_present_thresholds: list):
-        summary = NeighbourCalculator.compare_threshold_batched(sample1=sample1, sample2=sample2,
-                                                                similarity_thresholds=similarity_thresholds,
-                                                                min_present_thresholds=min_present_thresholds,
-                                                                min_present_threshold2=None)
-
-        fig = plt.figure()
+    def plot_threshold_batched(summary: pd.DataFrame = None, sample1: dict = None, sample2: dict = None,
+                               similarity_thresholds: list = None,
+                               min_present_thresholds: list = None):
+        if summary is None and (sample1 is None or sample2 is None or similarity_thresholds is
+                                None or min_present_thresholds is None):
+            raise ValueError('Either summary or all other arguments must be given.')
+        if summary is None:
+            summary = NeighbourCalculator.compare_threshold_batched(sample1=sample1, sample2=sample2,
+                                                                    similarity_thresholds=similarity_thresholds,
+                                                                    min_present_thresholds=min_present_thresholds,
+                                                                    min_present_threshold2=None)
+        font = 9
+        fig = plt.figure(
+            figsize=(10, 10)
+        )
         fig.tight_layout()
-        ax1 = fig.add_subplot(1, 2, 1)
-        ax1.set_ylabel('F value / Proportion of max retained genes')
-        ax1.set_xlabel('Min similarity')
-        ax2 = fig.add_subplot(1, 2, 2)
-        ax2.set_xlabel('Present in N')
+        ax1 = fig.add_subplot(2, 2, 1)
+        ax1.set_ylabel('F value genes/ Proportion of max retained genes', fontdict={'fontsize': font})
+        ax1.set_xlabel('Min similarity', fontdict={'fontsize': font})
+        ax2 = fig.add_subplot(2, 2, 2)
+        ax2.set_xlabel('Present in N', fontdict={'fontsize': font})
+        ax3 = fig.add_subplot(2, 2, 3)
+        ax3.set_ylabel('F value pairs/ Proportion of max retained pairs', fontdict={'fontsize': font})
+        ax3.set_xlabel('Min similarity', fontdict={'fontsize': font})
+        ax4 = fig.add_subplot(2, 2, 4)
+        ax4.set_xlabel('Present in N', fontdict={'fontsize': font})
+        ax1.tick_params(axis="both", labelsize=font)
+        ax2.tick_params(axis="both", labelsize=font)
+        ax3.tick_params(axis="both", labelsize=font)
+        ax4.tick_params(axis="both", labelsize=font)
+
+        max_genes_sum = max(summary['n_genes1']) + max(summary['n_genes2'])
+        max_pairs_sum = max(summary['n_pairs1']) + max(summary['n_pairs2'])
 
         groupmp = summary.groupby('min_present')
         for group in groupmp:
-            x = group[1]['threshold']
-            y = group[1]['f_val'] / ((group[1]['n_genes1'] + group[1]['n_genes2']) /
-                                     (max(summary['n_genes1']) + max(summary['n_genes2'])))
+            x_genes, y_genes = NeighbourCalculator.x_y_fval_plot(group=group, x_col='threshold',
+                                                                 y_col_nom='f_val_genes',
+                                                                 y_col_denom1='n_genes1', y_col_denom2='n_genes2',
+                                                                 y_col_denom_denom=max_genes_sum)
+            x_pairs, y_pairs = NeighbourCalculator.x_y_fval_plot(group=group, x_col='threshold',
+                                                                 y_col_nom='f_val_pairs',
+                                                                 y_col_denom1='n_pairs1', y_col_denom2='n_pairs2',
+                                                                 y_col_denom_denom=max_pairs_sum)
             label = group[0]
-            plot_line_scatter(x=x, y=y, ax=ax1, label=label)
-        ax1.legend(title='Present in N')
+            plot_line_scatter(x=x_genes, y=y_genes, ax=ax1, label=label)
+            plot_line_scatter(x=x_pairs, y=y_pairs, ax=ax3, label=label)
+        legend1 = ax1.legend(title='Present in N', prop={'size': font})
+        legend3 = ax3.legend(title='Present in N', prop={'size': font})
+        legend1.get_title().set_fontsize(font)
+        legend3.get_title().set_fontsize(font)
 
         groupt = summary.groupby('threshold')
         for group in groupt:
-            x = group[1]['min_present']
-            y = group[1]['f_val'] / ((group[1]['n_genes1'] + group[1]['n_genes2']) /
-                                     (max(summary['n_genes1']) + max(summary['n_genes2'])))
+            x_genes, y_genes = NeighbourCalculator.x_y_fval_plot(group=group, x_col='min_present',
+                                                                 y_col_nom='f_val_genes',
+                                                                 y_col_denom1='n_genes1', y_col_denom2='n_genes2',
+                                                                 y_col_denom_denom=max_genes_sum)
+            x_pairs, y_pairs = NeighbourCalculator.x_y_fval_plot(group=group, x_col='min_present',
+                                                                 y_col_nom='f_val_pairs',
+                                                                 y_col_denom1='n_pairs1', y_col_denom2='n_pairs2',
+                                                                 y_col_denom_denom=max_pairs_sum)
             label = group[0]
-            plot_line_scatter(x=x, y=y, ax=ax2, label=label)
-        ax2.legend(title='Min similarity')
+            plot_line_scatter(x=x_genes, y=y_genes, ax=ax2, label=label)
+            plot_line_scatter(x=x_pairs, y=y_pairs, ax=ax4, label=label)
+        legend2 = ax2.legend(title='Min similarity', fontsize=font)
+        legend4 = ax4.legend(title='Min similarity', fontsize=font)
+        legend2.get_title().set_fontsize(font)
+        legend4.get_title().set_fontsize(font)
 
         return summary
 
     @staticmethod
-    def plot_threshold_batched_sub_vs_all(summary, result_all, similarity_threshold,selected_min_present_sub):
+    def x_y_fval_plot(group: tuple, x_col, y_col_nom, y_col_denom1, y_col_denom2, y_col_denom_denom):
+        x = group[1][x_col]
+        y = group[1][y_col_nom] / ((group[1][y_col_denom1] + group[1][y_col_denom2]) / y_col_denom_denom)
+        return x, y
+
+    @staticmethod
+    def plot_threshold_batched_sub_vs_all(summary, result_all, similarity_threshold, selected_min_present_sub):
         if similarity_threshold not in list(summary['threshold']):
             raise ValueError('Similarity threshold is not in summary')
         summary_at_sim_threshold = summary[summary['threshold'] == similarity_threshold]
-        summary_selected=summary_at_sim_threshold[summary_at_sim_threshold['min_present']==selected_min_present_sub]
-        genes_subs=(summary_selected['n_genes1'].item()+summary_selected['n_genes2'].item())/2
+        summary_selected = summary_at_sim_threshold[summary_at_sim_threshold['min_present'] == selected_min_present_sub]
+        genes_subs = (summary_selected['n_genes1'].item() + summary_selected['n_genes2'].item()) / 2
         fig, ax = plt.subplots()
         ax.set_ylabel('Sub samples min present thresholds')
         ax.set_xlabel('N retained genes')
         ax.axvline(x=genes_subs)
-        line1=plot_line_scatter(summary_at_sim_threshold['n_genes1'], summary_at_sim_threshold['min_present'], ax,
-                          label='Subsample1',c='g')
-        line2=plot_line_scatter(summary_at_sim_threshold['n_genes2'], summary_at_sim_threshold['min_present'], ax,
-                          label='Subsample2',c='b')
+        line1 = plot_line_scatter(summary_at_sim_threshold['n_genes1'], summary_at_sim_threshold['min_present'], ax,
+                                  label='Subsample1', c='g')
+        line2 = plot_line_scatter(summary_at_sim_threshold['n_genes2'], summary_at_sim_threshold['min_present'], ax,
+                                  label='Subsample2', c='b')
         ax1 = ax.twinx()
         ax1.set_ylabel('Complete result min present thresholds')
         min_present_thresholds = list(summary_at_sim_threshold['min_present'] * 2)
@@ -501,9 +546,9 @@ class NeighbourCalculator:
         for min_present in min_present_thresholds:
             retained = NeighbourCalculator.filter_similarities_batched(result_all, similarity_threshold, min_present)
             n_genes_all.append(len(set(gene for pair in retained.keys() for gene in pair)))
-        line3=plot_line_scatter(n_genes_all, min_present_thresholds, ax1,label='Complete results',c='r')
+        line3 = plot_line_scatter(n_genes_all, min_present_thresholds, ax1, label='Complete results', c='r')
         ax.set_xscale('log')
-        fig.legend(handles=[line1,line2,line3])
+        fig.legend(handles=[line1, line2, line3])
 
 
 def plot_line_scatter(x, y, ax: plt.axes, **linplot_kwargs):
@@ -624,7 +669,7 @@ class Clustering(ABC):
         return distance_matrix, gene_names, np.array(index)
 
     @staticmethod
-    def get_genes(result: dict, genes: pd.DataFrame,inverse: bool, threshold: float=None,  scale: str = SCALING,
+    def get_genes(result: dict, genes: pd.DataFrame, inverse: bool, threshold: float = None, scale: str = SCALING,
                   log: bool = LOG, return_query: bool = True) -> tuple:
         """
         Prepare gene data for distance calculation.
@@ -642,7 +687,7 @@ class Clustering(ABC):
         if threshold is not None:
             result_filtered = NeighbourCalculator.filter_similarities(result, threshold)
         else:
-            result_filtered=result
+            result_filtered = result
         if len(result_filtered) == 0:
             raise ValueError('All genes were filtered out. Choose lower threshold.')
         genes_filtered = set((gene for pair in result_filtered.keys() for gene in pair))
@@ -1483,7 +1528,7 @@ def plot_tsne(tsne: ot.TSNEEmbedding, classes: dict = None, names: list = None, 
     x = [x[0] for x in tsne]
     y = [x[1] for x in tsne]
     if classes is None:
-        plt.scatter(x, y,  alpha=0.5, **plotting_params)
+        plt.scatter(x, y, alpha=0.5, **plotting_params)
     else:
         if names is not None and isinstance(classes, dict):
             classes_extended = []
@@ -1540,7 +1585,7 @@ def make_tsne_data(tsne, names):
 
 
 def preprocess_for_orange(genes: pd.DataFrame, threshold: float, conditions: pd.DataFrame, split_by, average_by,
-                          matching, group: str, scale: str = SCALING, log: bool = LOG) -> tuple:
+                          matching, group: str, scale: str = SCALING, log: bool = LOG, result: dict = None) -> tuple:
     """
     Get data of genes with close neighbours: preprocessed data, data splitted and averaged, and expression
     pattern characteristics
@@ -1555,7 +1600,7 @@ def preprocess_for_orange(genes: pd.DataFrame, threshold: float, conditions: pd.
     :param log: Use log transformation  for neighbour calculation and returning of preprocessed data
     :return: preprocessed data, splitted and averaged data, expression pattern characteristics data
     """
-    genes_scaled = get_orange_scaled(genes=genes, threshold=threshold, scale=scale, log=log)
+    genes_scaled = get_orange_scaled(genes=genes, threshold=threshold, scale=scale, log=log,result=result)
     genes_selected = genes.loc[genes_scaled.index, :]
     genes_averaged = get_orange_averaged(genes=genes_selected, conditions=conditions,
                                          split_by=split_by, average_by=average_by, matching=matching)
@@ -1565,7 +1610,7 @@ def preprocess_for_orange(genes: pd.DataFrame, threshold: float, conditions: pd.
 
 
 def get_orange_scaled(genes: pd.DataFrame, threshold: float, scale: str = SCALING,
-                      log: bool = LOG) -> pd.DataFrame:
+                      log: bool = LOG, result: dict = None) -> pd.DataFrame:
     """
     Get preprocessed expression data for orange, retaining genes that have very close neighbours
     :param genes: Expression data, genes in rows, measurments in columns
@@ -1574,8 +1619,9 @@ def get_orange_scaled(genes: pd.DataFrame, threshold: float, scale: str = SCALIN
     :param log: Log transform data   for neighbour calculation and returning
     :return: Preprocessed genes with close neighbours
     """
-    neighbour_calculator = NeighbourCalculator(genes)
-    result = neighbour_calculator.neighbours(n_neighbours=2, inverse=False, scale=scale, log=log, batches=None)
+    if result is None:
+        neighbour_calculator = NeighbourCalculator(genes)
+        result = neighbour_calculator.neighbours(n_neighbours=2, inverse=False, scale=scale, log=log, batches=None)
     genes_pp, gene_names = Clustering.get_genes(result=result, genes=genes, threshold=threshold, inverse=False,
                                                 scale=scale, log=log, return_query=False)
     return pd.DataFrame(genes_pp, index=gene_names, columns=genes.columns)
