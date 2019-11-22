@@ -246,15 +246,24 @@ class NeighbourCalculator:
         return merged
 
     @staticmethod
-    def filter_similarities_batched(results: dict, similarity_threshold: float = 0, min_present: int = 1) -> dict:
+    def filter_similarities_batched(results: dict, similarity_threshold: float = 0, min_present: int = 1,
+                                    merge_function=mean) -> dict:
         """
-
+        Filter and merge results from batched neighbour calculation where results have been previously
+        added to single dictionary.
+        :param results: Dict with keys (gene1,gene2) and values list of similarities across batches
+        :param similarity_threshold: Remove similarities below threshold.
+        :param min_present: Remove gene pairs that have less than min_present similarities left after similarity
+            threshold filtering.
+        :param merge_function: Apply to list of retained similarities to get single value to save in result dict
+        :return: Dict with keys (gene1,gene2) and values being results of merge function applied to
+            list of filtered similarities.
         """
         retained = {}
         for pair, similarities in results.items():
             retained_similarities = [item for item in similarities if item >= similarity_threshold]
             if len(retained_similarities) >= min_present:
-                retained[pair] = mean(retained_similarities)
+                retained[pair] = merge_function(retained_similarities)
         return retained
 
     @staticmethod
@@ -356,7 +365,14 @@ class NeighbourCalculator:
         return data_summary
 
     @staticmethod
-    def f_value(set1, set2):
+    def f_value(set1: set, set2: set):
+        """
+        Compute mock F value. n_both = genes selected in both subsets, FN1 = genes selected only in subset2,
+        FN2 = genes selected only in subset1. r1=n_both/(n_both+FN1) and r2=n_both/(n_both+FN2). F=2 * r1 * r2/(r1+r2)
+        :param set1: elements 1
+        :param set2:elements 2
+        :return: F value
+        """
         match = set1 & set2
         n_both = len(match)
         n_only1 = len(set1 ^ match)
@@ -397,13 +413,16 @@ class NeighbourCalculator:
     def compare_threshold_batched(sample1: dict, sample2: dict, similarity_thresholds: list,
                                   min_present_thresholds: list, min_present_threshold2: int = None):
         """
-        Compare
-        :param sample1:
-        :param sample2:
-        :param similarity_thresholds:
-        :param min_present_thresholds:
-        :param min_present_threshold2:
-        :return:
+        Compare thresholds in batched based on 2 subsets
+        :param sample1: Dict key (gene1,gene2), value similarities list
+        :param sample2: as for sample2
+        :param similarity_thresholds: Apply these thresholds for sample1 and 2
+        :param min_present_thresholds: Apply these thresholds for sample1 and 2
+        :param min_present_threshold2: If specified apply this single threshold to sample2 instead of
+        min_present_thresholds
+        :return: Data frame with mock F values (as specified in f_value function) if min_present_threshold2=None, else
+            return precision of sample1 against sample2 (as ground truth).
+            Also includes parameters and n of retained genes and pairs.
         """
         summary = []
         for threshold in similarity_thresholds:
@@ -449,6 +468,15 @@ class NeighbourCalculator:
     def plot_threshold_batched(summary: pd.DataFrame = None, sample1: dict = None, sample2: dict = None,
                                similarity_thresholds: list = None,
                                min_present_thresholds: list = None):
+        """
+        Select similarity and min present threshold for batched.
+        :param summary: Prespecifiy summary from compare_threshold_batched
+        :param sample1: Dict key (gene1,gene2), value similarities list
+        :param sample2: as for sample2
+        :param similarity_thresholds: Apply these thresholds for sample1 and 2
+        :param min_present_thresholds: Apply these thresholds for sample1 and 2
+        :return: summary (newly obtained or specified)
+        """
         if summary is None and (sample1 is None or sample2 is None or similarity_thresholds is
                                 None or min_present_thresholds is None):
             raise ValueError('Either summary or all other arguments must be given.')
@@ -520,12 +548,32 @@ class NeighbourCalculator:
 
     @staticmethod
     def x_y_fval_plot(group: tuple, x_col, y_col_nom, y_col_denom1, y_col_denom2, y_col_denom_denom):
+        """
+        Helper for F val plotting in plot_threshold_batched
+        Plot on y: y_col_nom / ((y_col_denom1 + y_col_denom2) / y_col_denom_denom)
+        :param group: pd Grop as obtained by df.groupby()
+        :param x_col: Plot on x, column name from group
+        :param y_col_nom: For y , column name from group
+        :param y_col_denom1: For y , column name from group
+        :param y_col_denom2: For y , column name from group
+        :param y_col_denom_denom: For y, float
+        :return: values for x and y
+        """
         x = group[1][x_col]
         y = group[1][y_col_nom] / ((group[1][y_col_denom1] + group[1][y_col_denom2]) / y_col_denom_denom)
         return x, y
 
     @staticmethod
     def plot_threshold_batched_sub_vs_all(summary, result_all, similarity_threshold, selected_min_present_sub):
+        """
+        Plot retained genes in batched subsets vs on all results. Plot for all min_present specified in summary and for
+            2times this number for result_all
+        :param summary: Summary from compare_threshold_batched
+        :param result_all: Result from all replicates, key (gene1,gene2) value list of similarities
+        :param similarity_threshold: Use this similarity from summary and apply it to result_all
+        :param selected_min_present_sub: Compute N of retained genes at this threshold in both sub sets from summary,
+            average it and plot a line at this N of genes
+        """
         if similarity_threshold not in list(summary['threshold']):
             raise ValueError('Similarity threshold is not in summary')
         summary_at_sim_threshold = summary[summary['threshold'] == similarity_threshold]
@@ -552,6 +600,14 @@ class NeighbourCalculator:
 
 
 def plot_line_scatter(x, y, ax: plt.axes, **linplot_kwargs):
+    """
+    Plot line with points (ax.plot and ax.scatter)
+    :param x: x data
+    :param y: y data
+    :param ax: plot to
+    :param linplot_kwargs: add to ax.plot
+    :return: as returned from ax.plot
+    """
     plotted = ax.plot(x, y, **linplot_kwargs)
     color = plotted[0].get_color()
     ax.scatter(x, y, color=color)
@@ -669,11 +725,14 @@ class Clustering(ABC):
         return distance_matrix, gene_names, np.array(index)
 
     @staticmethod
-    def get_genes(result: dict, genes: pd.DataFrame, inverse: bool, threshold: float = None, scale: str = SCALING,
+    def get_genes(genes: pd.DataFrame, inverse: bool, result: dict = None, threshold: float = None,
+                  scale: str = SCALING,
                   log: bool = LOG, return_query: bool = True) -> tuple:
         """
-        Prepare gene data for distance calculation.
-        :param result: Closest neighbours result.
+        Prepare gene data for distance calculation. Retain only specified genes based on result and its
+        filtering params.
+        :param result: Closest neighbours result. Used to select genes from all genes. If none use all genes from genes
+            Data Frame.
         :param genes: Expression data
         :param threshold: Retain only genes with at least one neighbour with similarity at least as big as threshold.
             If none use the raw result.
@@ -684,14 +743,17 @@ class Clustering(ABC):
         :return: index,query - processed expression data. If inverse is False both of them are the same, else query is
             inverse profiles data.
         """
-        if threshold is not None:
-            result_filtered = NeighbourCalculator.filter_similarities(result, threshold)
+        if result is not None:
+            if threshold is not None:
+                result_filtered = NeighbourCalculator.filter_similarities(result, threshold)
+            else:
+                result_filtered = result
+            if len(result_filtered) == 0:
+                raise ValueError('All genes were filtered out. Choose lower threshold.')
+            genes_filtered = set((gene for pair in result_filtered.keys() for gene in pair))
+            genes_data = genes.loc[genes_filtered, :]
         else:
-            result_filtered = result
-        if len(result_filtered) == 0:
-            raise ValueError('All genes were filtered out. Choose lower threshold.')
-        genes_filtered = set((gene for pair in result_filtered.keys() for gene in pair))
-        genes_data = genes.loc[genes_filtered, :]
+            genes_data = genes
         gene_names = list(genes_data.index)
         index, query = NeighbourCalculator.get_index_query(genes=genes_data, inverse=inverse, scale=scale, log=log)
         if return_query:
@@ -1166,7 +1228,7 @@ class ClusterAnalyser:
     def plot_profiles(self, gene_names: list, fig=None, rows: int = 1, row: int = 1, row_label: str = None):
         """
         Plot profiles of genes. Done separately for each value of split_data_by column, as specified on init.
-        Plots the graphs in one row. Plots profiles in gray and adds median profile in black.
+        Plots the graphs in one row. Plots profiles in gray and adds mean profile in black.
         :param gene_names: To obtain expression profiles from data given on init (genes in rows).
         :param fig: Plots can be added to existing figure. If None a new figure is created.
         :param rows: Specify N of subplot rows in figure
@@ -1195,11 +1257,11 @@ class ClusterAnalyser:
             data_genes = data_sub.loc[gene_names, :]
             x = data_genes.columns
             ax.set_xlim([min(x), max(x)])
-            y_median = log_transform_series(data_genes.median())
+            y_mean = log_transform_series(data_genes.mean())
             for gene_data in data_genes.iterrows():
                 y = log_transform_series(gene_data[1])
                 ax.plot(x, y, alpha=0.3, c='gray')
-            ax.plot(x, y_median, c='black')
+            ax.plot(x, y_mean, c='black')
         return fig, subplots
 
 
@@ -1584,47 +1646,51 @@ def make_tsne_data(tsne, names):
     return {'tsne': tsne, 'names': names}
 
 
-def preprocess_for_orange(genes: pd.DataFrame, threshold: float, conditions: pd.DataFrame, split_by, average_by,
-                          matching, group: str, scale: str = SCALING, log: bool = LOG, result: dict = None) -> tuple:
+def get_orange_result(result: pd.DataFrame = None, threshold: float = None, genes: pd.DataFrame = None, scale=SCALING,
+                      log=LOG):
+    if result is None:
+        if genes is None:
+            raise ValueError('If result is none genes must be specified.')
+        neighbour_calculator = NeighbourCalculator(genes)
+        result = neighbour_calculator.neighbours(n_neighbours=2, inverse=False, scale=scale, log=log, batches=None)
+    if threshold is not None:
+        result = NeighbourCalculator.filter_similarities(result, similarity_threshold=threshold)
+    genes = set([gene for pair in result.keys() for gene in pair])
+    return pd.DataFrame(genes, columns=['Gene'])
+
+
+def preprocess_for_orange(genes: pd.DataFrame, conditions: pd.DataFrame, split_by, average_by,
+                          matching, group: str, scale: str = SCALING, log: bool = LOG) -> tuple:
     """
-    Get data of genes with close neighbours: preprocessed data, data splitted and averaged, and expression
-    pattern characteristics
+    Get preprocessed data (scaled, transformed), data splitted and averaged, and expression pattern characteristics
     :param genes: Expression data, genes in rows, measurements in columns, dimensions G*M
-    :param threshold: Include only genes that have closest neighbour with similarity equal to or greater than threshold.
     :param conditions: Specifies what each measurment name means, dismensions M*D, where D are metadata columns
     :param split_by: By which column from conditions should expression data be split
     :param average_by: By which column from conditions should expression data be averaged
     :param matching: Which column from conditions matches genes column names
     :param group: Which name from split_by column to use for pattern calculation, done on split averaged data
-    :param scale: How to scale data  for neighbour calculation and returning of preprocessed data
-    :param log: Use log transformation  for neighbour calculation and returning of preprocessed data
+    :param scale: How to scale data  for  returning of preprocessed data
+    :param log: Use log transformation  for returning of preprocessed data
     :return: preprocessed data, splitted and averaged data, expression pattern characteristics data
     """
-    genes_scaled = get_orange_scaled(genes=genes, threshold=threshold, scale=scale, log=log,result=result)
-    genes_selected = genes.loc[genes_scaled.index, :]
-    genes_averaged = get_orange_averaged(genes=genes_selected, conditions=conditions,
+    genes_scaled = get_orange_scaled(genes=genes, scale=scale, log=log)
+    genes_averaged = get_orange_averaged(genes=genes, conditions=conditions,
                                          split_by=split_by, average_by=average_by, matching=matching)
-
     patterns = get_orange_pattern(genes_averaged=genes_averaged, group=group)
     return genes_scaled, genes_averaged, patterns
 
 
-def get_orange_scaled(genes: pd.DataFrame, threshold: float, scale: str = SCALING,
-                      log: bool = LOG, result: dict = None) -> pd.DataFrame:
+def get_orange_scaled(genes: pd.DataFrame, scale: str = SCALING, log: bool = LOG) -> pd.DataFrame:
     """
-    Get preprocessed expression data for orange, retaining genes that have very close neighbours
+    Get preprocessed expression data for orange - scale and log transform.
     :param genes: Expression data, genes in rows, measurments in columns
-    :param threshold: Retain only genes that have closest neighbour with similarity at least threshold
     :param scale: How to scale data  for neighbour calculation and returning
     :param log: Log transform data   for neighbour calculation and returning
     :return: Preprocessed genes with close neighbours
     """
-    if result is None:
-        neighbour_calculator = NeighbourCalculator(genes)
-        result = neighbour_calculator.neighbours(n_neighbours=2, inverse=False, scale=scale, log=log, batches=None)
-    genes_pp, gene_names = Clustering.get_genes(result=result, genes=genes, threshold=threshold, inverse=False,
-                                                scale=scale, log=log, return_query=False)
-    return pd.DataFrame(genes_pp, index=gene_names, columns=genes.columns)
+    gene_names = list(genes.index)
+    index, query = NeighbourCalculator.get_index_query(genes=genes, inverse=False, scale=scale, log=log)
+    return pd.DataFrame(index, index=gene_names, columns=genes.columns)
 
 
 def get_orange_averaged(genes: pd.DataFrame, conditions: pd.DataFrame, split_by, average_by, matching):

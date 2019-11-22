@@ -418,11 +418,13 @@ host.tick_params(axis='x')
 # *********************************
 
 # Get genes for orange:
-genes_orange_scaled, genes_orange_avg, patterns = preprocess_for_orange(genes=genes, threshold=0.99,
+result=get_orange_result(result=None,threshold=0.99,genes=genes)
+
+genes_orange_scaled, genes_orange_avg, patterns = preprocess_for_orange(genes=genes,
                                                                         conditions=conditions,
                                                                         split_by='Strain', average_by='Time',
-                                                                        matching='Measurment',
-                                                                        strain_pattern='AX4')
+                                                                        matching='Measurment',group='AX4')
+result.to_csv('/home/karin/Documents/timeTrajectories/data/regulons/genes_selected_orange_T0_99.tsv', sep='\t', index=False)
 genes_orange_scaled.to_csv('/home/karin/Documents/timeTrajectories/data/regulons/genes_scaled_orange.tsv', sep='\t')
 # Transpose so that column names unique (else Orange problems)
 genes_orange_avg.T.to_csv('/home/karin/Documents/timeTrajectories/data/regulons/genes_averaged_orange.tsv', sep='\t')
@@ -505,6 +507,12 @@ files = [f for f in glob.glob(path_inverse + 'raw/' + "*.pkl")]
 #
 
 def merge_from_file(files: list, similarity_threshold: float):
+    """
+    Merge gene pair similaritioes dict from multiple pickled files
+    :param files: List of files
+    :param similarity_threshold: Remove similarities below
+    :return: Dict: key (gene1,gene2), value: list of retained similarities
+    """
     merged_results = {}
     for f in files:
         # print(f)
@@ -518,6 +526,12 @@ def merge_from_file(files: list, similarity_threshold: float):
 
 
 def filter_merged_N_present(merged: dict, min_present: int):
+    """
+    Filter result of  merge_from_file based on len of values list
+    :param merged: result of  merge_from_file
+    :param min_present: remove if less than min_present similarities in values list
+    :return: Dict: key (gene1,gene2) retained pairs, value: list of  similarities
+    """
     filter_merged = {}
     for pair, similarities in merged.items():
         if len(similarities) >= min_present:
@@ -526,12 +540,22 @@ def filter_merged_N_present(merged: dict, min_present: int):
 
 
 def process_results_files(files, threshold, min_present, save: str = None):
+    """
+     Merge gene pair similaritioes dict from multiple pickled files. Filter based on threshold and min_present
+    :param files: List of files
+    :param threshold: Remove similarities below before min_present filtering
+    :param min_present: remove if less than min_present similarities in values list
+    :param save: save to a file, if None return instead of save
+    :return: Dict: key (gene1,gene2) retained pairs, value: list of  retained similarities
+    """
     merged_results = merge_from_file(files=files, similarity_threshold=threshold)
     filtered_present = filter_merged_N_present(merged=merged_results, min_present=min_present)
     if save is None:
         return filtered_present
     else:
         savePickle(save, filtered_present)
+
+
 
 
 merged_results = merge_from_file(files, similarity_threshold=0.6)
@@ -640,9 +664,11 @@ summary = NeighbourCalculator.plot_threshold_batched(sample1=sample1, sample2=sa
 # **********Inverse regulons construction
 
 # Get data of regulons
+threshold=0.96
+min_present=25
 results_all = loadPickle(path_inverse + 'merged_T0_6_min10.pkl')
-filtered = NeighbourCalculator.filter_similarities_batched(results=results_all, similarity_threshold=0.95,
-                                                           min_present=25)
+filtered = NeighbourCalculator.filter_similarities_batched(results=results_all, similarity_threshold=threshold,
+                                                           min_present=min_present)
 # Get data for clustering of retained genes
 genes_pp, inverse_pp, gene_names = Clustering.get_genes(result=filtered, genes=genes, threshold=None,
                                                         inverse=True, return_query=True)
@@ -654,7 +680,7 @@ tsne_data = make_tsne_data(tsne=embedding, names=gene_names)
 
 # Cluster
 louvain_cl = LouvainClustering.from_orange_graph(data=genes_pp, gene_names=gene_names, neighbours=50)
-clusters = louvain_cl.get_clusters(resolution=2, random_state=0)
+clusters = louvain_cl.get_clusters(resolution=0.8, random_state=0)
 
 # Analyse clusters
 cluster_analyser = ClusterAnalyser(genes=genes, conditions=conditions, organism=44689, average_data_by='Time',
@@ -667,12 +693,14 @@ cluster_data, membership_selected = clustering_analyser.analyse_clustering(clust
 
 # Make graph
 graph = build_graph(filtered)
-nx.write_pajek(graph, path_inverse + 'kN200_t0_95_min25Rep_inv.net')
+threshold_str=str(threshold).replace('.','_')
+nx.write_pajek(graph, path_inverse + 'kN200_t'+threshold_str+'_min'+str(min_present)+'Rep_inv.net')
+#graph=nx.read_pajek( path_inverse + 'kN200_t'+threshold_str+'_min'+str(min_present)+'Rep_inv.net')
 
 # Get clusters for each node of graph
 named_clusters = louvain_cl.get_clusters_by_genes(clusters=clusters)
-cluster_df = pd.DataFrame(named_clusters, index=['cluster']).T
-#cluster_df.to_csv(path_inverse + 'kN200_t0_95_min25Rep_inv_clusters.tsv', sep='\t')
+#cluster_df = pd.DataFrame(named_clusters, index=['cluster']).T
+#cluster_df.to_csv(path_inverse + 'kN200_t'+threshold_str+'_min'+str(min_present)+'Rep_inv_clusters.tsv', sep='\t')
 
 # Draw graph
 colours = []
@@ -680,40 +708,28 @@ for node in graph.nodes:
     colours.append(named_clusters[node])
 nx.draw_spring(graph, with_labels=False, node_size=4, width=0.3, node_color=colours, cmap=plt.cm.Set1, labels=True)
 
-#*******************
-#*****Orange data
 
-genes_scaled, genes_averaged, patterns = preprocess_for_orange(genes=genes, threshold=None, conditions=conditions,
-                                                               split_by='Strain', average_by='Time',
-                                                               matching='Measurment',
-                                                               group='AX4', result=filtered)
-
-genes_scaled.to_csv('/home/karin/Documents/timeTrajectories/data/regulons/genes_scaled_orange_inv.tsv', sep='\t')
-# Transpose so that column names unique (else Orange problems)
-genes_averaged.T.to_csv('/home/karin/Documents/timeTrajectories/data/regulons/genes_averaged_orange_inv.tsv', sep='\t')
-patterns.to_csv('/home/karin/Documents/timeTrajectories/data/regulons/gene_patterns_orange_inv.tsv', sep='\t',
-                index=False)
 
 # ***************************
 # *********** Unused
 
-# Make medians for each cluster, Do it after data preprocessing.
+# Make means for each cluster, Do it after data preprocessing.
 genes_sub = pd.DataFrame(genes_pp, index=gene_names)
 genes_sub_inv = pd.DataFrame(inverse_pp, index=gene_names)
-# genes_sub1=genes.loc[list(named_clusters.keys()),:] # Decided for first scaling and then median
+# genes_sub1=genes.loc[list(named_clusters.keys()),:] # Decided for first scaling and then mean
 cluster_df = pd.DataFrame(named_clusters, index=['cluster']).T
 genes_sub_cl = pd.concat([genes_sub, cluster_df], axis=1)
-median_cl_genes = genes_sub_cl.groupby('cluster').median()
+mean_cl_genes = genes_sub_cl.groupby('cluster').mean()
 genes_sub_cl_inv = pd.concat([genes_sub_inv, cluster_df], axis=1)
-median_cl_genes_inv = genes_sub_cl_inv.groupby('cluster').median()
+mean_cl_genes_inv = genes_sub_cl_inv.groupby('cluster').mean()
 
-# Calculate similarities between medians of clusters.
+# Calculate similarities between means of clusters.
 # Use -0.5 in profiles to get opposite profiles below 0 (for heatmap colouring)
 sims = OrderedDict()
-cl_names = median_cl_genes.index
-for c1 in range(0, median_cl_genes.shape[0] - 1):
-    for c2 in range(c1 + 1, median_cl_genes.shape[0]):
-        sim = calc_cosine(median_cl_genes.values - 0.5, median_cl_genes_inv.values - 0.5, c1, c2, sim_dist=True,
+cl_names = mean_cl_genes.index
+for c1 in range(0, mean_cl_genes.shape[0] - 1):
+    for c2 in range(c1 + 1, mean_cl_genes.shape[0]):
+        sim = calc_cosine(mean_cl_genes.values - 0.5, mean_cl_genes_inv.values - 0.5, c1, c2, sim_dist=True,
                           both_directions=True)
         sims[(cl_names[c1], cl_names[c2])] = sim
 
