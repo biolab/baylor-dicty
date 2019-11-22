@@ -1,7 +1,7 @@
 from scipy import spatial
 import altair as alt
 
-from correlation_enrichment.library import SimilarityCalculator
+from correlation_enrichment.library_correlation_enrichment import SimilarityCalculator
 from networks.functionsDENet import *
 
 dataPath = '/home/karin/Documents/timeTrajectories/data/'

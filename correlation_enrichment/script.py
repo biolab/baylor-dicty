@@ -9,7 +9,7 @@ import altair as alt
 
 from orangecontrib.bioinformatics.geneset.__init__ import (list_all, load_gene_sets)
 
-from correlation_enrichment.library import *
+from correlation_enrichment.library_correlation_enrichment import *
 import networks.functionsDENet as f
 
 # Load data

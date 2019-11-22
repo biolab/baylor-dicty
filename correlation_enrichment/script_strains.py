@@ -5,7 +5,7 @@ from Orange.widgets.tests.base import datasets
 from orangecontrib.bioinformatics.geneset.__init__ import (list_all,load_gene_sets)
 import matplotlib.pyplot as plt
 
-from correlation_enrichment.library import *
+from correlation_enrichment.library_correlation_enrichment import *
 import networks.functionsDENet as f
 
 lab=True

@@ -25,7 +25,7 @@ from orangecontrib.bioinformatics.ncbi.gene import GeneMatcher
 from orangecontrib.bioinformatics.geneset.__init__ import (list_all, load_gene_sets)
 import orangecontrib.bioinformatics.go as go
 
-from correlation_enrichment.library import GeneExpression, SimilarityCalculator
+from correlation_enrichment.library_correlation_enrichment import GeneExpression, SimilarityCalculator
 
 SCALING = 'minmax'
 LOG = True
@@ -432,7 +432,6 @@ class NeighbourCalculator:
                                                                             min_present=min_present_threshold2)
                 genes2 = set(gene for pair in filtered2.keys() for gene in pair)
             for min_present in min_present_thresholds:
-                # print(threshold,min_present)
                 filtered1 = NeighbourCalculator.filter_similarities_batched(results=sample1,
                                                                             similarity_threshold=threshold,
                                                                             min_present=min_present)
@@ -1648,6 +1647,17 @@ def make_tsne_data(tsne, names):
 
 def get_orange_result(result: pd.DataFrame = None, threshold: float = None, genes: pd.DataFrame = None, scale=SCALING,
                       log=LOG):
+    """
+    Convert result from Neighbour calculator to df of genes for orange - DF specifiing genes from retained pairs.
+    Obtain result if not specified.
+    :param result: Neighbour calculator result (keys (gene1, gene2), values similarity). If None obtain new result
+        from NeighbourCalculator.neighbours with n_neighbours=2, inverse=False, batches=None and specified params (below)
+    :param threshold: Remove pairs with similarity below threshold
+    :param genes: Expression data, genes in rows, measurements in columns, G*M
+    :param scale: Used in NeighbourCalculator.neighbours, scale data before neighbour calculation
+    :param log: Used in NeighbourCalculator.neighbours, log transform data before neighbour calculation
+    :return: DF with single column 'Gene' specifying set of all genes from retained pairs
+    """
     if result is None:
         if genes is None:
             raise ValueError('If result is none genes must be specified.')

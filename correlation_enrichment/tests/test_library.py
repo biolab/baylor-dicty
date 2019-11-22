@@ -2,7 +2,7 @@ import unittest
 
 from scipy.spatial.distance import cosine
 
-from correlation_enrichment.library import *
+from correlation_enrichment.library_correlation_enrichment import *
 
 DF = pd.DataFrame({1: [1, 2, 3, 4, 5, 6, 7, -10], 2: [12, 22, 23, 24, 25, 26, 27, -100], 3: [1, 2, 3, 4, 5, 6, 7, 100]},
                   index=['1', '2', '3', '4', '5', '6', '7', '8'])
