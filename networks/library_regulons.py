@@ -278,7 +278,7 @@ class NeighbourCalculator:
 
     def compare_conditions(self, neighbours_n: int, inverse: bool,
                            scale: str, use_log: bool, thresholds: list, filter_column, filter_column_values_sub: list,
-                           filter_column_values_test: list, batch_column=None, do_mse: bool = True):
+                           filter_column_values_test: list, retained:list=None, batch_column=None, do_mse: bool = True):
         """
         Evaluates pattern similarity calculation preprocessing and parameters based on difference between subset and
         test set. Computes MSE from differences between similarities of subset gene pairs and corresponding test gene
@@ -335,6 +335,9 @@ class NeighbourCalculator:
 
             # Find genes retained in each result
             gene_names_sub = {gene for pair in result_filtered for gene in pair}
+            if retained is not None:
+                if not (retained[0] <= len(gene_names_sub) <= retained[1]):
+                    continue
             gene_names_test = {gene for pair in result_filtered_test for gene in pair}
             f_val = NeighbourCalculator.f_value(set1=gene_names_sub, set2=gene_names_test)
             # Calculate MSE for each gene pair -
@@ -362,6 +365,8 @@ class NeighbourCalculator:
             data_summary.append({'N neighbours': neighbours_n, 'inverse': inverse, 'use_log': use_log, 'scale': scale,
                                  'threshold': threshold, 'batches': batch_column, 'MSE': mse,
                                  'N pairs': len(result_filtered), 'N genes': n_genes, 'F value': f_val})
+            if retained is not None:
+                break
         return data_summary
 
     @staticmethod
@@ -394,7 +399,7 @@ class NeighbourCalculator:
     def plot_select_threshold(self, thresholds: list, filter_column,
                               filter_column_values_sub: list,
                               filter_column_values_test: list, neighbours_n: int = 2, inverse: bool = False,
-                              scale: str = SCALING, use_log: bool = LOG, batch_column=None):
+                              scale: str = SCALING, use_log: bool = LOG, batch_column=None,retained:list=None):
         """
         Plots number of retained genes and MSE based on filtering threshold.
         Parameters are the same as in compare_conditions.
@@ -405,7 +410,7 @@ class NeighbourCalculator:
                                                                  filter_column_values_sub=filter_column_values_sub,
                                                                  filter_column_values_test=filter_column_values_test,
                                                                  batch_column=batch_column, use_log=use_log,
-                                                                 do_mse=False))
+                                                                 do_mse=False,retained=retained))
         pandas_multi_y_plot(filtering_summary, 'threshold', ['N genes', 'F value'])
         return filtering_summary
 

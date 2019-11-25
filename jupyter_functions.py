@@ -19,7 +19,8 @@ def sample_from_list(available,sample1:int):
 
 
 def obtained_genes_by_n_neighbours(neighbour_calculator:NeighbourCalculator, neighbours_size_larger:int,
-                                   neighbours_sizes_smaller:list, thresholds:list)->pd.DataFrame:
+                                   neighbours_sizes_smaller:list, thresholds:list,log:bool=True,scale:str='minmax')\
+        ->pd.DataFrame:
     """
     Compare N of obtained genes based on threshold and N computed neighbours
     :param neighbour_calculator:
@@ -29,10 +30,12 @@ def obtained_genes_by_n_neighbours(neighbour_calculator:NeighbourCalculator, nei
     :return: Data frame with: parameters, genes retained in both, only in smaller, only in larger
     """
     inverse = False
-    neighbours_larger_all = neighbour_calculator.neighbours(n_neighbours=neighbours_size_larger, inverse=inverse)
+    neighbours_larger_all = neighbour_calculator.neighbours(n_neighbours=neighbours_size_larger, inverse=inverse,
+                                                            log=log,scale=scale)
     results = []
     for n_neighbours in neighbours_sizes_smaller:
-        neighbours_smaller_all = neighbour_calculator.neighbours(n_neighbours, inverse=inverse)
+        neighbours_smaller_all = neighbour_calculator.neighbours(n_neighbours=n_neighbours, inverse=inverse,
+                                                                 log=log,scale=scale)
         for threshold in thresholds:
             neighbours_smaller = NeighbourCalculator.filter_similarities(neighbours_smaller_all, threshold)
             neighbours_smaller = set((gene for pair in neighbours_smaller.keys() for gene in pair))

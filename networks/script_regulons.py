@@ -12,10 +12,16 @@ import jupyter_functions as jf
 from networks.functionsDENet import loadPickle, savePickle
 
 # Script parts are to be run separately as needed
+lab=False
+if lab:
+    dataPath = '/home/karin/Documents/timeTrajectories/data/RPKUM/combined/'
+    dataPathSaved = '/home/karin/Documents/timeTrajectories/data/correlations/replicates/'
+    path_inverse = '/home/karin/Documents/timeTrajectories/data/regulons/inverseReplicate/'
+else:
+    dataPath = '/home/karin/Documents/DDiscoideum/data/RPKUM/'
+    dataPathSaved='/home/karin/Documents/DDiscoideum/data/regulons/'
+    path_inverse = '/home/karin/Documents/DDiscoideum/data/regulons/inverse/'
 
-dataPath = '/home/karin/Documents/timeTrajectories/data/RPKUM/combined/'
-dataPathSaved = '/home/karin/Documents/timeTrajectories/data/correlations/replicates/'
-path_inverse = '/home/karin/Documents/timeTrajectories/data/regulons/inverseReplicate/'
 
 genes = pd.read_csv(dataPath + 'mergedGenes_RPKUM.tsv', sep='\t', index_col=0)
 conditions = pd.read_csv(dataPath + 'conditions_mergedGenes.tsv', sep='\t', index_col=None)
@@ -424,11 +430,11 @@ genes_orange_scaled, genes_orange_avg, patterns = preprocess_for_orange(genes=ge
                                                                         conditions=conditions,
                                                                         split_by='Strain', average_by='Time',
                                                                         matching='Measurment',group='AX4')
-result.to_csv('/home/karin/Documents/timeTrajectories/data/regulons/genes_selected_orange_T0_99.tsv', sep='\t', index=False)
-genes_orange_scaled.to_csv('/home/karin/Documents/timeTrajectories/data/regulons/genes_scaled_orange.tsv', sep='\t')
+result.to_csv(dataPathSaved+'genes_selected_orange_T0_99.tsv', sep='\t', index=False)
+genes_orange_scaled.to_csv(dataPathSaved+'genes_scaled_orange.tsv', sep='\t')
 # Transpose so that column names unique (else Orange problems)
-genes_orange_avg.T.to_csv('/home/karin/Documents/timeTrajectories/data/regulons/genes_averaged_orange.tsv', sep='\t')
-patterns.to_csv('/home/karin/Documents/timeTrajectories/data/regulons/gene_patterns_orange.tsv', sep='\t', index=False)
+genes_orange_avg.T.to_csv(dataPathSaved+'genes_averaged_orange.tsv', sep='\t')
+patterns.to_csv(dataPathSaved+'gene_patterns_orange.tsv', sep='\t', index=False)
 
 # ********************
 # Check how many hypothetical and pseudogenes are in onthologies
@@ -706,7 +712,7 @@ named_clusters = louvain_cl.get_clusters_by_genes(clusters=clusters)
 colours = []
 for node in graph.nodes:
     colours.append(named_clusters[node])
-nx.draw_spring(graph, with_labels=False, node_size=4, width=0.3, node_color=colours, cmap=plt.cm.Set1, labels=True)
+nx.draw_spring(graph, with_labels=False, node_size=4, width=0.3, node_color=colours, cmap=plt.cm.Set1)
 
 
 
