@@ -232,4 +232,5 @@ Regulons with clustering on selected genes:
 Select genes params: gene_selection.ipynb
 Select clustering: tsne_clusters.ipynb
 For Orange regulons use Louvain with Jaccard index (40 neighbours): minmax, log, 2 closest neighbours for selection of genes.
-For inverse find KNN of each replicate: 200 neighbours, minmax, log, remove all 0. Merge results retaining sim>=0.6 and present in min 10 replicates.
+For inverse find KNN of each replicate: 200 neighbours, minmax, log, remove all 0 in each replicate. Merge results retaining sim>=0.6 and present in min 10 replicates.
+Filter inverse based on similarities and N replicates retained at this similarity (notebook regulons-inverse.ipynb).

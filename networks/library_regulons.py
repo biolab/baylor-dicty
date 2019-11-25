@@ -106,7 +106,7 @@ class NeighbourCalculator:
         :param inverse: Calculate most similar neighbours (False) or neighbours with inverse profile (True)
         :param scale: Scale expression by gene with 'minmax' (min=0, max=1) or 'mean0std1' (mean=0, std=1)
         :param log: Should expression data be log2 transformed
-        :param description: If an error ocurs in KNN index formation report this with error
+        :param description: If an error occurs in KNN index formation report this with error
         :return: Dict with gene names as tuple keys (smaller by alphabet is first tuple value) and
             values representing cosine similarity
         """

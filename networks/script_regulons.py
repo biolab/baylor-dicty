@@ -12,11 +12,11 @@ import jupyter_functions as jf
 from networks.functionsDENet import loadPickle, savePickle
 
 # Script parts are to be run separately as needed
-lab=False
+lab=True
 if lab:
     dataPath = '/home/karin/Documents/timeTrajectories/data/RPKUM/combined/'
-    dataPathSaved = '/home/karin/Documents/timeTrajectories/data/correlations/replicates/'
-    path_inverse = '/home/karin/Documents/timeTrajectories/data/regulons/inverseReplicate/'
+    dataPathSaved = '/home/karin/Documents/timeTrajectories/data/regulons/'
+    path_inverse = '/home/karin/Documents/timeTrajectories/data/regulons/inverseReplicate_m0s1log/'
 else:
     dataPath = '/home/karin/Documents/DDiscoideum/data/RPKUM/'
     dataPathSaved='/home/karin/Documents/DDiscoideum/data/regulons/'
@@ -477,15 +477,15 @@ for description, n_terms in entrez_descriptions.values():
 # Inverse regulons
 
 # ***********Data from batches by replicate
-batches = list(conditions['Strain'])
+batches = list(conditions['Replicate'])
 batches = np.array(batches)
 
 # Calculate neighbours
 for batch in set(batches):
-    # print(batch)
+    print(batch)
     genes_sub = genes.T[batches == batch].T
     neighbour_calculator = NeighbourCalculator(genes_sub)
-    result_inv = neighbour_calculator.neighbours(200, inverse=True)
+    result_inv = neighbour_calculator.neighbours(200, inverse=True,scale='mean0std1',log=True)
     output = open(path_inverse + 'raw/' + batch + '.pkl', 'wb')
     pkl.dump(result_inv, output)
     output.close()
@@ -564,7 +564,7 @@ def process_results_files(files, threshold, min_present, save: str = None):
 
 
 
-merged_results = merge_from_file(files, similarity_threshold=0.6)
+#merged_results = merge_from_file(files, similarity_threshold=0.6)
 # Plot dist in how many reps present
 # distn_present=[]
 # for similarities in merged_results.values():
@@ -572,11 +572,11 @@ merged_results = merge_from_file(files, similarity_threshold=0.6)
 # plt.hist(distn_present,bins=49)
 
 # Remove results present in less than 10 replicates:
-filter_merged = filter_merged_N_present(merged_results, min_present=10)
+#filter_merged = filter_merged_N_present(merged_results, min_present=10)
 # Save filtered
 
-savePickle(path_inverse + 'merged_T0_6_min10.pkl', filter_merged)
-
+#savePickle(path_inverse + 'merged_T0_6_min10.pkl', filter_merged)
+process_results_files(files, threshold=0.8, min_present=10, save= path_inverse+'merged_kNN200_T0_8_min10.pkl')
 # ****************************
 # ***********Parameters
 # Load filtered
@@ -626,7 +626,7 @@ summary = pd.DataFrame(summary)
 
 # Make results from randomly selected reps, if similar sized samples
 sample1_files, sample2_files = jf.sample_from_list(files, 25)
-count_sample = 3
+count_sample = 1
 threshold = 0.8
 min_present = 5
 for sample in [sample1_files[:24], sample2_files]:
@@ -652,8 +652,8 @@ process_results_files(files=sample2_files, threshold=0.6, min_present=1, save=pa
                                                                               str(len(sample2_files)) + '.pkl')
 
 # Compare which genes and pairs are retained in each of the samples, more in notebook
-sample1 = loadPickle(path_inverse + 'merged_T0_8_min5_sample3_Nsample24.pkl')
-sample2 = loadPickle(path_inverse + 'merged_T0_8_min5_sample4_Nsample24.pkl')
+sample1 = loadPickle(path_inverse + 'merged_T0_8_min5_sample1_Nsample24.pkl')
+sample2 = loadPickle(path_inverse + 'merged_T0_8_min5_sample2_Nsample24.pkl')
 summary = NeighbourCalculator.plot_threshold_batched(sample1=sample1, sample2=sample2,
                                                      similarity_thresholds=[0.85, 0.9, 0.925, 0.94, 0.95, 0.97, 0.99],
                                                      min_present_thresholds=[5, 10, 12, 14, 15, 16, 17])
@@ -672,7 +672,7 @@ summary = NeighbourCalculator.plot_threshold_batched(sample1=sample1, sample2=sa
 # Get data of regulons
 threshold=0.96
 min_present=25
-results_all = loadPickle(path_inverse + 'merged_T0_6_min10.pkl')
+results_all = loadPickle(path_inverse + 'merged_kNN200_T0_8_min10.pkl')
 filtered = NeighbourCalculator.filter_similarities_batched(results=results_all, similarity_threshold=threshold,
                                                            min_present=min_present)
 # Get data for clustering of retained genes
