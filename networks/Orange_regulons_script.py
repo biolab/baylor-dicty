@@ -4,8 +4,10 @@ import networkx as nx
 from statistics import mean, median
 import pandas as pd
 
-# Where data is saved (kNN2_m0s1_log_dict.pkl)
-path = '/home/karin/Documents/timeTrajectories/data/regulons/'
+# Where input and output data is saved (kNN2_m0s1_log_dict.pkl)
+path = '/home/karin/Documents/timeTrajectories/Orange_workflows/regulons/'
+# File to be filtered
+file = 'dict_kNN2_m0s1log.pkl'
 # Cosine similarity threshold
 threshold = 0.95
 
@@ -25,8 +27,11 @@ def loadPickle(file):
     return result
 
 
-results = loadPickle(path + 'kNN2_m0s1_log_dict.pkl')
+splited = file.split('_')
+preprocess = splited[(len(splited)) - 1].split('.')[0]
+
+results = loadPickle(path + file)
 
 filtered = filter_similarities(results=results, similarity_threshold=threshold)
 print('Retained genes: ', filtered.shape[0])
-filtered.to_csv(path + 'kNN2_m0s1_log_' + str(threshold) + '_Orange.tsv', sep='\t', index=False)
+filtered.to_csv(path + 'kNN2_threshold' + str(threshold) + '_' + preprocess + '_Orange.tsv', sep='\t', index=False)

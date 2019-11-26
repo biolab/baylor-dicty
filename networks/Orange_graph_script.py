@@ -2,14 +2,18 @@ import os
 import pickle
 import networkx as nx
 from statistics import mean, median
+import pandas as pd
 
-path = '/home/karin/Documents/timeTrajectories/data/regulons/inverseReplicate/'
-# Min 0.9
-threshold = 0.97
+# Where input and output data is saved
+path = '/home/karin/Documents/timeTrajectories/Orange_workflows/regulons/'
+# File for filtering: 'merged_kNN200_T0_8_min10_m0s1log.pkl' or 'merged_kNN200_T0_8_min10_minmaxlog.pkl'
+file = 'merged_kNN200_T0_8_min10_m0s1log.pkl'
+# Min 0.8 or 0.9 - based on file (T0_8 or T0_9)
+threshold = 0.86
 # Min 10
 min_present = 25
 # Merge by mean (average retained similarities over replicates), sum (sum retained similarities over replicates) or len (N of replicates where pair was present at specified threshold)
-merge_by = len
+merge_by = mean
 
 
 def build_graph(similarities: dict) -> nx.Graph:
@@ -36,12 +40,19 @@ def loadPickle(file):
     return result
 
 
-results_all = loadPickle(path + 'merged_T0_9_min10.pkl')
+splited = file.split('_')
+preprocess = splited[(len(splited)) - 1].split('.')[0]
+
+results_all = loadPickle(path + file)
 
 filtered = filter_similarities_batched(results=results_all, similarity_threshold=threshold,
                                        min_present=min_present,
                                        merge_function=merge_by)
 graph = build_graph(filtered)
 print('Nodes', graph.number_of_nodes(), ', edges:', graph.number_of_edges())
+nodes = pd.DataFrame(graph.nodes, columns=['Gene'])
+nodes.to_csv(path + 'kNN200_inverse_threshold' + str(threshold) + '_minPresentReplicates' + str(
+    min_present) + '_' + preprocess + '_nodes_Orange.tsv', sep='\t', index=False)
+
 nx.write_pajek(graph, path + 'kNN200_inverse_threshold' + str(threshold) + '_minPresentReplicates' + str(
-    min_present) + '_mergeBy' + merge_by.__name__ + '_Orange.net')
+    min_present) + '_mergeBy' + merge_by.__name__ + '_' + preprocess + '_Orange.net')
