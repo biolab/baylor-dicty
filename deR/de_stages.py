@@ -65,11 +65,13 @@ def add_to_summary_df(summary_dict:dict, summary,stage):
             summary_df[gene] = np.zeros(summary_df.shape[0])
         summary_df.loc[row, gene] = stat
 
+
 # For each stage parse the data, retaining only genes present in all strains that finish developing at the same stage.
-# Averages logFC and padj over these strains.
+# Averages logFC and padj over these strains. Convert padj to -log10(padj)
 files = [f for f in glob.glob(dataPathSaved + "*.tsv", recursive=True)]
 for stage, strains in last_stages.items():
     n_strains = len(strains)
+
     # Dictionaries for different data types
     before_padj = defaultdict(list)
     after_padj = defaultdict(list)
@@ -77,6 +79,8 @@ for stage, strains in last_stages.items():
     firstDiff_FC = defaultdict(list)
     lastSame_padj = defaultdict(list)
     firstDiff_padj = defaultdict(list)
+
+    # Add data from each strain
     for strain in strains:
         strain_files = [f for f in files if strain in f]
         add_to_summary_dict(summary=before_padj, files=strain_files, filter_files=B, key_col='Gene', value_col='padj')
@@ -90,6 +94,7 @@ for stage, strains in last_stages.items():
         add_to_summary_dict(summary=firstDiff_padj, files=strain_files, filter_files=D, key_col='name',
                             value_col='padj')
 
+    # Combine strains data for this stage - average if present in all strains
     before_padj = {key: -np.log10(mean(value)) for (key, value) in before_padj.items() if len(value) == n_strains}
     after_padj = {key: -np.log10(mean(value)) for (key, value) in after_padj.items() if len(value) == n_strains}
     lastSame_FC = {key: mean(value) for (key, value) in lastSame_FC.items() if len(value) == n_strains}
@@ -97,6 +102,7 @@ for stage, strains in last_stages.items():
     lastSame_padj = {key: -np.log10(mean(value)) for (key, value) in lastSame_padj.items() if len(value) == n_strains}
     firstDiff_padj = {key: -np.log10(mean(value)) for (key, value) in firstDiff_padj.items() if len(value) == n_strains}
 
+    # Add combined data to summary dataframe
     add_to_summary_df(summary_dict=before_padj,summary=BP,stage=stage)
     add_to_summary_df(summary_dict=after_padj, summary=AP, stage=stage)
     add_to_summary_df(summary_dict=lastSame_FC, summary=SFC, stage=stage)
