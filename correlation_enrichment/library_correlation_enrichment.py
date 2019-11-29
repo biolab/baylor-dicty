@@ -63,16 +63,22 @@ class GeneExpression:
     Stores a data frame with gene expression data.
     """
 
-    def __init__(self, expression: pd.DataFrame):
+    def __init__(self, expression: pd.DataFrame,use_log:bool=True):
         """
+        Automatically removes genes with all 0 expression
         :param expression: Expression data frame with genes as rows and sampling points as columns.
         Gene names (indices) must be Entrez IDs (integers in string format).
         Genes may have multiple measurement vectors (eg. from different replicates) - thus multiple
         rows may have same index.
+        :param use_log: log2 transform data (e.g. log2(data+1))
         """
         self.check_numeric(expression)
         self.are_geneIDs(expression.index)
 
+        # TODO add log and 0 filtering to tests
+        expression = expression[(expression != 0).any(axis=1)]
+        if use_log:
+            expression=np.log2(expression+1)
         self.expression = expression
         # If measurements for each gene for each replicate represent one point in space this represents number of points
         self.n_points = expression.shape[0]
@@ -757,11 +763,8 @@ class EnrichmentCalculator:
         """
         geneIDs = gene_set.genes
         try:
-            if max_pairs is not None:
-                set_similarities_data = self.calculator.similarities(geneIDs, max_n_similarities=max_pairs,
+            set_similarities_data = self.calculator.similarities(geneIDs, max_n_similarities=max_pairs,
                                                                      as_list=False)
-            else:
-                set_similarities_data = self.calculator.similarities(geneIDs, as_list=False)
         except EnrichmentError:
             raise
 
@@ -786,19 +789,22 @@ class EnrichmentCalculator:
         gene_set_data.most_similar = self.retain_most_similar(set_similarities_data, 10)
         return gene_set_data
 
-    def calculate_enrichment(self, gene_sets: GeneSets, max_pairs: int = None) -> list:
+    def calculate_enrichment(self, gene_sets: GeneSets, max_pairs: int = None, max_set_size:int=None) -> list:
         """
         claculate enrichment for multiple gene sets, adjust p val (Benjamini Hoechber)
         :param gene_sets:
         :param max_pairs: for within gene set similarity calculation, as described for calculate_pval
+        :param max_set_size: remove gene sets with size above threshold
         :return: gene set data with p and adjusted p values
         """
+        if max_set_size is not None:
+            gene_sets=[gene_set for gene_set in gene_sets if len(gene_set.genes)<=max_set_size]
         pvals = []
         data = []
         for gene_set in gene_sets:
             try:
                 # This line may throw exception if not enough genes are present
-                gene_set_data = self.calculate_pval(gene_set, max_pairs)
+                gene_set_data = self.calculate_pval(gene_set=gene_set,max_pairs= max_pairs)
                 data.append(gene_set_data)
                 pvals.append(gene_set_data.pval)
             except EnrichmentError:
@@ -936,8 +942,8 @@ class GeneSetComparator:
     def between_set_similarities(self, set_pairs_data: list):
         """
         Calculates similariti between two data sets based on genes declared to be most similar within the sets
-        :param gene_sets_data: list of GeneSetData object to be compared to each other
-        :return: list of GeneSetPairData for compared gene sets
+        :param set_pairs_data: list of  GeneSetPairData object to be compared to each other
+        :return: Adds data to GeneSetPairData elements
         """
         for pair in set_pairs_data:
             set1 = pair.gene_set_data1

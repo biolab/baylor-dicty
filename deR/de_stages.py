@@ -112,4 +112,9 @@ for stage, strains in last_stages.items():
 
 summary_df.to_csv(dataPathSaved+'summary.tab',index=False,sep='\t')
 
-
+#******************************************************************
+#*** Stages heatmap
+n_strains=3
+n_stages=3
+n_times=4
+matrix=pd.DataFrame(np.zeros(n_strains*n_stages,n_times))

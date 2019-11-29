@@ -11,6 +11,7 @@ from orangecontrib.bioinformatics.geneset.__init__ import (list_all, load_gene_s
 
 from correlation_enrichment.library_correlation_enrichment import *
 import networks.functionsDENet as f
+from networks.library_regulons import name_genes_entrez
 
 # Load data
 # dataPath='/home/karin/Documents/DDiscoideum/'
@@ -40,6 +41,8 @@ samples = {
     'gbfA': [1, 2],
 }
 
+#***********Name genes
+# Old version
 # geneNames=f.loadPickle(dataPath+'Genes.pkl')
 
 # table=f.importTable(dataPath+'trans_9repAX4_6strains_2rep_avr_T12.tab')
@@ -61,6 +64,20 @@ samples = {
 # tableEID.columns=columnsEID
 
 # f.savePickle(dataPathSaved+'trans_9repAX4_6strains_2rep_avr_T12_EID.tab',tableEID)
+# New version:
+# genes= pd.read_csv('/home/karin/Documents/timeTrajectories/data/RPKUM/combined/mergedGenes_RPKUM.tsv', sep='\t', index_col=0)
+# genesEID=genes.copy()
+# indices=genesEID.index
+# geneNames=name_genes_entrez(gene_names=indices, organism=44689, key_entrez=False)
+# indexEID=[]
+# for index in indices:
+#    if index in geneNames.keys():
+#        indexEID.append(geneNames[index])
+#    else:
+#       genesEID=genesEID.drop([index])
+# genesEID.index=indexEID
+# f.savePickle('/home/karin/Documents/timeTrajectories/data/RPKUM/combined/mergedGenes_RPKUM_EID.pkl',genesEID)
+
 tableEID = f.loadPickle(dataPathSaved + 'trans_9repAX4_6strains_2rep_avr_T12_EID.tab')
 
 genesEID, genesNotNullEID = f.extractGenesFromTable(tableEID, genesFromRow, 12734)
