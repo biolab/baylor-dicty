@@ -26,6 +26,7 @@ from orangecontrib.bioinformatics.geneset.__init__ import (list_all, load_gene_s
 import orangecontrib.bioinformatics.go as go
 
 from correlation_enrichment.library_correlation_enrichment import GeneExpression, SimilarityCalculator
+from deR.enrichment_library import GO_enrichment,name_genes_entrez
 
 SCALING = 'minmax'
 LOG = True
@@ -1183,11 +1184,11 @@ class ClusterAnalyser:
         """
         Is cluster enriched for ontology terms
         :param gene_names: Gene names
-        :param enrichment_args: Passed to ClusterAnalyser.enrichment
-        :return: As returned by ClusterAnalyser.enrichment
+        :param enrichment_args: Passed to GO_enrichment
+        :return: As returned by GO_enrichment
         """
         entrez_ids = self.get_entrez_from_storage(gene_names=gene_names)
-        enriched = self.enrichment(entrez_ids=entrez_ids, organism=self._organism, **enrichment_args)
+        enriched = GO_enrichment(entrez_ids=entrez_ids, organism=self._organism, **enrichment_args)
         return enriched
 
     def get_entrez_from_storage(self, gene_names: list) -> list:
@@ -1203,31 +1204,6 @@ class ClusterAnalyser:
             if name in self._names_entrez.keys():
                 entrez_ids.append(self._names_entrez[name])
         return entrez_ids
-
-    @staticmethod
-    def enrichment(entrez_ids: list, organism: int, fdr=0.25, slims: bool = True, aspect: str = None) -> OrderedDict:
-        """
-        Calulate onthology enrichment for list of genes
-        :param entrez_ids: entrez IDs of gene group to be analysed for enrichemnt
-        :param organism: organism ID
-        :param fdr: For retention of enriched gene sets
-        :param slims: From Orange Annotations
-        :param aspect: Which GO aspect to use. From Orange Annotations: None: all, 'Process', 'Function', 'Component'
-        :return: Dict: key ontology term, value FDR. Sorted by FDR ascendingly.
-        """
-        anno = go.Annotations(organism)
-        enrichment = anno.get_enriched_terms(entrez_ids, slims_only=slims, aspect=aspect)
-        filtered = go.filter_by_p_value(enrichment, fdr)
-        enriched_data = dict()
-        for go_id, data in filtered.items():
-            terms = anno.get_annotations_by_go_id(go_id)
-            for term in terms:
-                if term.go_id == go_id:
-                    padj = data[1]
-                    enriched_data[term.go_term] = padj
-                    break
-        enriched_data = OrderedDict(sorted(enriched_data.items(), key=lambda x: x[1]))
-        return enriched_data
 
     def plot_profiles(self, gene_names: list, fig=None, rows: int = 1, row: int = 1, row_label: str = None):
         """
@@ -1505,28 +1481,6 @@ class ClusteringAnalyser:
         for k, v in dictionary.items():
             parsed += k + ': ' + "{:.3E}".format(v) + sep_item
         return parsed
-
-
-def name_genes_entrez(gene_names: list, organism: int, key_entrez: bool) -> dict:
-    """
-    Add entrez id to each gene name
-    :param gene_names: Gene names (eg. from dictyBase)
-    :param organism: organism ID
-    :param key_entrez: True: Entrez IDs as keys and names as values, False: vice versa
-    :return: Dict of gene names and matching Entres IDs for genes that have Entrez ID
-    """
-    entrez_names = dict()
-    matcher = GeneMatcher(organism)
-    matcher.genes = gene_names
-    for gene in matcher.genes:
-        name = gene.input_identifier
-        entrez = gene.gene_id
-        if entrez is not None:
-            if key_entrez:
-                entrez_names[entrez] = name
-            else:
-                entrez_names[name] = entrez
-    return entrez_names
 
 
 def calc_cosine(data1: np.ndarray, data2: np.ndarray, index1: int, index2: int, sim_dist: bool,

@@ -331,7 +331,7 @@ class TestEnrichmentCalculator(unittest.TestCase):
             self.assertLessEqual(filtered_set.padj, padj_filter)
 
     def test_sort_padj(self):
-        # Is list of sorted padj equal to list of padj obtained from sorted GeneSetData
+        # Is list of sorted padj equal to list of padj obtained from sorted GeneSetDataCorrelation
         data_sorted = EnrichmentCalculator.sort_padj(self.data)
         padj2 = []
         for set_sorted in data_sorted:
@@ -339,7 +339,7 @@ class TestEnrichmentCalculator(unittest.TestCase):
         self.assertListEqual(self.padj, padj2)
 
     def test_sort_pval(self):
-        # Is list of sorted pvalues equal to list of pvalues obtained from sorted GeneSetData
+        # Is list of sorted pvalues equal to list of pvalues obtained from sorted GeneSetDataCorrelation
         data_sorted = EnrichmentCalculator.sort_pval(self.data)
         pval2 = []
         for set_sorted in data_sorted:
@@ -347,7 +347,7 @@ class TestEnrichmentCalculator(unittest.TestCase):
         self.assertListEqual(self.pval, pval2)
 
     def test_sort_mean(self):
-        # Is list of sorted similarity means equal to list of means obtained from sorted GeneSetData,
+        # Is list of sorted similarity means equal to list of means obtained from sorted GeneSetDataCorrelation,
         # largest to smallest
         data_sorted = EnrichmentCalculator.sort_mean(self.data)
         means2 = []
@@ -356,7 +356,7 @@ class TestEnrichmentCalculator(unittest.TestCase):
         self.assertListEqual(self.means, means2)
 
     def test_sort_median(self):
-        # Is list of sorted similarity medians equal to list of medians obtained from sorted GeneSetData,
+        # Is list of sorted similarity medians equal to list of medians obtained from sorted GeneSetDataCorrelation,
         # largest to smallest
         data_sorted = EnrichmentCalculator.sort_median(self.data)
         medians2 = []
@@ -365,7 +365,7 @@ class TestEnrichmentCalculator(unittest.TestCase):
         self.assertListEqual(self.medians, medians2)
 
     def test_sort_n_genes(self):
-        # Is list of sorted gene set sizes equal to list of gene set sizes obtained from sorted GeneSetData
+        # Is list of sorted gene set sizes equal to list of gene set sizes obtained from sorted GeneSetDataCorrelation
         data_sorted = EnrichmentCalculator.sort_n_genes(self.data)
         num_genes2 = []
         for set_sorted in data_sorted:

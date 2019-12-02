@@ -14,6 +14,8 @@ mpmath.mp.dps = 500
 
 from orangecontrib.bioinformatics.geneset.utils import (GeneSet, GeneSets)
 
+import deR.enrichment_library as el
+
 MAX_RANDOM_PAIRS = 10000
 
 MEAN = 'mean'
@@ -23,7 +25,7 @@ SE_SCALING_POINTS = [3, 5, 7, 10, 20, 30, 50, 80]
 PERMUTATIONS = 8000
 
 
-class GeneSetData:
+class GeneSetDataCorrelation(el.GeneSetData):
     """
     Stores gene set with enrichment statistics
     """
@@ -32,11 +34,9 @@ class GeneSetData:
         """
         :param gene_set: gene set for which data should be stored
         """
-        self.gene_set = gene_set
+        super().__init__(gene_set=gene_set)
         self.mean = None
         self.median = None
-        self.pval = None
-        self.padj = None
         self.most_similar = None
         self.pattern_stdevs = None
 
@@ -46,7 +46,7 @@ class GeneSetPairData:
     Stores pair of gene sets and their similarities
     """
 
-    def __init__(self, gene_set_data1: GeneSetData, gene_set_data2: GeneSetData):
+    def __init__(self, gene_set_data1: GeneSetDataCorrelation, gene_set_data2: GeneSetDataCorrelation):
         """
         :param gene_set1: gene set 1 from the pair
         :param gene_set2: gene set 2 from the pair
@@ -753,7 +753,7 @@ class EnrichmentCalculator:
                                                           permutations=permutations)
         return cls(random_storage=storage, gene_set_calculator=calculator_gs)
 
-    def calculate_pval(self, gene_set: GeneSet, max_pairs: int = None) -> GeneSetData:
+    def calculate_pval(self, gene_set: GeneSet, max_pairs: int = None) -> GeneSetDataCorrelation:
         """
         Calculate p-val for a single gene-set. Are genes closer in space than expected.
         Compares gene set similarities to similarities between random pairs.
@@ -782,7 +782,7 @@ class EnrichmentCalculator:
         center_random = self.storage._center
         p=float(1-mpmath.ncdf(center_set, mu=center_random, sigma=se))
 
-        gene_set_data = GeneSetData(gene_set)
+        gene_set_data = GeneSetDataCorrelation(gene_set)
         gene_set_data.mean = mean_set
         gene_set_data.median = median_set
         gene_set_data.pval = p
@@ -840,93 +840,52 @@ class EnrichmentCalculator:
             last_retained = similarity
         return retained
 
-    @staticmethod
-    def filter_enrichment_data_padj(data: list, max_padj: float) -> list:
-        """
-        Return only enriched data with padj bellow threshold
-        :param data: list of GeneSetData
-        :param max_padj: max padj of gene set to be returned
-        :return: list of gene sets with padj below threshold
-        """
-        enriched = []
-        for gene_set in data:
-            if gene_set.padj <= max_padj:
-                enriched.append(gene_set)
-        return enriched
 
-    @staticmethod
-    def filter_enrichment_data_top(data: list, best: int = 10,metric='padj') -> list:
-        """
-        Return top gene sets based on padj
-        :param data: list of GeneSetData
-        :param best: Number of retained sets. Will retain more if multiple sets have same, last retained, padj
-        :param metric: Filter based on: padj, mean
-        :return: list of top gene sets
-        """
-        MEAN='mean'
-        PADJ='padj'
-        retained = []
-        terminate = False
-        last_retained = 1
-        if metric==PADJ:
-            data = EnrichmentCalculator.sort_padj(data)
-        elif metric == MEAN:
-            data = EnrichmentCalculator.sort_mean(data)
-        else:
-            raise ValueError('Metric can be:',PADJ,MEAN)
-        for gene_set in data:
-            if len(retained) >= best:
-                terminate = True
-            if terminate and gene_set.padj > last_retained:
-                break
-            retained.append(gene_set)
-            last_retained = gene_set.padj
-        return retained
+def sort_gscordata_mean(data: list) -> list:
+    """
+    Sort GeneSetDataCorrelation list based on similarities mean
+    :param data: list of GeneSetDataCorrelation
+    :return: sorted list of GeneSetDataCorrelation from largest to smallest
+    """
+    return sorted(data, key=lambda x: x.mean, reverse=True)
 
-    @staticmethod
-    def sort_pval(data: list) -> list:
-        """
-        Sort GeneSetData list based on pval
-        :param data: list of GeneSetData
-        :return: sorted list of GeneSetData
-        """
-        return sorted(data, key=lambda x: x.pval)
 
-    @staticmethod
-    def sort_padj(data: list) -> list:
-        """
-        Sort GeneSetData list based on padj
-        :param data: list of GeneSetData
-        :return: sorted list of GeneSetData
-        """
-        return sorted(data, key=lambda x: x.padj)
+def sort_gscordata_median(data: list) -> list:
+    """
+    Sort GeneSetDataCorrelation list based on similarities median
+    :param data: list of GeneSetDataCorrelation
+    :return: sorted list of GeneSetDataCorrelation from largest to smallest
+    """
+    return sorted(data, key=lambda x: x.median, reverse=True)
 
-    @staticmethod
-    def sort_mean(data: list) -> list:
-        """
-        Sort GeneSetData list based on similarities mean
-        :param data: list of GeneSetData
-        :return: sorted list of GeneSetData from largest to smallest
-        """
-        return sorted(data, key=lambda x: x.mean, reverse=True)
 
-    @staticmethod
-    def sort_median(data: list) -> list:
-        """
-        Sort GeneSetData list based on similarities median
-        :param data: list of GeneSetData
-        :return: sorted list of GeneSetData from largest to smallest
-        """
-        return sorted(data, key=lambda x: x.median, reverse=True)
-
-    @staticmethod
-    def sort_n_genes(data: list) -> list:
-        """
-        Sort GeneSetData list based on number orf genes in GeneSets
-        :param data: list of GeneSetData
-        :return: sorted list of GeneSetData
-        """
-        return sorted(data, key=lambda x: len(x.gene_set.genes))
+def filter_enrichment_data_top(data: list, best: int = 10,metric='padj') -> list:
+    """
+    Return top gene sets based on padj
+    :param data: list of GeneSetDataCorrelation
+    :param best: Number of retained sets. Will retain more if multiple sets have same, last retained, padj
+    :param metric: Filter based on: padj, mean
+    :return: list of top gene sets
+    """
+    MEAN='mean'
+    PADJ='padj'
+    retained = []
+    terminate = False
+    last_retained = 1
+    if metric==PADJ:
+        data = el.sort_gsdata_padj(data)
+    elif metric == MEAN:
+        data = sort_gscordata_mean(data)
+    else:
+        raise ValueError('Metric can be:',PADJ,MEAN)
+    for gene_set in data:
+        if len(retained) >= best:
+            terminate = True
+        if terminate and gene_set.padj > last_retained:
+            break
+        retained.append(gene_set)
+        last_retained = gene_set.padj
+    return retained
 
 
 class GeneSetComparator:
@@ -967,7 +926,7 @@ class GeneSetComparator:
             stdevs_similarity = SimilarityCalculator.calc_cosine(stdevs1, stdevs2)
             pair.profile_changeability_similarity = stdevs_similarity
 
-    def set_changeability_deviation(self, gene_set_data: GeneSetData):
+    def set_changeability_deviation(self, gene_set_data: GeneSetDataCorrelation):
         genes = gene_set_data.gene_set.genes
         genes=filter_geneIDs(self.expression_data,genes)
         data = self.expression_data.get_genes_data_IDs(genes)
@@ -983,7 +942,7 @@ class GeneSetComparator:
         gene_set_data.pattern_stdevs = differences.std(axis=0)
 
     @staticmethod
-    def make_set_pairs( gene_set_data: GeneSetData,include_identical=False)->list:
+    def make_set_pairs(gene_set_data: GeneSetDataCorrelation, include_identical=False)->list:
         set_pairs = []
         n_sets = len(gene_set_data)
         start_j_add=1
