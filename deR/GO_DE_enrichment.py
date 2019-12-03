@@ -1,9 +1,4 @@
-import pandas as pd
-import matplotlib.pyplot as plt
 
-from networks.library_regulons import ClusterAnalyser,name_genes_entrez
-from orangecontrib.bioinformatics.geneset.utils import GeneSet
-from orangecontrib.bioinformatics.geneset.__init__ import (list_all, load_gene_sets)
 from deR.enrichment_library import *
 
 organism=44689
@@ -17,4 +12,38 @@ entrez_dict=name_genes_entrez(gene_names=genes.index,organism=organism,key_entre
 reference_EID=convert_EID(genes=genes.index,name_EID=entrez_dict)
 de_EID=convert_EID(genes_de['Gene'],name_EID=entrez_dict)
 
-result=enrichment_in_gene_set(set_EID=de_EID, reference_EID=reference_EID, gene_set_names=[('GO','biological_process')])
+# Enrichment of DE in gene set same as enrichment of gene sets in DE
+# result=enrichment_in_gene_set(set_EID=de_EID, reference_EID=reference_EID, gene_set_names=[('GO','biological_process')])
+# result= filter_enrichment_data_padj(result,0.05)
+# result=sort_gsdata_padj(result)
+# df=gene_set_data_to_df(result)
+# pd.DataFrame([df['name'],df['padj'] ,df['n_set_query']/df['n_genes_set']]).T
+
+result2=gene_set_enrichment(query_EID=de_EID, reference_EID=reference_EID, gene_set_names=[('GO','biological_process')])
+result2= filter_enrichment_data_padj(result2,0.05)
+result2=sort_gsdata_padj(result2)
+df2=gene_set_data_to_df(result2)
+pd.DataFrame([df2['name'],df2['padj'] ]).T
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

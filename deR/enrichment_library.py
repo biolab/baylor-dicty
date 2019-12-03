@@ -102,23 +102,25 @@ def gene_set_enrichment(query_EID: set, reference_EID: set, gene_set_names: list
     compute_padj(enriched)
     return enriched
 
-
-def enrichment_in_gene_set(set_EID: set, reference_EID: set, gene_set_names: list, organism=ORGANISM):
-    enriched = []
-    for gene_set_name in gene_set_names:
-        gene_sets = load_gene_sets(gene_set_name, str(organism))
-        for gene_set in gene_sets:
-            intersect_query = len(gene_set.genes.intersection(set_EID))
-            if intersect_query > 0:
-                intersect_reference=len(gene_set.genes.intersection(reference_EID))
-                pval = HYPERGEOMETRIC.p_value(k=intersect_query, N=len(reference_EID), m=intersect_reference,
-                                              n=len(gene_set.genes))
-                data = GeneSetData(gene_set=gene_set, ontology=gene_set_name)
-                data.pval = pval
-                data.in_query = intersect_query
-                enriched.append(data)
-    compute_padj(enriched)
-    return enriched
+# Not useful as same to normal enrichment due to simetry (Combinatorial identities)
+# https://en.wikipedia.org/wiki/Hypergeometric_distribution
+# def enrichment_in_gene_set(set_EID: set, reference_EID: set, gene_set_names: list, organism=ORGANISM):
+# # Set EID - e.g. DE genes
+#     enriched = []
+#     for gene_set_name in gene_set_names:
+#         gene_sets = load_gene_sets(gene_set_name, str(organism))
+#         for gene_set in gene_sets:
+#             intersect_query = len(gene_set.genes.intersection(set_EID))
+#             if intersect_query > 0:
+#                 intersect_reference=len(reference_EID.intersection(set_EID))
+#                 pval = HYPERGEOMETRIC.p_value(k=intersect_query, N=len(reference_EID), m=intersect_reference,
+#                                               n=len(gene_set.genes))
+#                 data = GeneSetData(gene_set=gene_set, ontology=gene_set_name)
+#                 data.pval = pval
+#                 data.in_query = intersect_query
+#                 enriched.append(data)
+#     compute_padj(enriched)
+#     return enriched
 
 
 def compute_padj(data):
