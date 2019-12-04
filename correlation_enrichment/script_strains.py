@@ -1,4 +1,5 @@
 import time
+import seaborn as sb
 
 from Orange.widgets.tests.base import datasets
 from orangecontrib.bioinformatics.geneset.__init__ import (list_all, load_gene_sets)
@@ -6,6 +7,7 @@ import matplotlib.pyplot as plt
 
 from correlation_enrichment.library_correlation_enrichment import *
 import networks.functionsDENet as f
+import deR.enrichment_library as el
 
 lab = True
 # dataPath='/home/karin/Documents/git/baylor-dicty/data_expression/'
@@ -85,18 +87,19 @@ genesEID = f.loadPickle(dataPath + 'mergedGenes_RPKUM_EID.pkl')
 conditions = pd.read_csv(dataPath + 'conditions_mergedGenes.tsv', sep='\t', index_col=None)
 genesStrainEID = genesEID.loc[:, np.array(conditions['Strain'] == 'AX4')]
 
+# TODO
 ge_strain = GeneExpression(genesStrainEID)
 ec_strain = EnrichmentCalculator.quick_init(ge_strain, sc)
 gsc = GeneSetComparator(ec_strain.calculator)
 # Max pairs not really needed as max for 100<5000
-enrichment_data = ec_strain.calculate_enrichment(gene_sets=gene_sets, max_pairs=5000, max_set_size=100)
+# enrichment_data = ec_strain.calculate_enrichment(gene_sets=gene_sets, max_pairs=5000, max_set_size=100)
 # f.savePickle(dataPathSaved + 'enrichment_cosine_5000_GOprocess_maxSize100_' + strain + '.pkl',enrichment_data)
-# enrichment_data=f.loadPickle(dataPathSaved + 'enrichment_cosine_5000_pheno_' + strain + '.pkl')
-top_padj = EnrichmentCalculator.filter_enrichment_data_top(data=enrichment_data, best=20)
-top_mean = EnrichmentCalculator.filter_enrichment_data_top(data=enrichment_data,best= 20,metric='mean')
-top=top_mean
+enrichment_data=f.loadPickle(dataPathSaved + 'enrichment_cosine_5000_GOprocess_maxSize100_' + strain + '.pkl')
+top_padj = filter_enrichment_data_top(data=enrichment_data, metric='padj',best=5)
+top_mean = filter_enrichment_data_top(data=enrichment_data, metric='mean',best=5)
+top=top_padj
 set_pairs = gsc.make_set_pairs(top, include_identical=True)
-gsc.between_set_similarities(set_pairs)
+gsc.between_set_similarities(set_pairs,mode='sampling',max_pairs=100)
 n_sets = len(top)
 matrix = np.ones((n_sets, n_sets))
 matrix = pd.DataFrame(matrix)
@@ -111,4 +114,8 @@ for pair in set_pairs:
     mean_sim = pair.mean_profile_similarity
     matrix.loc[name1, name2] = mean_sim
     matrix.loc[name2, name1] = mean_sim
-matrix.to_csv(dataPathSaved + 'enrichment_cosine_5000_pheno_AX4_topSetSimilarity.tsv', sep='\t')
+#matrix.to_csv(dataPathSaved + 'enrichment_cosine_5000_pheno_AX4_topSetSimilarity.tsv', sep='\t')
+
+sb.clustermap(matrix)
+
+

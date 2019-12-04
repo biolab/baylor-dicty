@@ -27,7 +27,7 @@ GENE_SETS = GeneSets([GENE_SET, GENE_SET2, GENE_SET3, GENE_SET4, GENE_SET5, GENE
 
 
 class TestGeneExpression(unittest.TestCase):
-    ge = GeneExpression(pd.DataFrame({1: [11, 21, 31, 41], 1: [12, 22, 32, 43]}, index=['1', '2', '2', '3']))
+    ge = GeneExpression(pd.DataFrame({1: [11, 21, 31, 41], 2: [12, 22, 32, 43]}, index=['1', '2', '2', '3']))
 
     def test_init(self):
         # Correct data type
@@ -66,7 +66,7 @@ class TestGeneExpression(unittest.TestCase):
     def test_get_genes_data_IDs(self):
         # Is data correctly retrieved by gene name
         if not self.ge.get_genes_data_IDs(['1', '2']).equals(
-                pd.DataFrame({1: [11, 21, 31], 1: [12, 22, 32]}, index=['1', '2', '2'])):
+                pd.DataFrame({1: [11, 21, 31], 2: [12, 22, 32]}, index=['1', '2', '2'])):
             raise AssertionError('Results do not match')
         # Is error raised if gene not present in data is sought
         with self.assertRaises(KeyError):
@@ -75,7 +75,7 @@ class TestGeneExpression(unittest.TestCase):
     def test_get_genes_data_index(self):
         # Is data correctly retrieved by index position
         self.assertEqual(self.ge.get_genes_data_index(1),
-                         np.array(pd.DataFrame({1: [21], 1: [22]}, index=['2'])))
+                         np.array(pd.DataFrame({1: [21], 2: [22]}, index=['2'])))
         # Is error raised if too large index is used
         with self.assertRaises(IndexError):
             self.ge.get_genes_data_index(4)

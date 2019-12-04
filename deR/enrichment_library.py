@@ -136,7 +136,7 @@ def compute_padj(data):
         data.padj = padj
 
 
-def filter_enrichment_data_padj(data: list, max_padj: float) -> list:
+def filter_enrichment_data_topp(data: list, max_padj: float) -> list:
     """
     Return only enriched data with padj bellow threshold
     :param data: list of GeneSetData

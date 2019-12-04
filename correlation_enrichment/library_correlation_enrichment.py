@@ -10,6 +10,7 @@ from statsmodels.stats.multitest import multipletests
 from sklearn import preprocessing as pp
 from scipy.stats import (spearmanr, pearsonr, norm)
 import mpmath
+
 mpmath.mp.dps = 500
 
 from orangecontrib.bioinformatics.geneset.utils import (GeneSet, GeneSets)
@@ -63,7 +64,7 @@ class GeneExpression:
     Stores a data frame with gene expression data.
     """
 
-    def __init__(self, expression: pd.DataFrame,use_log:bool=True):
+    def __init__(self, expression: pd.DataFrame, use_log: bool = True):
         """
         Automatically removes genes with all 0 expression
         :param expression: Expression data frame with genes as rows and sampling points as columns.
@@ -78,7 +79,7 @@ class GeneExpression:
         # TODO add log and 0 filtering to tests
         expression = expression[(expression != 0).any(axis=1)]
         if use_log:
-            expression=np.log2(expression+1)
+            expression = np.log2(expression + 1)
         self.expression = expression
         # If measurements for each gene for each replicate represent one point in space this represents number of points
         self.n_points = expression.shape[0]
@@ -156,7 +157,7 @@ class SimilarityCalculator:
     M0SD1 = 'mean0std1'
     NORMALISATION = [M0SD1, None]
 
-    def __init__(self, bidirectional: bool = True, similarity_type: str = SPEARMAN, normalisation_type: str = None):
+    def __init__(self, bidirectional: bool = True, similarity_type: str = COSINE, normalisation_type: str = None):
         """
 
         :param bidirectional: Return better of two possible similarities between profiles -
@@ -348,18 +349,26 @@ class RandomSimilarityCalculatorNavigator(SimilarityCalculatorNavigator):
             similarities_list = self.remove_outliers(similarities_list)
         return similarities_list
 
-    def get_random_pairs(self, n_pairs, n_points, adjust_n: bool = False) -> set:
+    def get_random_pairs(self, n_pairs, n_points, adjust_n: bool = False, n_points2: int = None) -> set:
+        # TODO update test for 2 data sets
         """
-        Get random index pairs from n_points. Indices can be between 0 and n_points-1.
-        No pairs are repeated. Pair consists of 2 different indices.
+        Get random index pairs from n_points. If n_points2 is none draws pairs of two different elements from
+        n_points-1; else draws one point from n_points-1 and the other from n_points2-1.
+        Indices can be between 0 and n_points-1 (or n_points2-1).
+        No pairs are repeated.
         :param n_pairs: n of index pairs
         :param n_points: n of  points/indices
         :param adjust_n: As in similarities method.
+        :param n_points2: n of points for the second element of a pair, draws points from two datasets
+            (with n_points and n_points2 elements), if None draws pairs from a single dataset with n_points
         :return: index pairs
         """
         if n_pairs < 1:
             raise ValueError('Number of pairs must be at least 1.')
-        n_possible_pairs = possible_pairs(n_points)
+        if n_points2 is None:
+            n_possible_pairs = possible_pairs(n_points)
+        else:
+            n_possible_pairs = n_points * n_points2
         if n_pairs > n_possible_pairs:
             if adjust_n:
                 n_pairs = n_possible_pairs
@@ -368,25 +377,32 @@ class RandomSimilarityCalculatorNavigator(SimilarityCalculatorNavigator):
                                  n_possible_pairs)
         pairs = set()
         while len(pairs) < n_pairs:
-            pair = self.generate_index_pair(min_index=0, max_index=n_points - 1)
+            max2 = None if n_points2 is None else n_points2 - 1
+            pair = self.generate_index_pair(min_index=0, max_index=n_points - 1, max_index2=max2)
             pairs.add(pair)
         return pairs
 
-    def generate_index_pair(self, max_index: int, min_index: int = 0, ) -> tuple:
+    def generate_index_pair(self, max_index: int, min_index: int = 0, max_index2: int = None) -> tuple:
+        # TODO update test for 2 data sets
         """
-        Make a pair of indices. Pair of indices contains 2 different indices.
+        Make a pair of indices. Pair of indices contains 2 different indices if max_index2 is None -
+        draws from elements between min and max_index; else draws pairs with first element between min and max_index and
+        second element between min and max_index2 elements.
         :param max_index: largest possible index, inclusive
         :param min_index: smallest possible index,  inclusive
-        :return: index pair, left index is always smaller
+        :param max_index2: Largest possible index for second element of a pair, if None uses max_index for both elements
+        :return: index pair, left index is always smaller if max_index2 is None
         """
         index1 = self.random_generator.randint(min_index, max_index)
-        index2 = self.random_generator.randint(min_index, max_index)
-        while index1 == index2:
-            index2 = self.random_generator.randint(min_index, max_index)
-        if index1 > index2:
-            index3 = index2
-            index2 = index1
-            index1 = index3
+        max2 = max_index if max_index2 is None else max_index2
+        index2 = self.random_generator.randint(min_index, max2)
+        if max_index2 is None:
+            while index1 == index2:
+                index2 = self.random_generator.randint(min_index, max2)
+            if index1 > index2:
+                index3 = index2
+                index2 = index1
+                index1 = index3
         return index1, index2
 
 
@@ -413,6 +429,8 @@ class GeneSetSimilarityCalculatorNavigator(SimilarityCalculatorNavigator):
         :param geneIDs: Entrez IDs of genes in the gene set
         :param max_n_similarities: Should be number of similarity calculations limited,
         eg. a random sample of similarities between specified genes
+        :param as_list: Return list of similarities (True) or dict with keys being gene pair tuples and
+            values being similarities
         :return: keys: gene names of two compared genes as tuple, values: similarity
         """
         geneIDs = filter_geneIDs(self.expression_data, geneIDs)
@@ -438,10 +456,15 @@ class GeneSetSimilarityCalculatorNavigator(SimilarityCalculatorNavigator):
             similarities_data = list(similarities_data.values())
         return similarities_data
 
-    def similarities_pair(self, geneIDs1: list, geneIDs2: list, as_list=True):
+    def similarities_pair(self, geneIDs1: list, geneIDs2: list, max_n_similarities: int = None, as_list=True):
         """
-        Caluclate similarity between genes from two different sets
-        :param geneIDs: Entrez IDs of genes in the gene set 1 or 2
+        Caluclate similarity between genes from two different sets.
+        :param geneIDs: Entrez IDs of genes in the gene set 1 or 2. If elements are repeated in either geneIDs they are
+        used only once (e.g. as if they were previously converted to a set).
+        :param max_n_similarities: Should be number of similarity calculations limited,
+        eg. a random sample of similarities between specified genes
+        :param as_list: Return list of similarities (True) or dict with keys being gene pair tuples and
+            values being similarities
         :return: keys: gene names of two compared genes as tuple, values: similarity
         """
         geneIDs1 = filter_geneIDs(self.expression_data, geneIDs1)
@@ -453,8 +476,17 @@ class GeneSetSimilarityCalculatorNavigator(SimilarityCalculatorNavigator):
         similarities_data = dict()
         n1 = len(geneIDs1)
         n2 = len(geneIDs2)
-        for i in range(0, n1):
-            for j in range(0, n2):
+        n_possible_pairs = n1 * n2
+        if max_n_similarities is None or n_possible_pairs <= max_n_similarities:
+            for i in range(0, n1):
+                for j in range(0, n2):
+                    self.calculate_similarity(data1, i, j, similarities_data, data2)
+        else:
+            pairs = self.random_generator.get_random_pairs(n_pairs=max_n_similarities, n_points=n1, adjust_n=True,
+                                                           n_points2=n2)
+            for pair in pairs:
+                i = pair[0]
+                j = pair[1]
                 self.calculate_similarity(data1, i, j, similarities_data, data2)
         if self.rm_outliers:
             similarities_data = self.remove_outliers(similarities_data)
@@ -764,7 +796,7 @@ class EnrichmentCalculator:
         geneIDs = gene_set.genes
         try:
             set_similarities_data = self.calculator.similarities(geneIDs, max_n_similarities=max_pairs,
-                                                                     as_list=False)
+                                                                 as_list=False)
         except EnrichmentError:
             raise
 
@@ -780,7 +812,7 @@ class EnrichmentCalculator:
             raise ValueError('Possible summary types are', MEAN, 'and', MEDIAN)
         se = self.storage.get_se(n)
         center_random = self.storage._center
-        p=float(1-mpmath.ncdf(center_set, mu=center_random, sigma=se))
+        p = float(1 - mpmath.ncdf(center_set, mu=center_random, sigma=se))
 
         gene_set_data = GeneSetDataCorrelation(gene_set)
         gene_set_data.mean = mean_set
@@ -789,7 +821,7 @@ class EnrichmentCalculator:
         gene_set_data.most_similar = self.retain_most_similar(set_similarities_data, 10)
         return gene_set_data
 
-    def calculate_enrichment(self, gene_sets: GeneSets, max_pairs: int = None, max_set_size:int=None) -> list:
+    def calculate_enrichment(self, gene_sets: GeneSets, max_pairs: int = None, max_set_size: int = None) -> list:
         """
         claculate enrichment for multiple gene sets, adjust p val (Benjamini Hoechber)
         :param gene_sets:
@@ -798,13 +830,13 @@ class EnrichmentCalculator:
         :return: gene set data with p and adjusted p values
         """
         if max_set_size is not None:
-            gene_sets=[gene_set for gene_set in gene_sets if len(gene_set.genes)<=max_set_size]
+            gene_sets = [gene_set for gene_set in gene_sets if len(gene_set.genes) <= max_set_size]
         pvals = []
         data = []
         for gene_set in gene_sets:
             try:
                 # This line may throw exception if not enough genes are present
-                gene_set_data = self.calculate_pval(gene_set=gene_set,max_pairs= max_pairs)
+                gene_set_data = self.calculate_pval(gene_set=gene_set, max_pairs=max_pairs)
                 data.append(gene_set_data)
                 pvals.append(gene_set_data.pval)
             except EnrichmentError:
@@ -859,7 +891,7 @@ def sort_gscordata_median(data: list) -> list:
     return sorted(data, key=lambda x: x.median, reverse=True)
 
 
-def filter_enrichment_data_top(data: list, best: int = 10,metric='padj') -> list:
+def filter_enrichment_data_top(data: list, best: int = 10, metric='padj') -> list:
     """
     Return top gene sets based on padj
     :param data: list of GeneSetDataCorrelation
@@ -867,17 +899,17 @@ def filter_enrichment_data_top(data: list, best: int = 10,metric='padj') -> list
     :param metric: Filter based on: padj, mean
     :return: list of top gene sets
     """
-    MEAN='mean'
-    PADJ='padj'
+    MEAN = 'mean'
+    PADJ = 'padj'
     retained = []
     terminate = False
     last_retained = 1
-    if metric==PADJ:
+    if metric == PADJ:
         data = el.sort_gsdata_padj(data)
     elif metric == MEAN:
         data = sort_gscordata_mean(data)
     else:
-        raise ValueError('Metric can be:',PADJ,MEAN)
+        raise ValueError('Metric can be:', PADJ, MEAN)
     for gene_set in data:
         if len(retained) >= best:
             terminate = True
@@ -890,6 +922,7 @@ def filter_enrichment_data_top(data: list, best: int = 10,metric='padj') -> list
 
 class GeneSetComparator:
     # TODO: write docs, finish testing, decide if changeability_similarity is even sensible
+
     """
     Compares GeneSets to each other.
     """
@@ -898,16 +931,29 @@ class GeneSetComparator:
         self.similarity_calculator = similarity_calculator
         self.expression_data = self.similarity_calculator.expression_data
 
-    def between_set_similarities(self, set_pairs_data: list):
+    def between_set_similarities(self, set_pairs_data: list, mode: str, max_pairs: int = None):
+        SAMPLING = 'sampling'
+        REPRESENTATIVES = 'representatives'
+        MODES = [REPRESENTATIVES, SAMPLING]
         """
         Calculates similariti between two data sets based on genes declared to be most similar within the sets
         :param set_pairs_data: list of  GeneSetPairData object to be compared to each other
         :return: Adds data to GeneSetPairData elements
         """
+        if mode not in MODES:
+            raise ValueError('Mode must be one of: ', MODES)
         for pair in set_pairs_data:
             set1 = pair.gene_set_data1
             set2 = pair.gene_set_data2
-            similarities = self.similarity_calculator.similarities_pair(set1.most_similar, set2.most_similar)
+            if mode == REPRESENTATIVES:
+                genes1=set1.most_similar
+                genes2=set2.most_similar
+            elif mode == SAMPLING:
+                genes1=set1.gene_set.genes
+                genes2=set2.gene_set.genes
+            similarities = self.similarity_calculator.similarities_pair(geneIDs1=genes1,
+                                                                        geneIDs2=genes2,
+                                                                        max_n_similarities=max_pairs)
             pair.mean_profile_similarity = mean_list(similarities)
             pair.median_profile_similarity = median(similarities)
 
@@ -928,27 +974,28 @@ class GeneSetComparator:
 
     def set_changeability_deviation(self, gene_set_data: GeneSetDataCorrelation):
         genes = gene_set_data.gene_set.genes
-        genes=filter_geneIDs(self.expression_data,genes)
+        genes = filter_geneIDs(self.expression_data, genes)
         data = self.expression_data.get_genes_data_IDs(genes)
         differences = []
         time_points = data.shape[1]
         # Compute absolute differences between time points
-        for comparison_point in range(time_points-1):
+        for comparison_point in range(time_points - 1):
             difference = data.iloc[:, comparison_point + 1].subtract(data.iloc[:, comparison_point])
             differences.append(abs(difference))
         # Calculate deviation of differences between time points among genes
         differences = pd.concat(differences, axis=1)
-        differences = pp.minmax_scale(differences,axis=1)
+        differences = pp.minmax_scale(differences, axis=1)
         gene_set_data.pattern_stdevs = differences.std(axis=0)
 
     @staticmethod
-    def make_set_pairs(gene_set_data: GeneSetDataCorrelation, include_identical=False)->list:
+    def make_set_pairs(gene_set_data: GeneSetDataCorrelation, include_identical=False) -> list:
+        # TODO: enable option to remove pairs that have more than N% shared genes
         set_pairs = []
         n_sets = len(gene_set_data)
-        start_j_add=1
-        end_i_miss=1
+        start_j_add = 1
+        end_i_miss = 1
         if include_identical:
-            start_j_add=0
+            start_j_add = 0
             end_i_miss = 0
         for i in range(0, n_sets - end_i_miss):
             for j in range(i + start_j_add, n_sets):
