@@ -988,8 +988,14 @@ class GeneSetComparator:
         gene_set_data.pattern_stdevs = differences.std(axis=0)
 
     @staticmethod
-    def make_set_pairs(gene_set_data: GeneSetDataCorrelation, include_identical=False) -> list:
-        # TODO: enable option to remove pairs that have more than N% shared genes
+    def make_set_pairs(gene_set_data: list, include_identical=False,max_overlap:float=None) -> list:
+        """
+
+        :param gene_set_data:
+        :param include_identical: If max_overlap is set the identical pairs will be remopuved due to too high overlap.
+        :param max_overlap:
+        :return:
+        """
         set_pairs = []
         n_sets = len(gene_set_data)
         start_j_add = 1
@@ -1001,8 +1007,17 @@ class GeneSetComparator:
             for j in range(i + start_j_add, n_sets):
                 data1 = gene_set_data[i]
                 data2 = gene_set_data[j]
-                pair = GeneSetPairData(data1, data2)
-                set_pairs.append(pair)
+                add=True
+                if max_overlap is not None:
+                    genes1=data1.gene_set.genes
+                    genes2=data2.gene_set.genes
+                    n_smaller=min(len(genes1),len(genes2))
+                    n_overlap=len(set(genes1)&set(genes2))
+                    if n_overlap/n_smaller > max_overlap:
+                        add=False
+                if add:
+                    pair = GeneSetPairData(data1, data2)
+                    set_pairs.append(pair)
         return set_pairs
 
 
