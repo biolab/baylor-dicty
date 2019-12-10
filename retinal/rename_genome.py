@@ -1,0 +1,1 @@
+genome_path='/home/karin/Documents/retinal/data/NCBI_genome_GB_GCA_000364345.1_Macaca_fascicularis_5.0_genomic.fna'
