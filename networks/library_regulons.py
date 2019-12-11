@@ -817,7 +817,7 @@ class Clustering(ABC):
         :return: sizes
         """
         if clusters is None:
-            clusters = list(self.get_clusters(splitting=splitting))
+            clusters = list(self.get_clusters(**splitting))
         return list(Counter(clusters).values())
 
     def get_genes_by_clusters(self, splitting: dict = None, filter_genes: iter = None, clusters=None) -> dict:
@@ -830,7 +830,7 @@ class Clustering(ABC):
         :return: Dict keys: cluster, values: list of genes/members
         """
         if clusters is None:
-            clusters = self.get_clusters(splitting=splitting)
+            clusters = self.get_clusters(**splitting)
         cluster_dict = dict((gene_set, []) for gene_set in set(clusters))
         for gene, cluster in zip(self._gene_names_ordered, clusters):
             if (filter_genes is None) or (gene in filter_genes):
@@ -851,7 +851,7 @@ class Clustering(ABC):
         :return: Dict keys: cluster, values: list of genes/members
         """
         if clusters is None:
-            clusters = self.get_clusters(splitting=splitting)
+            clusters = self.get_clusters(**splitting)
         gene_dict = dict()
         for gene, cluster in zip(self._gene_names_ordered, clusters):
             if (filter_genes is None) or (gene in filter_genes):
@@ -865,7 +865,7 @@ class Clustering(ABC):
         :param clusters: Predefined clusters, as returned by get_clusters
          """
         if clusters is None:
-            clusters = self.get_clusters(splitting=splitting)
+            clusters = self.get_clusters(**splitting)
         sizes = self.cluster_sizes(clusters=clusters)
         plt.hist(sizes, bins=100)
         plt.xlabel('Cluster size')
@@ -1060,9 +1060,7 @@ class ClusterAnalyser:
         :param matching: Which column in conditions matches column names in genes
         :return: Dict with keys being values from split_by column and values being data, averaged by average_by
         """
-        conditions = conditions.copy()
-        conditions.index = conditions[matching]
-        merged = pd.concat([genes.T, conditions], axis=1)
+        merged = ClusterAnalyser.merge_genes_conditions(genes=genes, conditions=conditions,matching=matching)
         splitted = ClusterAnalyser.split_data(data=merged, split_by=split_by)
 
         data_processed = {}
@@ -1070,6 +1068,19 @@ class ClusterAnalyser:
             averaged = ClusterAnalyser.average_data(data=data, average_by=average_by)
             data_processed[split] = averaged.T
         return data_processed
+
+    @staticmethod
+    def merge_genes_conditions(genes: pd.DataFrame, conditions: pd.DataFrame,matching) -> pd.DataFrame:
+        """
+        Merge dataframes with genes and conditions
+        :param genes: Expression data, genes in rows, measurements in columns, dimensions G*M
+        :param conditions: Description (columns) of each measurements (rows), dimensions M*D
+        :param matching: Which column in conditions matches column names in genes
+        :return: Data frame with merged genes and conditions
+        """
+        conditions = conditions.copy()
+        conditions.index = conditions[matching]
+        return pd.concat([genes.T, conditions], axis=1)
 
     @staticmethod
     def split_data(data: pd.DataFrame, split_by: str) -> dict:
