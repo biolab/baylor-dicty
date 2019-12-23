@@ -1080,7 +1080,7 @@ class ClusterAnalyser:
         """
         conditions = conditions.copy()
         conditions.index = conditions[matching]
-        return pd.concat([genes.T, conditions], axis=1)
+        return pd.concat([genes.T, conditions], axis=1,sort=True)
 
     @staticmethod
     def split_data(data: pd.DataFrame, split_by: str) -> dict:
