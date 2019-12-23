@@ -42,16 +42,19 @@ cosine <- function(x) {
 n_all=dim(data)[1]
 clust<-pvclust(t(data),method.hclust='ward.D2',method.dist=cosine,parallel=TRUE,iseed=0)
 
-#Find clusters, assume each gene will be in one cluster (has at least one close neighbour)
+#Find clusters
 pv='au'
 alpha=0.95
+
+# Option 1: Assume each gene will be in one cluster (has at least one close neighbour)
 alphas=sort(unique(clust$edges[,pv]),decreasing = TRUE)
 alphas=alphas[alphas<alpha]
 alphas<-append(alpha,alphas)
 n_included=0
 index=0
 clusters=NA
-while(n_included<n_all ){
+proportion_retained=1
+while(n_included<n_all*proportion_retained ){
   index=index+1
   alpha_used=alphas[index]
   clusters<-pvpick(clust,alpha=alpha_used,pv=pv,max.only=TRUE)
@@ -60,4 +63,40 @@ while(n_included<n_all ){
     n_included=n_included+length(cluster)
   }
 }
+#OR 
+#Option 2: Asign clusters only above a pv threshold
+alpha=0.95
+clusters<-pvpick(clust,alpha=alpha,pv=pv,max.only=TRUE)
+
+# Analyse cluster size distribution
+cluster_sizes=c()
+for (cluster in clusters$clusters){
+  cluster_sizes<-append(cluster_sizes,length(cluster))
+}
+hist(cluster_sizes,main=paste('N clustered genes',sum(cluster_sizes)),breaks=max,log='x')
+
+#Make cluster DF
+genes_cl<-data.frame(row.names=rownames(data),cluster=rep(NA,length(genes)))
+clust_counter=0
+for (cluster in clusters$clusters){
+  for (gene in cluster){
+    genes_cl[gene]=clust_counter
+  }
+  clust_counter=clust_counter+1
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
