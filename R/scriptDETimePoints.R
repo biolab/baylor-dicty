@@ -27,6 +27,7 @@ library("BiocParallel")
 register(MulticoreParam(4))
 library(ComplexHeatmap)
 library(circlize)
+library(gdata)
 
 #Load data counts
 #genes<-read.table(paste(dataPath,"mergedGenes_counts.tsv",sep=''), header=TRUE,row.names='Gene', sep="\t")
@@ -247,7 +248,7 @@ deDF<-read.csv(paste(dataPathSaved,'DE_p0.05_abslog2FC1.tsv',sep=''),sep='\t')
 #genes_plot=intersect(colnames(genesNotNullNorm),deDF[,1])
 genes_plot=intersect(rownames(genesNormNew),deDF[,1])
 #If times are to be coloured by different colours
-#time_cols=list(times=c('0'='blueviolet','1'='slateblue4','2'='blue','3'='royalblue','4'='cyan','5'='olivedrab3','6'='chartreuse3',
+#time_cols=list(Time=c('0'='blueviolet','1'='slateblue4','2'='blue','3'='royalblue','4'='cyan','5'='olivedrab3','6'='chartreuse3',
 #                       '8'='darkolivegreen2','10'='yellow','12'='orange', '14'='brown','16'='red','18'='black','20'='pink','24'='gray'))
 time_cols = colorRamp2(c(min(timepoints),max(timepoints)), c("white", "blue"))
 #Make matrix from df
@@ -268,10 +269,18 @@ for(measurment in rownames(m)){
 conditions_dataDE=data.frame(Strain=strains_dataDE,Time=as.numeric(times_dataDE))
 rownames(conditions_dataDE)=rownames(m)
 conditions_dataDE <- conditions_dataDE[order(conditions_dataDE$Strain, conditions_dataDE$Time),]
+
+strains_PCA<-c('gtaI','mybBGFP','cudA','gtaG','pkaCoeAX4','pkaR',
+              'comH','tagB','dgcA','ac3pkaCoe','gtaC','tgrB1','tgrB1C1','tgrC1',
+              'ecmA','gbfA','acaA','amiB','mybB')
+conditions_dataDE$Strain<- reorder.factor(conditions_dataDE$Strain, new.order=strains_PCA)
+conditions_dataDE<-conditions_dataDE %>% arrange(Strain)
+rownames(conditions_dataDE)<-paste(conditions_dataDE$Strain,conditions_dataDE$Time,sep='_')
 m<-m[rownames(conditions_dataDE),]
+
 #col_time=as.list(c(brewer.pal(8,'Dark2'),brewer.pal(7,'Pastel2'))) #Must be named list
-#time_anno = rowAnnotation(times = as.character(conditions_dataDE$Time),col=time_cols)
-time_anno = rowAnnotation(times = conditions_dataDE$Time,col=list(times = time_cols),annotation_legend_param = list(times = list(at = c(0, 6,12, 18,24))))
+#time_anno = rowAnnotation(Time = as.character(conditions_dataDE$Time),col=time_cols)
+time_anno = rowAnnotation(Time = conditions_dataDE$Time,col=list(Time = time_cols),annotation_legend_param = list(Time = list(at = c(0, 6,12, 18,24))))
 n_clusters=8
 heatmap_de=Heatmap(m,column_km = n_clusters,row_order = rownames(conditions_dataDE),cluster_rows =  FALSE,
         show_row_names = FALSE,
@@ -313,12 +322,14 @@ genes_AX4<-t(genes_AX4_T/row_max)
 #genes_AX4<-data.matrix(log2(genes_AX4))
 #times_AX4=conditionsNorm[conditionsNorm$Strain=='AX4_avr','Time']
 times_AX4=rownames(genes_AX4)
-#time_anno_AX4 = rowAnnotation(times = as.character(times_AX4),col=time_cols)
-time_anno_AX4 = rowAnnotation(times = as.numeric(times_AX4),col=list(times = time_cols))
+#time_anno_AX4 = rowAnnotation(Time = as.character(times_AX4),col=time_cols)
+time_anno_AX4 = rowAnnotation(Time = as.numeric(times_AX4),col=list(Time = time_cols))
 col_AX4= colorRamp2(c(min(genes_AX4),max(genes_AX4)), c( "white", "brown"))
 heatmap_wild=Heatmap(genes_AX4,cluster_rows = FALSE,cluster_columns=FALSE,
                      left_annotation = time_anno_AX4,row_order = rownames(genes_AX4),show_row_names = FALSE,
                      show_column_names = FALSE,name='Max scaled expression',col = col_AX4)
+
+#Plot heatmaps
 if( sum(colnames(genes_AX4)!=colnames(m))==0){
   ht_list =heatmap_de %v% heatmap_wild
   heatmap=draw(ht_list)

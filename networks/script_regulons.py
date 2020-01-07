@@ -7,21 +7,23 @@ import pickle as pkl
 import glob
 import seaborn as sb
 
+from Orange.clustering.louvain import jaccard
+
 from networks.library_regulons import *
 import jupyter_functions as jf
 from networks.functionsDENet import loadPickle, savePickle
 
 # Script parts are to be run separately as needed
-lab=True
+lab = True
 if lab:
     dataPath = '/home/karin/Documents/timeTrajectories/data/RPKUM/combined/'
     dataPathSaved = '/home/karin/Documents/timeTrajectories/data/regulons/'
     path_inverse = '/home/karin/Documents/timeTrajectories/data/regulons/inverseReplicate_m0s1log/'
+    pathSelGenes = dataPathSaved + 'selected_genes/'
 else:
     dataPath = '/home/karin/Documents/DDiscoideum/data/RPKUM/'
-    dataPathSaved='/home/karin/Documents/DDiscoideum/data/regulons/'
+    dataPathSaved = '/home/karin/Documents/DDiscoideum/data/regulons/'
     path_inverse = '/home/karin/Documents/DDiscoideum/data/regulons/inverse/'
-
 
 genes = pd.read_csv(dataPath + 'mergedGenes_RPKUM.tsv', sep='\t', index_col=0)
 conditions = pd.read_csv(dataPath + 'conditions_mergedGenes.tsv', sep='\t', index_col=None)
@@ -424,17 +426,17 @@ host.tick_params(axis='x')
 # *********************************
 
 # Get genes for orange:
-result=get_orange_result(result=None,threshold=0.99,genes=genes)
+result = get_orange_result(result=None, threshold=0.99, genes=genes)
 
 genes_orange_scaled, genes_orange_avg, patterns = preprocess_for_orange(genes=genes,
                                                                         conditions=conditions,
                                                                         split_by='Strain', average_by='Time',
-                                                                        matching='Measurment',group='AX4')
-result.to_csv(dataPathSaved+'genes_selected_orange_T0_99.tsv', sep='\t', index=False)
-genes_orange_scaled.to_csv(dataPathSaved+'genes_scaled_orange.tsv', sep='\t')
+                                                                        matching='Measurment', group='AX4')
+result.to_csv(dataPathSaved + 'genes_selected_orange_T0_99.tsv', sep='\t', index=False)
+genes_orange_scaled.to_csv(dataPathSaved + 'genes_scaled_orange.tsv', sep='\t')
 # Transpose so that column names unique (else Orange problems)
-genes_orange_avg.T.to_csv(dataPathSaved+'genes_averaged_orange.tsv', sep='\t')
-patterns.to_csv(dataPathSaved+'gene_patterns_orange.tsv', sep='\t', index=False)
+genes_orange_avg.T.to_csv(dataPathSaved + 'genes_averaged_orange.tsv', sep='\t')
+patterns.to_csv(dataPathSaved + 'gene_patterns_orange.tsv', sep='\t', index=False)
 
 # ********************
 # Check how many hypothetical and pseudogenes are in onthologies
@@ -485,7 +487,7 @@ for batch in set(batches):
     print(batch)
     genes_sub = genes.T[batches == batch].T
     neighbour_calculator = NeighbourCalculator(genes_sub)
-    result_inv = neighbour_calculator.neighbours(200, inverse=True,scale='mean0std1',log=True)
+    result_inv = neighbour_calculator.neighbours(200, inverse=True, scale='mean0std1', log=True)
     output = open(path_inverse + 'raw/' + batch + '.pkl', 'wb')
     pkl.dump(result_inv, output)
     output.close()
@@ -562,9 +564,7 @@ def process_results_files(files, threshold, min_present, save: str = None):
         savePickle(save, filtered_present)
 
 
-
-
-#merged_results = merge_from_file(files, similarity_threshold=0.6)
+# merged_results = merge_from_file(files, similarity_threshold=0.6)
 # Plot dist in how many reps present
 # distn_present=[]
 # for similarities in merged_results.values():
@@ -572,11 +572,11 @@ def process_results_files(files, threshold, min_present, save: str = None):
 # plt.hist(distn_present,bins=49)
 
 # Remove results present in less than 10 replicates:
-#filter_merged = filter_merged_N_present(merged_results, min_present=10)
+# filter_merged = filter_merged_N_present(merged_results, min_present=10)
 # Save filtered
 
-#savePickle(path_inverse + 'merged_T0_6_min10.pkl', filter_merged)
-process_results_files(files, threshold=0.8, min_present=10, save= path_inverse+'merged_kNN200_T0_8_min10.pkl')
+# savePickle(path_inverse + 'merged_T0_6_min10.pkl', filter_merged)
+process_results_files(files, threshold=0.8, min_present=10, save=path_inverse + 'merged_kNN200_T0_8_min10.pkl')
 # ****************************
 # ***********Parameters
 # Load filtered
@@ -670,8 +670,8 @@ summary = NeighbourCalculator.plot_threshold_batched(sample1=sample1, sample2=sa
 # **********Inverse regulons construction
 
 # Get data of regulons
-threshold=0.96
-min_present=25
+threshold = 0.96
+min_present = 25
 results_all = loadPickle(path_inverse + 'merged_kNN200_T0_8_min10.pkl')
 filtered = NeighbourCalculator.filter_similarities_batched(results=results_all, similarity_threshold=threshold,
                                                            min_present=min_present)
@@ -699,22 +699,20 @@ cluster_data, membership_selected = clustering_analyser.analyse_clustering(clust
 
 # Make graph
 graph = build_graph(filtered)
-threshold_str=str(threshold).replace('.','_')
-nx.write_pajek(graph, path_inverse + 'kN200_t'+threshold_str+'_min'+str(min_present)+'Rep_inv.net')
-#graph=nx.read_pajek( path_inverse + 'kN200_t'+threshold_str+'_min'+str(min_present)+'Rep_inv.net')
+threshold_str = str(threshold).replace('.', '_')
+nx.write_pajek(graph, path_inverse + 'kN200_t' + threshold_str + '_min' + str(min_present) + 'Rep_inv.net')
+# graph=nx.read_pajek( path_inverse + 'kN200_t'+threshold_str+'_min'+str(min_present)+'Rep_inv.net')
 
 # Get clusters for each node of graph
 named_clusters = louvain_cl.get_clusters_by_genes(clusters=clusters)
-#cluster_df = pd.DataFrame(named_clusters, index=['cluster']).T
-#cluster_df.to_csv(path_inverse + 'kN200_t'+threshold_str+'_min'+str(min_present)+'Rep_inv_clusters.tsv', sep='\t')
+# cluster_df = pd.DataFrame(named_clusters, index=['cluster']).T
+# cluster_df.to_csv(path_inverse + 'kN200_t'+threshold_str+'_min'+str(min_present)+'Rep_inv_clusters.tsv', sep='\t')
 
 # Draw graph
 colours = []
 for node in graph.nodes:
     colours.append(named_clusters[node])
 nx.draw_spring(graph, with_labels=False, node_size=4, width=0.3, node_color=colours, cmap=plt.cm.Set1)
-
-
 
 # ***************************
 # *********** Unused
@@ -746,6 +744,98 @@ for k, v in sims.items():
     matrix[k[1], k[0]] = v
 
 # Heatmap
-sb.clustermap(matrix,center=0,cmap='cooldwarm')
+sb.clustermap(matrix, center=0, cmap='cooldwarm')
 
-#******************************
+# ******************************
+# *** Select genes for each replicate
+SCALE = 'mean0std1'
+LOG = True
+NHUBS = 1000
+NEIGHBOURS = 6
+SPLITBY = 'Replicate'
+
+# *** Check if retaining genes by hubs works - compare on all data and previously selected by one close neighbour
+neighbour_calculator_all = NeighbourCalculator(genes=genes)
+neigh_all, sims_all = neighbour_calculator_all.neighbours(n_neighbours=NEIGHBOURS, inverse=False, scale=SCALE, log=LOG,
+                                                          return_neigh_dist=True)
+hubs_all = NeighbourCalculator.find_hubs(similarities=sims_all, n_hubs=NHUBS)
+selected_genes_names = list(pd.read_table('/home/karin/Documents/timeTrajectories/Orange_workflows/regulons/' +
+                                          'kNN2_threshold0.95_m0s1log_Orange.tsv')['Gene'])
+jaccard(set(hubs_all), set(selected_genes_names))
+# 0.647 - lower as hubs has more genes selected
+len(set(hubs_all) & set(selected_genes_names))
+# Shared genes with neighbours=11 (=10+1): 700, out of 1000 in hubs and 782 selectd by 1 close neighbour for Orange
+# if neighbours=6, shared genes=714, jaccard=0.669
+# If 782 hubs are selected with KNN=6 there are 683 shared genes with jaccard index 0.775 (as there is less of hubs selected)
+# If 782 hubs are selected with kNN=11 there are 662 shared genes with jaccard index 0.734
+
+# *****
+# *** Workflow on replicates
+
+# Split data by replicate, scaling and zero filtering is done in neighbours
+merged = ClusterAnalyser.merge_genes_conditions(genes=genes, conditions=conditions[['Measurment', SPLITBY]],
+                                                matching='Measurment')
+splitted = ClusterAnalyser.split_data(data=merged, split_by=SPLITBY)
+for rep, data in splitted.items():
+    splitted[rep] = data.drop([SPLITBY, 'Measurment'], axis=1).T
+
+# Claulculate neighbours - sims_dict has similarity matrices from samples
+sims_dict = dict()
+for rep, data in splitted.items():
+    neighbour_calculator = NeighbourCalculator(genes=data)
+    neigh, sims_dict[rep] = neighbour_calculator.neighbours(n_neighbours=NEIGHBOURS, inverse=False, scale=SCALE,
+                                                            log=LOG,
+                                                            return_neigh_dist=True)
+sims_dict['all'] = sims_all
+
+savePickle(
+    pathSelGenes + 'simsDict_scale' + SCALE + '_log' + str(LOG) + '_kN' + str(NEIGHBOURS) + '_split' + SPLITBY + '.pkl',
+    sims_dict)
+
+# Select genes with highest average similarity to the neighbours
+retained_genes_dict = dict()
+for rep, sims in sims_dict.items():
+    retained_genes_dict[rep] = NeighbourCalculator.find_hubs(similarities=sims_dict[rep], n_hubs=NHUBS)
+
+replicates = list(retained_genes_dict.keys())
+
+# Calculates similarities between retained genes of different samples
+retained_genes_jaccard = pd.DataFrame()
+retained_genes_shared = pd.DataFrame(index=replicates,columns=replicates)
+dist_arr = []
+for idx, rep1 in enumerate(replicates[:-1]):
+    for rep2 in replicates[idx + 1:]:
+        genes1 = set(retained_genes_dict[rep1])
+        genes2 = set(retained_genes_dict[rep2])
+        jaccard_index = jaccard(genes1, genes2)
+        retained_genes_jaccard.loc[rep1, rep2] = jaccard_index
+        retained_genes_jaccard.loc[rep2, rep1] = jaccard_index
+        shared = len(genes1 & genes2)
+        retained_genes_shared.loc[rep1, rep2] = shared
+        retained_genes_shared.loc[rep2, rep1] = shared
+        dist_arr.append(1 - jaccard_index)
+
+retained_genes_jaccard = retained_genes_jaccard.fillna(1)
+retained_genes_shared = retained_genes_shared.fillna(NHUBS)
+
+# Plot similarity
+hc.dendrogram(hc.ward(dist_arr), labels=replicates, color_threshold=0)
+plt.title('Clustered ' + SPLITBY + 's based on jaccard distance of selected genes')
+sb.clustermap(retained_genes_shared, yticklabels=True, xticklabels=True)
+plt.title('Heatmap of N shared selected genes in ' + SPLITBY + 's')
+plt.figure()
+sb.heatmap(pd.DataFrame(retained_genes_shared['all'].sort_values()), yticklabels=True, xticklabels=True)
+plt.title('Heatmap of N shared selected genes in ' + SPLITBY + 's compared to data on all measurements')
+
+# How many genes are shared by all groups/samples
+genes_in_all = set()
+first = True
+retained_genes_dict_reps = retained_genes_dict.copy()
+del retained_genes_dict_reps['all']
+for rep, retained_genes in retained_genes_dict_reps.items():
+    if first:
+        genes_in_all = set(retained_genes)
+        first = False
+    else:
+        genes_in_all = genes_in_all & set(retained_genes)
+    print(rep, len(genes_in_all))

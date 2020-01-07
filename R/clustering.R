@@ -2,6 +2,8 @@ library(pvclust)
 library(dplyr)
 library(ComplexHeatmap)
 library(RColorBrewer)
+library(tightClust)
+source('/home/karin/Documents/timeTrajectories/deTime/TightCluster_Large.R')
 
 data_path = '/home/karin/Documents/timeTrajectories/data/regulons/clusters/'
 
@@ -85,7 +87,7 @@ genes_cl[,paste('all','cluster',sep='_')]=rep(NA,length(genes))
 clust_counter=0
 for (cluster in clusters$clusters){
   for (gene in cluster){
-    genes_cl[gene,]=clust_counter
+    genes_cl[gene,paste('all','cluster',sep='_')]=clust_counter
   }
   clust_counter=clust_counter+1
 }
@@ -102,6 +104,11 @@ dataRPKUM=log2(dataRPKUM+1)
 
 not_all_na <- function(x) any(x!=0)
 
+dataRPKUM_scaled<-as.data.frame(t(dataRPKUM)) %>% select_if(not_all_na)
+dataRPKUM_scaled=scale(dataRPKUM_scaled)
+
+
+#Make clustering
 for (strain in c(levels(unique(conditions$Strain)),'all')){
   if (strain!='all') data=dataRPKUM[,conditions[conditions$Strain==strain,'Measurment']]
   else  data=dataRPKUM
@@ -110,19 +117,51 @@ for (strain in c(levels(unique(conditions$Strain)),'all')){
   print(paste('Not null genes',dim(data)[2]))
   data=scale(data)
   clust<-pvclust(data,method.hclust='ward.D2',method.dist=cosine,parallel=TRUE,iseed=0)
-  saveRDS(clust,paste(data_path,strain,'_pvclust_cosine_kNN2_threshold0.95_m0s1log.rds',sep=''))
+  saveRDS(clust,paste(data_path,'pvclust_cosine_kNN2_threshold0.95_m0s1log/',strain,'_pvclust_cosine_kNN2_threshold0.95_m0s1log.rds',sep=''))
 }
 
+#Get clusters into df and save their sizes into another df
+files<-list.files(paste(data_path,'pvclust_cosine_kNN2_threshold0.95_m0s1log/',sep=''),pattern='*.rds')
+samples<-c()
+for (file in files){
+  sample<-strsplit(file, '_')[[1]][1]
+  samples<-append(samples,sample)
+}
+pv='au'
+alpha=0.95
+min_size=7
+genes_cl<-NULL
+sizes_cl<-NULL
+genes_cl<-data.frame(row.names=genes)
+sizes_cl<-data.frame(row.names=samples)
+for( sample in samples){
+  clust<-readRDS(paste(data_path,'pvclust_cosine_kNN2_threshold0.95_m0s1log/',sample,'_pvclust_cosine_kNN2_threshold0.95_m0s1log.rds',sep=''))
+  clusters<-pvpick(clust,alpha=alpha,pv=pv,max.only=TRUE)
+  sample_col<-paste(sample,'cluster',sep='_')
+  genes_cl[,sample_col]=rep(NA,length(genes))
+  clust_counter=0
+  for (cluster in clusters$clusters){
+    if (length(cluster)>=min_size){
+      sizes_cl[sample,as.character(clust_counter)]<-length(cluster)
+      for (gene in cluster){
+        genes_cl[gene,sample_col]=clust_counter
+      }
+      clust_counter=clust_counter+1
+    }
+  }
+  
+}
 
+write.table(genes_cl,paste(data_path,'pvclust_cosine_kNN2_threshold0.95_m0s1log/','clusters_min7.tsv',sep=''),sep='\t',col.names=NA)
+write.table(sizes_cl,paste(data_path,'pvclust_cosine_kNN2_threshold0.95_m0s1log/','cluster_sizes_min7.tsv',sep=''),sep='\t',col.names=NA)
+#******************** Tight clustering
 
-
-
-
-
-
-
-
-
+#Order strain df fro ploting -TODO
+conditions_strain=conditions[conditions$Strain==strain,]
+conditions_strain=conditions_strain[order(conditions_strain$Replicate,conditions_strain$Time),]
+data=dataRPKUM[,conditions[conditions$Strain==strain,'Measurment']]
+data=data[,order(match(colnames(data),conditions_strain$Measurment))]
+data=t(as.data.frame(t(data)) %>% select_if(not_all_na))
 
 
 

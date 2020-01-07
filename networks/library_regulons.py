@@ -25,8 +25,9 @@ from orangecontrib.bioinformatics.ncbi.gene import GeneMatcher
 from orangecontrib.bioinformatics.geneset.__init__ import (list_all, load_gene_sets)
 import orangecontrib.bioinformatics.go as go
 
+
 from correlation_enrichment.library_correlation_enrichment import GeneExpression, SimilarityCalculator
-from deR.enrichment_library import GO_enrichment,name_genes_entrez
+from deR.enrichment_library import GO_enrichment, name_genes_entrez
 
 SCALING = 'minmax'
 LOG = True
@@ -65,7 +66,7 @@ class NeighbourCalculator:
         self.conditions = conditions
 
     def neighbours(self, n_neighbours: int, inverse: bool, scale: str = SCALING, log: bool = LOG,
-                   batches: list = None, remove_batch_zero: bool = True) -> dict:
+                   batches: list = None, remove_batch_zero: bool = True, return_neigh_dist: bool = False):
         """
         Calculates neighbours of genes on whole gene data or its subset by column.
         :param n_neighbours: Number of neighbours to obtain for each gene
@@ -75,16 +76,18 @@ class NeighbourCalculator:
         :param batches: Should comparisons be made for each batch separately.
             Batches should be a list of batch group names for each column (eg. length of batches is n columns of genes).
         :param remove_batch_zero: Remove genes that have all expression values 0 for each batch individually.
+        :param return_neigh_dist: Instead of parsed dictionary return tuple with NN matrix and distance matrix,
+        as returned by pynndescent but named with gene names in data frame.
         :return: Dict with gene names as tupple keys (smaller by alphabet is first tuple value) and
             values representing cosine similarity. If batches are used such dicts are returned for each batch
-            in form of dict with batch names as keys and above mentioned dicts as values.
+            in form of dict with batch names as keys and above mentioned dicts as values. Or see return_neigh_dist.
         """
         if scale not in self.SCALES:
             raise ValueError('Scale must be:', self.SCALES)
         genes = self._genes
         if batches is None:
             return self.calculate_neighbours(genes=genes, n_neighbours=n_neighbours, inverse=inverse, scale=scale,
-                                             log=log)
+                                             log=log, return_neigh_dist=return_neigh_dist)
         else:
             batch_groups = set(batches)
             batches = np.array(batches)
@@ -94,22 +97,25 @@ class NeighbourCalculator:
                 if remove_batch_zero:
                     genes_sub = genes_sub[(genes_sub != 0).any(axis=1)]
                 result = self.calculate_neighbours(genes=genes_sub, n_neighbours=n_neighbours, inverse=inverse,
-                                                   scale=scale, log=log, description=batch)
+                                                   scale=scale, log=log, description=batch,
+                                                   return_neigh_dist=return_neigh_dist)
                 results[batch] = result
             return results
 
     def calculate_neighbours(self, genes, n_neighbours: int, inverse: bool, scale: str, log: bool,
-                             description: str = '') -> dict:
+                             description: str = '', return_neigh_dist: bool = False):
         """
         Calculate neighbours of genes.
-        :param genes: Data frame as in init
+        :param genes: Data frame as in init, gene names (rows) should match the one in init
         :param n_neighbours: Number of neighbours to obtain for each gene
         :param inverse: Calculate most similar neighbours (False) or neighbours with inverse profile (True)
         :param scale: Scale expression by gene with 'minmax' (min=0, max=1) or 'mean0std1' (mean=0, std=1)
         :param log: Should expression data be log2 transformed
         :param description: If an error occurs in KNN index formation report this with error
+        :param return_neigh_dist: Instead of parsed dictionary return tuple with NN matrix and distance matrix,
+        as returned by pynndescent but named with gene names  in data frame.
         :return: Dict with gene names as tuple keys (smaller by alphabet is first tuple value) and
-            values representing cosine similarity
+            values representing cosine similarity. Or see return_neigh_dist
         """
         genes_index, genes_query = self.get_index_query(genes=genes, inverse=inverse, scale=scale, log=log)
         # Can set speed-quality trade-off, default is ok
@@ -124,7 +130,11 @@ class NeighbourCalculator:
             except ValueError:
                 raise ValueError('Dataset ' + description + ' can not be processed by pydescent')
         neighbours, distances = index.query(genes_query.tolist(), k=n_neighbours)
-        return self.parse_neighbours(neighbours=neighbours, distances=distances)
+        if return_neigh_dist:
+            return (pd.DataFrame(neighbours, index=self._genes.index),
+                    pd.DataFrame(self.parse_distances_matrix(distances), index=self._genes.index))
+        else:
+            return self.parse_neighbours(neighbours=neighbours, distances=distances)
 
     @classmethod
     def get_index_query(cls, genes: pd.DataFrame, inverse: bool, scale: str = SCALING, log: bool = LOG) -> tuple:
@@ -197,7 +207,7 @@ class NeighbourCalculator:
                             'Odd cosine distance at ' + str(gene) + ' ' + str(neighbour) + ' :' + str(distance),
                             Warning)
                     distance = 0
-                similarity = 1 - distance
+                similarity = NeighbourCalculator.cosine_dist_to_sim(distance)
                 gene2 = neighbours[gene, neighbour]
                 gene_name1 = self._genes.index[gene]
                 gene_name2 = self._genes.index[gene2]
@@ -216,6 +226,21 @@ class NeighbourCalculator:
                     else:
                         parsed[(add_name1, add_name2)] = similarity
         return parsed
+
+    @staticmethod
+    def parse_distances_matrix(distances:np.ndarray):
+        """
+        Transform cosine distances to similarities
+        :param distances: pynndescent cosine distance matrix
+        """
+        if (np.around(distances,4).any()<0):
+            warnings.warn(
+                'Odd cosine distance in the matrix', Warning)
+        return NeighbourCalculator.cosine_dist_to_sim(distances)
+
+    @staticmethod
+    def cosine_dist_to_sim(dist):
+        return 1-dist
 
     @staticmethod
     def merge_results(results: list, similarity_threshold: float = 0, min_present: int = 1) -> dict:
@@ -277,9 +302,40 @@ class NeighbourCalculator:
         """
         return dict(filter(lambda elem: elem[1] >= similarity_threshold, results.items()))
 
+    @staticmethod
+    def filter_distances_matrix(similarities: pd.DataFrame, similarity_threshold: float, min_neighbours: int = 2)->list:
+        """
+        Returns list of genes that have at least min_neighbours close neighbours. If used on non-inverse profiles
+        min-neighbours must be set to required+1 to account for a gene being its closest neighbour.
+        :param similarities: Distances to nearest neighbours, queries/genes in rows, distances in columns.
+        :param similarity_threshold: Retain only similarities equal or above threshold.
+        :param min_neighbours: Retain only genes/rows with at least that many neighbours above similarity_threshold.
+        :return: List of row names that passed filtering.
+        """
+        similarities_retained = similarities.mask(similarities < similarity_threshold
+                                                  ).count(axis=1).iloc[:] >= min_neighbours
+        return list(similarities_retained[similarities_retained].index)
+
+    @staticmethod
+    def find_hubs(similarities: pd.DataFrame,n_hubs:int)->list:
+        """
+        Retain rows that have highest average similarity in the similarities data
+        (Genes in rows, similarity of closest neighbours in columns)
+        :param similarities: Distances to nearest neighbours, queries/genes in rows, distances in columns.
+        :param n_hubs: N rows to retain
+        :return: Rownames of selected rows
+        """
+        averages=similarities.mean(axis=1)
+        averages=averages.sort_values(ascending=False)
+        if n_hubs>averages.shape[0]:
+            raise ValueError('n_hubs is greater than N data points')
+        return list(averages.iloc[:n_hubs].index)
+
+
     def compare_conditions(self, neighbours_n: int, inverse: bool,
                            scale: str, use_log: bool, thresholds: list, filter_column, filter_column_values_sub: list,
-                           filter_column_values_test: list, retained:list=None, batch_column=None, do_mse: bool = True):
+                           filter_column_values_test: list, retained: list = None, batch_column=None,
+                           do_mse: bool = True):
         """
         Evaluates pattern similarity calculation preprocessing and parameters based on difference between subset and
         test set. Computes MSE from differences between similarities of subset gene pairs and corresponding test gene
@@ -400,7 +456,7 @@ class NeighbourCalculator:
     def plot_select_threshold(self, thresholds: list, filter_column,
                               filter_column_values_sub: list,
                               filter_column_values_test: list, neighbours_n: int = 2, inverse: bool = False,
-                              scale: str = SCALING, use_log: bool = LOG, batch_column=None,retained:list=None):
+                              scale: str = SCALING, use_log: bool = LOG, batch_column=None, retained: list = None):
         """
         Plots number of retained genes and MSE based on filtering threshold.
         Parameters are the same as in compare_conditions.
@@ -411,7 +467,7 @@ class NeighbourCalculator:
                                                                  filter_column_values_sub=filter_column_values_sub,
                                                                  filter_column_values_test=filter_column_values_test,
                                                                  batch_column=batch_column, use_log=use_log,
-                                                                 do_mse=False,retained=retained))
+                                                                 do_mse=False, retained=retained))
         pandas_multi_y_plot(filtering_summary, 'threshold', ['N genes', 'F value'])
         return filtering_summary
 
@@ -1060,7 +1116,7 @@ class ClusterAnalyser:
         :param matching: Which column in conditions matches column names in genes
         :return: Dict with keys being values from split_by column and values being data, averaged by average_by
         """
-        merged = ClusterAnalyser.merge_genes_conditions(genes=genes, conditions=conditions,matching=matching)
+        merged = ClusterAnalyser.merge_genes_conditions(genes=genes, conditions=conditions, matching=matching)
         splitted = ClusterAnalyser.split_data(data=merged, split_by=split_by)
 
         data_processed = {}
@@ -1070,7 +1126,7 @@ class ClusterAnalyser:
         return data_processed
 
     @staticmethod
-    def merge_genes_conditions(genes: pd.DataFrame, conditions: pd.DataFrame,matching) -> pd.DataFrame:
+    def merge_genes_conditions(genes: pd.DataFrame, conditions: pd.DataFrame, matching) -> pd.DataFrame:
         """
         Merge dataframes with genes and conditions
         :param genes: Expression data, genes in rows, measurements in columns, dimensions G*M
@@ -1080,7 +1136,7 @@ class ClusterAnalyser:
         """
         conditions = conditions.copy()
         conditions.index = conditions[matching]
-        return pd.concat([genes.T, conditions], axis=1,sort=True)
+        return pd.concat([genes.T, conditions], axis=1, sort=True)
 
     @staticmethod
     def split_data(data: pd.DataFrame, split_by: str) -> dict:
@@ -1702,3 +1758,4 @@ def get_orange_pattern(genes_averaged: pd.DataFrame, group: str) -> pd.DataFrame
     """
     genes_strain = genes_averaged.T[genes_averaged.T['Group'] == group].T.drop('Group')
     return ClusterAnalyser.pattern_characteristics(data=genes_strain)
+
