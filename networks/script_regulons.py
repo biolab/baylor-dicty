@@ -6,6 +6,7 @@ from scipy.cluster.hierarchy import dendrogram
 import pickle as pkl
 import glob
 import seaborn as sb
+from sklearn.metrics.pairwise import cosine_similarity
 
 from Orange.clustering.louvain import jaccard
 
@@ -747,7 +748,7 @@ for k, v in sims.items():
 sb.clustermap(matrix, center=0, cmap='cooldwarm')
 
 # ******************************
-# *** Select genes for each replicate
+# *** Select genes for each replicate/strain separately
 SCALE = 'mean0std1'
 LOG = True
 NHUBS = 1000
@@ -801,7 +802,7 @@ replicates = list(retained_genes_dict.keys())
 
 # Calculates similarities between retained genes of different samples
 retained_genes_jaccard = pd.DataFrame()
-retained_genes_shared = pd.DataFrame(index=replicates,columns=replicates)
+retained_genes_shared = pd.DataFrame(index=replicates, columns=replicates)
 dist_arr = []
 for idx, rep1 in enumerate(replicates[:-1]):
     for rep2 in replicates[idx + 1:]:
@@ -839,3 +840,116 @@ for rep, retained_genes in retained_genes_dict_reps.items():
     else:
         genes_in_all = genes_in_all & set(retained_genes)
     print(rep, len(genes_in_all))
+
+# ******************************************************************************************************************
+# *********** Find hub/seed genes (have strong closest connections) and their neighbourhoods, merge if needed
+# *********************************************************************************************************************
+# Jupyter notebook selection of parameters
+SCALE = 'mean0std1'
+LOG = True
+NHUBS = 100
+SIM = 0.96
+
+# *** Check if retaining genes by hubs works - compare on all data and previously selected by one close neighbour
+neighbour_calculator_all = NeighbourCalculator(genes=genes)
+neigh_all, sims_all = neighbour_calculator_all.neighbours(n_neighbours=6, inverse=False, scale=SCALE, log=LOG,
+                                                          return_neigh_dist=True)
+
+# Histogram of mean similarity to closest 6(5+itself) neighbours.
+# plt.hist(sims_all.mean(axis=1),bins=100)
+
+# Find seed genes. First find genes that have at least 5 close neighbours (one being itself, so 6),
+#  then select those that hve highest avg similarity.
+hubs_all_candidate = NeighbourCalculator.filter_distances_matrix(similarities=sims_all, similarity_threshold=SIM,
+                                                                 min_neighbours=6)
+# Test if same N of genes with 6 or 11 KNN and filter 6 neigh above 0.96 sim (m0s1, log,noninverse):
+# Got same number of genes
+
+hubs_all = NeighbourCalculator.find_hubs(similarities=sims_all.loc[hubs_all_candidate, :], n_hubs=NHUBS)
+
+# Get neighbours of hub genes
+neigh_hubs, sims_hubs = neighbour_calculator_all.neighbours(n_neighbours=100, inverse=False, scale=SCALE,
+                                                            log=LOG,
+                                                            return_neigh_dist=True, genes_query_names=hubs_all)
+neighbourhoods = NeighbourCalculator.hub_neighbours(neighbours=neigh_hubs, similarities=sims_hubs,
+                                                    similarity_threshold=SIM)
+# ***** Merge neighborhoods
+
+# Remove repeated neighborhoods
+neighbourhoods_merged = set()
+for hub, neighbourhood in neighbourhoods.items():
+    neighbourhood_new = neighbourhood.copy()
+    neighbourhood_new.append(hub)
+    neighbourhood_new.sort()
+    neighbourhoods_merged.add(tuple(neighbourhood_new))
+neighbourhoods_merged = list(neighbourhoods_merged)
+
+# Remove contained neighbourhoods. Assumes neighbourhoods are unique.
+to_remove = set()
+for idx1 in range(len(neighbourhoods_merged) - 1):
+    for idx2 in range(idx1 + 1, len(neighbourhoods_merged)):
+        genes1 = set(neighbourhoods_merged[idx1])
+        genes2 = set(neighbourhoods_merged[idx2])
+        if genes1.issubset(genes2) and genes2.issubset(genes1):
+            raise ValueError('neighbourhoods are not unique')
+        elif genes1.issubset(genes2):
+            to_remove.add(neighbourhoods_merged[idx1])
+        elif genes2.issubset(genes1):
+            to_remove.add(neighbourhoods_merged[idx2])
+for sub in to_remove:
+    neighbourhoods_merged.remove(sub)
+
+# Find order for merging - dist between neighbourhoods.
+dist_arr = []
+neigh_ids = range(len(neighbourhoods_merged))
+for idx1 in neigh_ids[:-1]:
+    for idx2 in neigh_ids[idx1 + 1:]:
+        genes1 = set(neighbourhoods_merged[idx1])
+        genes2 = set(neighbourhoods_merged[idx2])
+        jaccard_index = jaccard(genes1, genes2)
+        dist_arr.append(1 - jaccard_index)
+# TODO Think about other distances for merging that would be less affected by N of genes in each group -
+# eg. intersection of the smaller
+
+# Calculate cosine similarity between genes for later
+neighbourhood_genes = list({gene for neigh_list in neighbourhoods_merged for gene in neigh_list})
+genes_normalised = NeighbourCalculator.get_index_query(genes=genes.loc[neighbourhood_genes, :], inverse=False,
+                                                       scale=SCALE, log=LOG)[0]
+genes_cosine = pd.DataFrame(cosine_similarity(genes_normalised), index=neighbourhood_genes, columns=neighbourhood_genes)
+
+# TODO
+neigh_hc = hc.ward(dist_arr)
+# hc.dendrogram(neigh_hc,labels=None)
+
+tree = hc.to_tree(neigh_hc, rd=True)[1]
+
+# Find minimal similarity within any of the groups - use this as later threshold for merging
+min_group_sim = 1
+for group in neighbourhoods_merged:
+    min_sim = genes_cosine.loc[group, group].min().min()
+    if min_group_sim > min_sim:
+        min_group_sim = min_sim
+
+node_neighbourhoods = dict(zip(neigh_ids, neighbourhoods_merged))
+for node in tree[len(neighbourhoods_merged):]:
+    id = node.get_id()
+    id1 = node.get_left().get_id()
+    id2 = node.get_right().get_id()
+    # If not one of previous merges was not performed so similarity will definitely be too low
+    if id1 in node_neighbourhoods.keys() and id2 in node_neighbourhoods.keys():
+        genes1 = node_neighbourhoods[id1]
+        genes2 = node_neighbourhoods[id2]
+        min_sim = genes_cosine.loc[genes1, genes2].min().min()
+        if min_sim >= min_group_sim:
+            genes_new = tuple(set(genes1 + genes2))
+            node_neighbourhoods[id] = genes_new
+            # Remove merged nodes
+            del node_neighbourhoods[id1]
+            del node_neighbourhoods[id2]
+
+# Make table for Orange:
+orange_groups = []
+for id, group in node_neighbourhoods.items():
+    for gene in group:
+        orange_groups.append({'Gene': gene, 'Group': id})
+orange_groups=pd.DataFrame(orange_groups)

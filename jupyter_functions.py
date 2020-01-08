@@ -2,7 +2,7 @@ import random
 from networks.library_regulons import *
 from IPython.core.display import HTML,display
 
-def sample_from_list(available,sample1:int):
+def sample_from_list(available,sample1:int,sample2:int=None):
     """
     Separate list in 2 pairts, one of them being of size sample1
     :param availiable: list
@@ -11,10 +11,15 @@ def sample_from_list(available,sample1:int):
     """
     if sample1>len(available):
         raise ValueError('Sample size is greater than length of input, max: ',len(available))
+    if sample2 is not None:
+        if sample1 + sample2 > len(available):
+            raise ValueError('Sample sizes are greater than length of input, max: ', len(available))
     sub1=random.sample(available,sample1)
     sub2=available.copy()
     for sub in sub1:
         sub2.remove(sub)
+    if sample2 is not None:
+        sub2 = random.sample(sub2, sample2)
     return sub1,sub2
 
 
