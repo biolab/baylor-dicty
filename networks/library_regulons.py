@@ -156,7 +156,7 @@ class NeighbourCalculator:
         if genes_query_data is None:
             genes_query_data = genes
         if return_neigh_dist:
-            return (NeighbourCalculator.parse_neighbours_matrix(neighbours=neighbours,genes_query=genes_query_data,
+            return (NeighbourCalculator.parse_neighbours_matrix(neighbours=neighbours, genes_query=genes_query_data,
                                                                 genes_idx=genes),
                     pd.DataFrame(NeighbourCalculator.parse_distances_matrix(distances), index=genes_query_data.index))
         else:
@@ -273,7 +273,8 @@ class NeighbourCalculator:
         return parsed
 
     @staticmethod
-    def parse_neighbours_matrix(neighbours:np.ndarray,genes_idx:pd.DataFrame,genes_query:pd.DataFrame) ->pd.DataFrame:
+    def parse_neighbours_matrix(neighbours: np.ndarray, genes_idx: pd.DataFrame,
+                                genes_query: pd.DataFrame) -> pd.DataFrame:
         """
         Names pynndescent neighbours table (values and rows).
         :param neighbours: As returned by pynndescent
@@ -281,13 +282,13 @@ class NeighbourCalculator:
         :param genes_query: Data frame with rownames matching neighbours rows (used for pynndescent query)
         :return: Named neighbours table.
         """
-        parsed=pd.DataFrame(columns=range(neighbours.shape[1]))
+        parsed = pd.DataFrame(columns=range(neighbours.shape[1]))
         for gene1 in range(neighbours.shape[0]):
             for gene2_col in range(neighbours.shape[1]):
-                gene2=neighbours[gene1,gene2_col]
-                gene_name1=genes_query.index[gene1]
+                gene2 = neighbours[gene1, gene2_col]
+                gene_name1 = genes_query.index[gene1]
                 gene_name2 = genes_idx.index[gene2]
-                parsed.loc[gene_name1,gene2_col]=gene_name2
+                parsed.loc[gene_name1, gene2_col] = gene_name2
         return parsed
 
     @staticmethod
@@ -300,6 +301,28 @@ class NeighbourCalculator:
             warnings.warn(
                 'Odd cosine distance in the matrix', Warning)
         return NeighbourCalculator.cosine_dist_to_sim(distances)
+
+    @staticmethod
+    def remove_self_pynn_matrix(neighbours: pd.DataFrame,similarities: pd.DataFrame):
+        """
+        Parse similarities and neighbours data frames. Remove entries for each gene that represent itself being
+        the closest neighbour. If row name not in neghours row removes last element from neighbours and similarities.
+        :param similarities: Similarities matrix from neighbours function (row names with genes)
+        :param neighbours: Neighbours matrix from neighbours function (row names and values named with genes)
+        """
+        similarities_parsed = pd.DataFrame(index=similarities.index, columns=similarities.columns[:-1])
+        neighbours_parsed = pd.DataFrame(index=neighbours.index, columns=neighbours.columns[:-1])
+        for gene in neighbours.index:
+            neigh_row=neighbours.loc[gene, :]
+            sims_row=similarities.loc[gene, :]
+            if gene not in neigh_row.values:
+                similarities_parsed.loc[gene, :] = sims_row.iloc[:-1]
+                neighbours_parsed.loc[gene, :] = neigh_row.iloc[:-1]
+            else:
+                self_idx=neigh_row[neigh_row==gene].index[0]
+                similarities_parsed.loc[gene, :] = sims_row.drop(similarities.columns[self_idx]).values
+                neighbours_parsed.loc[gene, :] = neigh_row.drop(neighbours.columns[self_idx]).values
+        return neighbours_parsed,similarities_parsed
 
     @staticmethod
     def cosine_dist_to_sim(dist):
@@ -390,13 +413,13 @@ class NeighbourCalculator:
         :param similarity_threshold: Retain only neighbours with similarities equal or above threshold.
         :return: Dictionary of row names/queries (keys) and neighbours (values)  that passed filtering.
         """
-        parsed={}
+        parsed = {}
         for gene in neighbours.index:
-            neighbour_similarities=similarities.loc[gene,:]>=similarity_threshold
-            retained_neighbours=list(neighbours.loc[gene,neighbour_similarities].values)
+            neighbour_similarities = similarities.loc[gene, :] >= similarity_threshold
+            retained_neighbours = list(neighbours.loc[gene, neighbour_similarities].values)
             if gene in retained_neighbours:
                 retained_neighbours.remove(gene)
-            parsed[gene]=retained_neighbours
+            parsed[gene] = retained_neighbours
         return parsed
 
     @staticmethod
@@ -511,9 +534,9 @@ class NeighbourCalculator:
                 break
         return data_summary
 
-    def compare_thresholds(self,neighbours_n: int, inverse: bool,
+    def compare_thresholds(self, neighbours_n: int, inverse: bool,
                            scale: str, use_log: bool, thresholds: list, filter_column, filter_column_values1: list,
-                           filter_column_values2: list,genes_query_names:list=None) -> pd.DataFrame:
+                           filter_column_values2: list, genes_query_names: list = None) -> pd.DataFrame:
         """
         Compare retained genes and gene pairs at different similarity thresholds.
         Computes table with F values of retained genes/pairs from two different data subgroups.
@@ -546,7 +569,7 @@ class NeighbourCalculator:
         for threshold in thresholds:
             result_filtered1 = NeighbourCalculator.filter_similarities(result1, threshold)
             result_filtered2 = NeighbourCalculator.filter_similarities(result2, threshold)
-            gene_names1= {gene for pair in result_filtered1 for gene in pair}
+            gene_names1 = {gene for pair in result_filtered1 for gene in pair}
             gene_names2 = {gene for pair in result_filtered2 for gene in pair}
             f_val_genes = NeighbourCalculator.f_value(set1=gene_names1, set2=gene_names2)
             f_val_pairs = NeighbourCalculator.f_value(set1=set(result_filtered1.keys()),
@@ -554,8 +577,8 @@ class NeighbourCalculator:
             data_summary.append({'N neighbours': neighbours_n, 'inverse': inverse, 'use_log': use_log, 'scale': scale,
                                  'threshold': threshold,
                                  'N pairs1': len(result_filtered1), 'N pairs2': len(result_filtered2),
-                                 'N genes1': len(gene_names1),'N genes2': len(gene_names2),
-                                 'F value genes': f_val_genes,'F value pairs':f_val_pairs})
+                                 'N genes1': len(gene_names1), 'N genes2': len(gene_names2),
+                                 'F value genes': f_val_genes, 'F value pairs': f_val_pairs})
         return pd.DataFrame(data_summary)
 
     @staticmethod

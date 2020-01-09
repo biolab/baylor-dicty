@@ -21,6 +21,7 @@ if lab:
     dataPathSaved = '/home/karin/Documents/timeTrajectories/data/regulons/'
     path_inverse = '/home/karin/Documents/timeTrajectories/data/regulons/inverseReplicate_m0s1log/'
     pathSelGenes = dataPathSaved + 'selected_genes/'
+    pathMergSim = dataPathSaved + 'clusters/merge_similarity/'
 else:
     dataPath = '/home/karin/Documents/DDiscoideum/data/RPKUM/'
     dataPathSaved = '/home/karin/Documents/DDiscoideum/data/regulons/'
@@ -850,22 +851,44 @@ LOG = True
 NHUBS = 100
 SIM = 0.96
 
-# *** Check if retaining genes by hubs works - compare on all data and previously selected by one close neighbour
+# Get 5 (=5+1) closest neighbours for each gene
 neighbour_calculator_all = NeighbourCalculator(genes=genes)
 neigh_all, sims_all = neighbour_calculator_all.neighbours(n_neighbours=6, inverse=False, scale=SCALE, log=LOG,
                                                           return_neigh_dist=True)
+# Remove self from neighbours and similarities
+neigh_parsed, sims_parsed = NeighbourCalculator.remove_self_pynn_matrix(neighbours=neigh_all, similarities=sims_all)
 
-# Histogram of mean similarity to closest 6(5+itself) neighbours.
-# plt.hist(sims_all.mean(axis=1),bins=100)
+# Cheking how many are do not have self for neighbour or do not have self as first neighbour:
+# not_in = 0
+# not_first = 0
+# for e in neigh_all.iterrows():
+#     e1 = e[1]
+#     el = e1[e1 == e[0]]
+#     if len(el) is 0:
+#         not_in+=1
+#     elif int(el.index[0]) is not 0:
+#         not_first+=1
 
-# Find seed genes. First find genes that have at least 5 close neighbours (one being itself, so 6),
-#  then select those that hve highest avg similarity.
-hubs_all_candidate = NeighbourCalculator.filter_distances_matrix(similarities=sims_all, similarity_threshold=SIM,
-                                                                 min_neighbours=6)
+# Compare avg similarity distn to first five neighbours on expression data and expression data permuted by column
+# Histogram of mean similarity to closest 5 neighbours (excluding self).
+plt.hist(sims_parsed.mean(axis=1), bins=100)
+
+# Permute the data
+# TODO
+genes_permuted = genes.apply(lambda x: x.sample(frac=1).values)
+neighbour_calculator_all = NeighbourCalculator(genes=genes_permuted)
+neigh_permuted, sims_permuted = neighbour_calculator_all.neighbours(n_neighbours=6, inverse=False, scale=SCALE, log=LOG,
+                                                          return_neigh_dist=True)
+neigh_permuted, sims_permuted = NeighbourCalculator.remove_self_pynn_matrix(neighbours=neigh_permuted, similarities=sims_permuted)
+
+# Find seed genes. First find genes that have at least 5 close neighbours ,
+#  then select those that have highest avg similarity.
+hubs_all_candidate = NeighbourCalculator.filter_distances_matrix(similarities=sims_parsed, similarity_threshold=SIM,
+                                                                 min_neighbours=5)
 # Test if same N of genes with 6 or 11 KNN and filter 6 neigh above 0.96 sim (m0s1, log,noninverse):
 # Got same number of genes
 
-hubs_all = NeighbourCalculator.find_hubs(similarities=sims_all.loc[hubs_all_candidate, :], n_hubs=NHUBS)
+hubs_all = NeighbourCalculator.find_hubs(similarities=sims_parsed.loc[hubs_all_candidate, :], n_hubs=NHUBS)
 
 # Get neighbours of hub genes
 neigh_hubs, sims_hubs = neighbour_calculator_all.neighbours(n_neighbours=100, inverse=False, scale=SCALE,
@@ -899,34 +922,42 @@ for idx1 in range(len(neighbourhoods_merged) - 1):
 for sub in to_remove:
     neighbourhoods_merged.remove(sub)
 
-# Find order for merging - dist between neighbourhoods.
-dist_arr = []
-neigh_ids = range(len(neighbourhoods_merged))
-for idx1 in neigh_ids[:-1]:
-    for idx2 in neigh_ids[idx1 + 1:]:
-        genes1 = set(neighbourhoods_merged[idx1])
-        genes2 = set(neighbourhoods_merged[idx2])
-        jaccard_index = jaccard(genes1, genes2)
-        dist_arr.append(1 - jaccard_index)
-# TODO Think about other distances for merging that would be less affected by N of genes in each group -
-# eg. intersection of the smaller
-
 # Calculate cosine similarity between genes for later
 neighbourhood_genes = list({gene for neigh_list in neighbourhoods_merged for gene in neigh_list})
 genes_normalised = NeighbourCalculator.get_index_query(genes=genes.loc[neighbourhood_genes, :], inverse=False,
                                                        scale=SCALE, log=LOG)[0]
 genes_cosine = pd.DataFrame(cosine_similarity(genes_normalised), index=neighbourhood_genes, columns=neighbourhood_genes)
 
-# TODO
+# Find order for merging - dist between neighbourhoods.
+# Distance : jaccard, percent_shared_smaller, avg_sim (=  average simimarity). To get distance use 1 - sim_metric.
+distance = 'jaccard'
+dist_arr = []
+neigh_ids = range(len(neighbourhoods_merged))
+for idx1 in neigh_ids[:-1]:
+    for idx2 in neigh_ids[idx1 + 1:]:
+        genes1 = set(neighbourhoods_merged[idx1])
+        genes2 = set(neighbourhoods_merged[idx2])
+        if distance == 'jaccard':
+            dist = 1 - jaccard(genes1, genes2)
+        elif distance == 'percent_shared_smaller':
+            intersection = len(genes1 & genes2)
+            dist = 1 - intersection / min(len(genes1), len(genes2))
+        elif distance == 'avg_sim':
+            dist = 1 - genes_cosine.loc[genes1, genes2].values.flatten().mean()
+        dist_arr.append(dist)
+# TODO Think about other distances for merging that would be less affected by N of genes in each group -
+# eg. intersection of the smaller, average similarity
+
+
 neigh_hc = hc.ward(dist_arr)
-# hc.dendrogram(neigh_hc,labels=None)
+# hc.dendrogram(neigh_hc,color_threshold=0)
 
 tree = hc.to_tree(neigh_hc, rd=True)[1]
 
 # Find minimal similarity within any of the groups - use this as later threshold for merging
 min_group_sim = 1
 for group in neighbourhoods_merged:
-    min_sim = genes_cosine.loc[group, group].min().min()
+    min_sim = genes_cosine.loc[group, group].values.flatten().min()
     if min_group_sim > min_sim:
         min_group_sim = min_sim
 
@@ -952,4 +983,6 @@ orange_groups = []
 for id, group in node_neighbourhoods.items():
     for gene in group:
         orange_groups.append({'Gene': gene, 'Group': id})
-orange_groups=pd.DataFrame(orange_groups)
+orange_groups = pd.DataFrame(orange_groups)
+
+# TODO Compare for each group pair average similarity across strains
