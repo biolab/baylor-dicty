@@ -66,7 +66,7 @@ class NeighbourCalculator:
 
     def neighbours(self, n_neighbours: int, inverse: bool, scale: str = SCALING, log: bool = LOG,
                    batches: list = None, remove_batch_zero: bool = True, return_neigh_dist: bool = False,
-                   genes_query_names: list = None):
+                   genes_query_names: list = None,remove_self:bool=False):
         """
         Calculates neighbours of genes on whole gene data or its subset by column.
         :param n_neighbours: Number of neighbours to obtain for each gene
@@ -79,6 +79,9 @@ class NeighbourCalculator:
         :param return_neigh_dist: Instead of parsed dictionary return tuple with NN matrix and distance matrix,
         as returned by pynndescent but named with gene names in data frame.
         :param genes_query_names: Use only the specified genes as query.
+        :param remove_self: Used only if return_neigh_dist is true. Whether to remove sample from its closest
+        neighbours or not. If retunr_neigh_dist is False this is done automatically. This also removes last
+        column/neighbours is self is not present - should not be used with inverse.
         :return: Dict with gene names as tupple keys (smaller by alphabet is first tuple value) and
             values representing cosine similarity. If batches are used such dicts are returned for each batch
             in form of dict with batch names as keys and above mentioned dicts as values. Or see return_neigh_dist.
@@ -96,7 +99,7 @@ class NeighbourCalculator:
             return NeighbourCalculator.calculate_neighbours(genes=genes, n_neighbours=n_neighbours, inverse=inverse,
                                                             scale=scale,
                                                             log=log, return_neigh_dist=return_neigh_dist,
-                                                            genes_query_data=genes_query)
+                                                            genes_query_data=genes_query,remove_self=remove_self)
         else:
             batch_groups = set(batches)
             batches = np.array(batches)
@@ -115,14 +118,15 @@ class NeighbourCalculator:
                                                                   inverse=inverse,
                                                                   scale=scale, log=log, description=batch,
                                                                   return_neigh_dist=return_neigh_dist,
-                                                                  genes_query_data=genes_query_sub)
+                                                                  genes_query_data=genes_query_sub,
+                                                                  remove_self=remove_self)
                 results[batch] = result
             return results
 
     @staticmethod
     def calculate_neighbours(genes, n_neighbours: int, inverse: bool, scale: str, log: bool,
                              description: str = '', return_neigh_dist: bool = False,
-                             genes_query_data: pd.DataFrame = None):
+                             genes_query_data: pd.DataFrame = None,remove_self:bool=False):
         """
         Calculate neighbours of genes.
         :param genes: Data frame as in init, gene names (rows) should match the one in init
@@ -134,6 +138,9 @@ class NeighbourCalculator:
         :param return_neigh_dist: Instead of parsed dictionary return tuple with NN matrix and distance matrix,
         as returned by pynndescent but named with gene names  in data frame.
         :param genes_query_data: Use this as query. If None use genes.
+        :param remove_self: Used only if return_neigh_dist is true. Whether to remove sample from its closest
+        neighbours or not. If retunr_neigh_dist is False this is done automatically. This also removes last
+        column/neighbours is self is not present - should not be used with inverse.
         :return: Dict with gene names as tuple keys (smaller by alphabet is first tuple value) and
             values representing cosine similarity. Or see return_neigh_dist
         """
@@ -156,9 +163,14 @@ class NeighbourCalculator:
         if genes_query_data is None:
             genes_query_data = genes
         if return_neigh_dist:
-            return (NeighbourCalculator.parse_neighbours_matrix(neighbours=neighbours, genes_query=genes_query_data,
-                                                                genes_idx=genes),
-                    pd.DataFrame(NeighbourCalculator.parse_distances_matrix(distances), index=genes_query_data.index))
+            neighbours=NeighbourCalculator.parse_neighbours_matrix(neighbours=neighbours, genes_query=genes_query_data,
+                                                                genes_idx=genes)
+            similarities= pd.DataFrame(NeighbourCalculator.parse_distances_matrix(distances),
+                                       index=genes_query_data.index)
+            if remove_self:
+                neighbours,similarities=NeighbourCalculator.remove_self_pynn_matrix(neighbours=neighbours,
+                                                                                    similarities=similarities)
+            return neighbours,similarities
         else:
             return NeighbourCalculator.parse_neighbours(neighbours=neighbours, distances=distances,
                                                         genes_query=genes_query_data, genes_idx=genes)
@@ -831,14 +843,18 @@ def plot_line_scatter(x, y, ax: plt.axes, **linplot_kwargs):
 
 
 # Source: https://matplotlib.org/3.1.1/gallery/ticks_and_spines/multiple_yaxis_with_spines.html
-def pandas_multi_y_plot(data: pd.DataFrame, x_col, y_cols: list = None, adjust_right_border=None):
+def pandas_multi_y_plot(data: pd.DataFrame, x_col, y_cols: list = None, adjust_right_border=None,no_line:bool=False):
     """
     Plot line plot with scatter points with multiple y axes
     :param data:
     :param x_col: Col names from DF for x
     :param y_cols: Col names from DF for y, if None plot all except x
     :param adjust_right_border: Move plotting area to left to allow more space for y axes
+    :param no_line: Plot only scatterplot pointsjupyter-notebook
+
     """
+    #TODO Mean Not working properly: If no_line is false use mean of each x to plot a line. Removes na from mean.
+    plot_mean=False
     # Get default color style from pandas - can be changed to any other color list
     if y_cols is None:
         y_cols = list(data.columns)
@@ -851,15 +867,24 @@ def pandas_multi_y_plot(data: pd.DataFrame, x_col, y_cols: list = None, adjust_r
     if adjust_right_border is None:
         adjust_right_border = 0.2 * (len(y_cols) - 2) + 0.05
     fig.subplots_adjust(right=1 - adjust_right_border)
-    x = data.loc[:, x_col]
+    groupped=data.groupby(x_col).mean()
+    x_mean = groupped.index.values
+    x=data[x_col]
     host.set_xlim(min(x), max(x))
     host.set_xlabel(x_col)
 
     # First axis
-    y = data.loc[:, y_cols[0]]
+    y = data[y_cols[0]]
     color = colors[0]
     host.scatter(x, y, color=color)
-    host.plot(x, y, color=color)
+    if not no_line:
+        if plot_mean:
+            x_line=x_mean
+            y_line=groupped[y_cols[0]].values
+        else:
+            x_line=x
+            y_line=y
+        host.plot(x_line, y_line, color=color)
     host.set_ylim(min(y), max(y))
     host.set_ylabel(y_cols[0])
     host.yaxis.label.set_color(color)
@@ -867,12 +892,19 @@ def pandas_multi_y_plot(data: pd.DataFrame, x_col, y_cols: list = None, adjust_r
 
     for n in range(1, len(y_cols)):
         # Multiple y-axes
-        y = data.loc[:, y_cols[n]]
+        y = data[y_cols[n]]
         color = colors[n % len(colors)]
         ax_new = host.twinx()
         ax_new.spines["right"].set_position(("axes", 1 + 0.2 * (n - 1)))
         ax_new.scatter(x, y, color=color)
-        ax_new.plot(x, y, color=color)
+        if not no_line:
+            if plot_mean:
+                x_line=x_mean
+                y_line=groupped[y_cols[n]].values
+            else:
+                x_line = x
+                y_line = y
+            host.plot(x_line, y_line, color=color)
         ax_new.set_ylim(min(y), max(y))
         ax_new.set_ylabel(y_cols[n])
         ax_new.yaxis.label.set_color(color)

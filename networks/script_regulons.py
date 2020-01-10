@@ -853,10 +853,10 @@ SIM = 0.96
 
 # Get 5 (=5+1) closest neighbours for each gene
 neighbour_calculator_all = NeighbourCalculator(genes=genes)
+# Returns 5 neighbours as it removes self (or last neighbour) from neighbour list
 neigh_all, sims_all = neighbour_calculator_all.neighbours(n_neighbours=6, inverse=False, scale=SCALE, log=LOG,
-                                                          return_neigh_dist=True)
+                                                          return_neigh_dist=True,remove_self=True)
 # Remove self from neighbours and similarities
-neigh_parsed, sims_parsed = NeighbourCalculator.remove_self_pynn_matrix(neighbours=neigh_all, similarities=sims_all)
 
 # Cheking how many are do not have self for neighbour or do not have self as first neighbour:
 # not_in = 0
@@ -869,26 +869,30 @@ neigh_parsed, sims_parsed = NeighbourCalculator.remove_self_pynn_matrix(neighbou
 #     elif int(el.index[0]) is not 0:
 #         not_first+=1
 
-# Compare avg similarity distn to first five neighbours on expression data and expression data permuted by column
-# Histogram of mean similarity to closest 5 neighbours (excluding self).
-plt.hist(sims_parsed.mean(axis=1), bins=100)
+# Compare avg similarity distn to first five neighbours on expression data and expression data permuted by column -
+# also in jupyter notebook
 
 # Permute the data
-# TODO
-genes_permuted = genes.apply(lambda x: x.sample(frac=1).values)
-neighbour_calculator_all = NeighbourCalculator(genes=genes_permuted)
-neigh_permuted, sims_permuted = neighbour_calculator_all.neighbours(n_neighbours=6, inverse=False, scale=SCALE, log=LOG,
-                                                          return_neigh_dist=True)
-neigh_permuted, sims_permuted = NeighbourCalculator.remove_self_pynn_matrix(neighbours=neigh_permuted, similarities=sims_permuted)
+# Take forn NeighbourCalculator to match the data used for non-permuted neighbours - e.g. removes some null genes
+#genes_permuted = neighbour_calculator_all._genes.apply(lambda x: x.sample(frac=1).values)
+#neighbour_calculator_permuted = NeighbourCalculator(genes=genes_permuted)
+#neigh_permuted, sims_permuted = neighbour_calculator_permuted.neighbours(n_neighbours=6, inverse=False, scale=SCALE, log=LOG,
+#                                                          return_neigh_dist=True,remove_self=True)
+
+# Plot comparison of permuted and non permuted average similarities of 5 closest neighbours
+#plt.hist(sims_all.mean(axis=1), bins=100,label='original')
+#plt.hist(sims_permuted.mean(axis=1), bins = 100, alpha=0.5,label='feature permuted')
+#plt.title('Average similarity to the closest 5 neighbours')
+#plt.legend()
 
 # Find seed genes. First find genes that have at least 5 close neighbours ,
 #  then select those that have highest avg similarity.
-hubs_all_candidate = NeighbourCalculator.filter_distances_matrix(similarities=sims_parsed, similarity_threshold=SIM,
+hubs_all_candidate = NeighbourCalculator.filter_distances_matrix(similarities=sims_all, similarity_threshold=SIM,
                                                                  min_neighbours=5)
 # Test if same N of genes with 6 or 11 KNN and filter 6 neigh above 0.96 sim (m0s1, log,noninverse):
 # Got same number of genes
 
-hubs_all = NeighbourCalculator.find_hubs(similarities=sims_parsed.loc[hubs_all_candidate, :], n_hubs=NHUBS)
+hubs_all = NeighbourCalculator.find_hubs(similarities=sims_all.loc[hubs_all_candidate, :], n_hubs=NHUBS)
 
 # Get neighbours of hub genes
 neigh_hubs, sims_hubs = neighbour_calculator_all.neighbours(n_neighbours=100, inverse=False, scale=SCALE,
