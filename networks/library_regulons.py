@@ -24,6 +24,7 @@ import Orange.clustering.louvain as orange_louvain_graph
 from orangecontrib.bioinformatics.ncbi.gene import GeneMatcher
 from orangecontrib.bioinformatics.geneset.__init__ import (list_all, load_gene_sets)
 import orangecontrib.bioinformatics.go as go
+from Orange.clustering.louvain import jaccard
 
 from correlation_enrichment.library_correlation_enrichment import GeneExpression, SimilarityCalculator
 from deR.enrichment_library import GO_enrichment, name_genes_entrez
@@ -66,7 +67,7 @@ class NeighbourCalculator:
 
     def neighbours(self, n_neighbours: int, inverse: bool, scale: str = SCALING, log: bool = LOG,
                    batches: list = None, remove_batch_zero: bool = True, return_neigh_dist: bool = False,
-                   genes_query_names: list = None,remove_self:bool=False):
+                   genes_query_names: list = None, remove_self: bool = False):
         """
         Calculates neighbours of genes on whole gene data or its subset by column.
         :param n_neighbours: Number of neighbours to obtain for each gene
@@ -99,7 +100,7 @@ class NeighbourCalculator:
             return NeighbourCalculator.calculate_neighbours(genes=genes, n_neighbours=n_neighbours, inverse=inverse,
                                                             scale=scale,
                                                             log=log, return_neigh_dist=return_neigh_dist,
-                                                            genes_query_data=genes_query,remove_self=remove_self)
+                                                            genes_query_data=genes_query, remove_self=remove_self)
         else:
             batch_groups = set(batches)
             batches = np.array(batches)
@@ -126,7 +127,7 @@ class NeighbourCalculator:
     @staticmethod
     def calculate_neighbours(genes, n_neighbours: int, inverse: bool, scale: str, log: bool,
                              description: str = '', return_neigh_dist: bool = False,
-                             genes_query_data: pd.DataFrame = None,remove_self:bool=False):
+                             genes_query_data: pd.DataFrame = None, remove_self: bool = False):
         """
         Calculate neighbours of genes.
         :param genes: Data frame as in init, gene names (rows) should match the one in init
@@ -163,14 +164,15 @@ class NeighbourCalculator:
         if genes_query_data is None:
             genes_query_data = genes
         if return_neigh_dist:
-            neighbours=NeighbourCalculator.parse_neighbours_matrix(neighbours=neighbours, genes_query=genes_query_data,
-                                                                genes_idx=genes)
-            similarities= pd.DataFrame(NeighbourCalculator.parse_distances_matrix(distances),
-                                       index=genes_query_data.index)
+            neighbours = NeighbourCalculator.parse_neighbours_matrix(neighbours=neighbours,
+                                                                     genes_query=genes_query_data,
+                                                                     genes_idx=genes)
+            similarities = pd.DataFrame(NeighbourCalculator.parse_distances_matrix(distances),
+                                        index=genes_query_data.index)
             if remove_self:
-                neighbours,similarities=NeighbourCalculator.remove_self_pynn_matrix(neighbours=neighbours,
-                                                                                    similarities=similarities)
-            return neighbours,similarities
+                neighbours, similarities = NeighbourCalculator.remove_self_pynn_matrix(neighbours=neighbours,
+                                                                                       similarities=similarities)
+            return neighbours, similarities
         else:
             return NeighbourCalculator.parse_neighbours(neighbours=neighbours, distances=distances,
                                                         genes_query=genes_query_data, genes_idx=genes)
@@ -315,7 +317,7 @@ class NeighbourCalculator:
         return NeighbourCalculator.cosine_dist_to_sim(distances)
 
     @staticmethod
-    def remove_self_pynn_matrix(neighbours: pd.DataFrame,similarities: pd.DataFrame):
+    def remove_self_pynn_matrix(neighbours: pd.DataFrame, similarities: pd.DataFrame):
         """
         Parse similarities and neighbours data frames. Remove entries for each gene that represent itself being
         the closest neighbour. If row name not in neghours row removes last element from neighbours and similarities.
@@ -325,16 +327,16 @@ class NeighbourCalculator:
         similarities_parsed = pd.DataFrame(index=similarities.index, columns=similarities.columns[:-1])
         neighbours_parsed = pd.DataFrame(index=neighbours.index, columns=neighbours.columns[:-1])
         for gene in neighbours.index:
-            neigh_row=neighbours.loc[gene, :]
-            sims_row=similarities.loc[gene, :]
+            neigh_row = neighbours.loc[gene, :]
+            sims_row = similarities.loc[gene, :]
             if gene not in neigh_row.values:
                 similarities_parsed.loc[gene, :] = sims_row.iloc[:-1]
                 neighbours_parsed.loc[gene, :] = neigh_row.iloc[:-1]
             else:
-                self_idx=neigh_row[neigh_row==gene].index[0]
+                self_idx = neigh_row[neigh_row == gene].index[0]
                 similarities_parsed.loc[gene, :] = sims_row.drop(similarities.columns[self_idx]).values
                 neighbours_parsed.loc[gene, :] = neigh_row.drop(neighbours.columns[self_idx]).values
-        return neighbours_parsed,similarities_parsed
+        return neighbours_parsed, similarities_parsed
 
     @staticmethod
     def cosine_dist_to_sim(dist):
@@ -843,7 +845,8 @@ def plot_line_scatter(x, y, ax: plt.axes, **linplot_kwargs):
 
 
 # Source: https://matplotlib.org/3.1.1/gallery/ticks_and_spines/multiple_yaxis_with_spines.html
-def pandas_multi_y_plot(data: pd.DataFrame, x_col, y_cols: list = None, adjust_right_border=None,no_line:bool=False):
+def pandas_multi_y_plot(data: pd.DataFrame, x_col, y_cols: list = None, adjust_right_border=None,
+                        no_line: bool = False):
     """
     Plot line plot with scatter points with multiple y axes
     :param data:
@@ -853,8 +856,8 @@ def pandas_multi_y_plot(data: pd.DataFrame, x_col, y_cols: list = None, adjust_r
     :param no_line: Plot only scatterplot pointsjupyter-notebook
 
     """
-    #TODO Mean Not working properly: If no_line is false use mean of each x to plot a line. Removes na from mean.
-    plot_mean=False
+    # TODO Mean Not working properly: If no_line is false use mean of each x to plot a line. Removes na from mean.
+    plot_mean = False
     # Get default color style from pandas - can be changed to any other color list
     if y_cols is None:
         y_cols = list(data.columns)
@@ -867,9 +870,9 @@ def pandas_multi_y_plot(data: pd.DataFrame, x_col, y_cols: list = None, adjust_r
     if adjust_right_border is None:
         adjust_right_border = 0.2 * (len(y_cols) - 2) + 0.05
     fig.subplots_adjust(right=1 - adjust_right_border)
-    groupped=data.groupby(x_col).mean()
+    groupped = data.groupby(x_col).mean()
     x_mean = groupped.index.values
-    x=data[x_col]
+    x = data[x_col]
     host.set_xlim(min(x), max(x))
     host.set_xlabel(x_col)
 
@@ -879,11 +882,11 @@ def pandas_multi_y_plot(data: pd.DataFrame, x_col, y_cols: list = None, adjust_r
     host.scatter(x, y, color=color)
     if not no_line:
         if plot_mean:
-            x_line=x_mean
-            y_line=groupped[y_cols[0]].values
+            x_line = x_mean
+            y_line = groupped[y_cols[0]].values
         else:
-            x_line=x
-            y_line=y
+            x_line = x
+            y_line = y
         host.plot(x_line, y_line, color=color)
     host.set_ylim(min(y), max(y))
     host.set_ylabel(y_cols[0])
@@ -899,8 +902,8 @@ def pandas_multi_y_plot(data: pd.DataFrame, x_col, y_cols: list = None, adjust_r
         ax_new.scatter(x, y, color=color)
         if not no_line:
             if plot_mean:
-                x_line=x_mean
-                y_line=groupped[y_cols[n]].values
+                x_line = x_mean
+                y_line = groupped[y_cols[n]].values
             else:
                 x_line = x
                 y_line = y
@@ -1945,3 +1948,156 @@ def get_orange_pattern(genes_averaged: pd.DataFrame, group: str) -> pd.DataFrame
     """
     genes_strain = genes_averaged.T[genes_averaged.T['Group'] == group].T.drop('Group')
     return ClusterAnalyser.pattern_characteristics(data=genes_strain)
+
+
+class NeighbourhoodParser:
+
+#Set of methods for parsing neighbourhoods
+
+    @staticmethod
+    def add_hub_to_neigh(neighbourhoods: dict):
+        """
+        From dict where hub is key and neighbour are values make neighbourhods with hub+neighbours as list of sets.
+        Returns new object.
+        :param neighbourhoods: Dict key is hub, values are neighbours
+        :return: list of sets
+        """
+        neighbourhoods_merged = list()
+        for hub, neighbourhood in neighbourhoods.items():
+            neighbourhood_new = neighbourhood.copy()
+            neighbourhood_new.append(hub)
+            neighbourhoods_merged.append(set(neighbourhood_new))
+        return neighbourhoods_merged
+
+    @staticmethod
+    def remove_repeated(neighbourhoods: list):
+        """
+        Remove repeated neighbourhoods (sets) from list of sets. Returns new object.
+        :param neighbourhoods: list of sets
+        """
+        neighbourhoods_merged = []
+        for neighbourhood in neighbourhoods:
+            if not isinstance(neighbourhood, set):
+                neighbourhood = set(neighbourhood)
+            if neighbourhood not in neighbourhoods_merged:
+                neighbourhoods_merged.append(neighbourhood)
+        return neighbourhoods_merged
+
+    @staticmethod
+    def remove_contained(neighbourhoods: list):
+        """
+        Remove neighbourhoods contained in other neighbourhoods. Return new object
+        :param neighbourhoods:  list of sets (neighbourhoods)
+        """
+        neighbourhoods_merged = neighbourhoods.copy()
+        to_remove = set()
+        for idx1 in range(len(neighbourhoods_merged) - 1):
+            for idx2 in range(idx1 + 1, len(neighbourhoods_merged)):
+                genes1 = neighbourhoods_merged[idx1]
+                genes2 = neighbourhoods_merged[idx2]
+                if genes1.issubset(genes2) and genes2.issubset(genes1):
+                    raise ValueError('neighbourhoods are not unique')
+                elif genes1.issubset(genes2):
+                    to_remove.add(tuple(neighbourhoods_merged[idx1]))
+                elif genes2.issubset(genes1):
+                    to_remove.add(tuple(neighbourhoods_merged[idx2]))
+        for sub in to_remove:
+            neighbourhoods_merged.remove(set(sub))
+        return neighbourhoods_merged
+
+    @staticmethod
+    def neighbourhood_distances(neighbourhoods: list, measure: str, genes_dist: pd.DataFrame = None):
+        """
+        Calculate distance between neighbourhoods.
+        :param neighbourhoods: List of sets, gene names in sets
+        :param measure:Distance : jaccard, percent_shared_smaller, avg_dist.
+        To get distance from jaccard and percent_shared_smaller uses 1 - sim_metric (as max is 1).
+        :param genes_dist: Must be distance (e.g. for cosine 1-genes_cosine). Index must match gene names in
+        neighbourhoods
+        :return: Upper triangular matrix without diagonal in shape of 1D array
+        """
+        if genes_dist is None and measure == 'avg_dist':
+            raise ValueError('If measure is avg_dist genes_dist must be given')
+        dist_arr = []
+        neigh_ids = range(len(neighbourhoods))
+        for idx1 in neigh_ids[:-1]:
+            for idx2 in neigh_ids[idx1 + 1:]:
+                genes1 = set(neighbourhoods[idx1])
+                genes2 = set(neighbourhoods[idx2])
+                if measure == 'jaccard':
+                    dist = 1 - jaccard(genes1, genes2)
+                elif measure == 'percent_shared_smaller':
+                    intersection = len(genes1 & genes2)
+                    dist = 1 - intersection / min(len(genes1), len(genes2))
+                elif measure == 'avg_dist':
+                    dist = genes_dist.loc[genes1, genes2].values.flatten().mean()
+                dist_arr.append(dist)
+        return np.array(dist_arr), dict(zip(neigh_ids, neighbourhoods))
+
+    @staticmethod
+    def plot_size_distn_neighbourhoods(neighbourhoods: list):
+        """
+        Plot size of each neighbourhood in histogram
+        :param neighbourhoods: List of sets
+        """
+        sizes = [len(neigh) for neigh in neighbourhoods]
+        plt.hist(sizes, bins=max(sizes))
+        plt.xlabel('Size of neighbourhood')
+        plt.ylabel('N of neighbourhoods')
+        # Min size = min neighbours+1 because itself/hub in neighbourhood. Max includes itself/hub as well.
+        print('Smallest neighbourhood:', min(sizes), ', largest:', max(sizes))
+
+    @staticmethod
+    def merge_by_hc(hc_result, node_neighbourhoods: dict, genes_sims:pd.DataFrame, min_group_sim: float) -> dict:
+        """
+        Merge neighbourhoods based on hc and minimal similarity within merged group
+        :param hc_result: HC to use for merging order
+        :param node_neighbourhoods: Dict with keys matchin hc_result labels and values containing sets of genes
+        :param genes_sims: DF with similarities for gene pairs, N*N for N genes, index and columns contain gene names
+        :param min_group_sim: Minimal similarity within prospective merged group to still merge two groups
+        :return: New set of groups. Keys: group names, values: gene sets
+        """
+        node_neighbourhoods = node_neighbourhoods.copy()
+
+        tree = hc.to_tree(hc_result, rd=True)[1]
+
+        for node in tree[len(node_neighbourhoods):]:
+            id = node.get_id()
+            id1 = node.get_left().get_id()
+            id2 = node.get_right().get_id()
+            # If not one of previous merges was not performed so similarity will definitely be too low
+            if id1 in node_neighbourhoods.keys() and id2 in node_neighbourhoods.keys():
+                genes1 = node_neighbourhoods[id1]
+                genes2 = node_neighbourhoods[id2]
+                min_sim = genes_sims.loc[genes1, genes2].min().min()
+                if min_sim >= min_group_sim:
+                    genes_new = genes1.union(genes2)
+                    node_neighbourhoods[id] = genes_new
+                    # Remove merged nodes
+                    del node_neighbourhoods[id1]
+                    del node_neighbourhoods[id2]
+        return node_neighbourhoods
+
+    @staticmethod
+    def min_neighbourhood_similarity(neighbourhoods:list, genes_sims:pd.DataFrame)->float:
+        """
+        Minimal similarity between any two genes within any of the groups
+        :param neighbourhoods: list of sets with gene names
+        :param genes_sims: DF with similarities for gene pairs, N*N for N genes, index and columns contain gene names
+        :return: overal min similarity within any of the groups
+        """
+        min_group_sim = 1
+        for group in neighbourhoods.values():
+            min_sim = genes_sims.loc[group, group].values.flatten().min()
+            if min_group_sim > min_sim:
+                min_group_sim = min_sim
+        return min_group_sim
+
+    @staticmethod
+    def parse_orange(neighbourhoods):
+        orange_groups = []
+        for id, group in neighbourhoods.items():
+            for gene in group:
+                orange_groups.append({'Gene': gene, 'Group': id})
+        return pd.DataFrame(orange_groups)
+

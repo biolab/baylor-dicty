@@ -17,7 +17,7 @@ from networks.functionsDENet import loadPickle, savePickle
 # Script parts are to be run separately as needed
 lab = True
 if lab:
-    dataPath = '/home/karin/Documents/timeTrajectories/data/RPKUM/combined/'
+    dataPath = '/home/karin/Documents/timeTrajectories/data/RPKUM/combined_mt/combined/'
     dataPathSaved = '/home/karin/Documents/timeTrajectories/data/regulons/'
     path_inverse = '/home/karin/Documents/timeTrajectories/data/regulons/inverseReplicate_m0s1log/'
     pathSelGenes = dataPathSaved + 'selected_genes/'
@@ -849,13 +849,14 @@ for rep, retained_genes in retained_genes_dict_reps.items():
 SCALE = 'mean0std1'
 LOG = True
 NHUBS = 100
-SIM = 0.96
+SIM = 0.95
 
 # Get 5 (=5+1) closest neighbours for each gene
 neighbour_calculator_all = NeighbourCalculator(genes=genes)
 # Returns 5 neighbours as it removes self (or last neighbour) from neighbour list
 neigh_all, sims_all = neighbour_calculator_all.neighbours(n_neighbours=6, inverse=False, scale=SCALE, log=LOG,
                                                           return_neigh_dist=True,remove_self=True)
+neigh_all,sims_all=loadPickle(pathMergSim+'kN6_m0s1log_neighbours_sims.pkl')
 # Remove self from neighbours and similarities
 
 # Cheking how many are do not have self for neighbour or do not have self as first neighbour:
@@ -889,10 +890,20 @@ neigh_all, sims_all = neighbour_calculator_all.neighbours(n_neighbours=6, invers
 #  then select those that have highest avg similarity.
 hubs_all_candidate = NeighbourCalculator.filter_distances_matrix(similarities=sims_all, similarity_threshold=SIM,
                                                                  min_neighbours=5)
+#Candidates at different thresholds:
+# similarity_threhold, min neighbours, N candidates
+# 0.96, 5, 166
+# 0.96, 3, 240
+# 0.95, 5, 338
+# 0.95, 3, 465
+
 # Test if same N of genes with 6 or 11 KNN and filter 6 neigh above 0.96 sim (m0s1, log,noninverse):
 # Got same number of genes
 
-hubs_all = NeighbourCalculator.find_hubs(similarities=sims_all.loc[hubs_all_candidate, :], n_hubs=NHUBS)
+#Select top hubs from the ones that were not filtered out
+#hubs_all = NeighbourCalculator.find_hubs(similarities=sims_all.loc[hubs_all_candidate, :], n_hubs=NHUBS)
+#Or select all from above
+hubs_all=hubs_all_candidate
 
 # Get neighbours of hub genes
 neigh_hubs, sims_hubs = neighbour_calculator_all.neighbours(n_neighbours=100, inverse=False, scale=SCALE,
@@ -901,14 +912,16 @@ neigh_hubs, sims_hubs = neighbour_calculator_all.neighbours(n_neighbours=100, in
 neighbourhoods = NeighbourCalculator.hub_neighbours(neighbours=neigh_hubs, similarities=sims_hubs,
                                                     similarity_threshold=SIM)
 # ***** Merge neighborhoods
-
-# Remove repeated neighborhoods
-neighbourhoods_merged = set()
+# Add hub to neighbourhood
+neighbourhoods_merged=list()
 for hub, neighbourhood in neighbourhoods.items():
     neighbourhood_new = neighbourhood.copy()
     neighbourhood_new.append(hub)
     neighbourhood_new.sort()
-    neighbourhoods_merged.add(tuple(neighbourhood_new))
+    neighbourhoods_merged.append(tuple(neighbourhood_new))
+
+# Remove repeated neighborhoods
+neighbourhoods_merged = set(neighbourhoods_merged)
 neighbourhoods_merged = list(neighbourhoods_merged)
 
 # Remove contained neighbourhoods. Assumes neighbourhoods are unique.

@@ -9,7 +9,7 @@ from orangecontrib.bioinformatics.geneset.utils import (GeneSet, GeneSets)
 from orangecontrib.bioinformatics.utils.statistics import Hypergeometric
 
 ORGANISM = 44689
-HYPERGEOMETRIC=Hypergeometric()
+HYPERGEOMETRIC = Hypergeometric()
 
 
 class GeneSetData:
@@ -78,7 +78,9 @@ def GO_enrichment(entrez_ids: list, organism: int = ORGANISM, fdr=0.25, slims: b
     return enriched_data
 
 
-def gene_set_enrichment(query_EID: set, reference_EID: set, gene_set_names: list, organism=ORGANISM):
+def gene_set_enrichment(query_EID: set, reference_EID: set, gene_set_names: list = None, organism=ORGANISM,
+                        padj_threshold: float = None, only_name: bool = False, go_slims: bool = False,
+                        gene_sets_ontology: dict = None):
     """
     Calculate enrichment for specified gene set ontologies. Padj is performed on combined results of all ontologies.
     Prior to p value calculation removes gene sets that do not overlap with query.
@@ -86,11 +88,18 @@ def gene_set_enrichment(query_EID: set, reference_EID: set, gene_set_names: list
     :param reference_EID: Reference Ensembl IDs
     :param gene_set_names: Onthologies for which to calculaten enrichment
     :param organism: Organism ID
+    :param padj_threshold: Remove all gene sets with padj below threshold
+    :param only_name: Return DataSetData object or only a dict with gene set name as key and padj as value (if True)
+    :param gene_sets_ontology: Dict with keys ontology names and values gene sets. Use this instead of obtaining gene sets based
+    on gene_set_names, go_slims and organism
     :return: List of GeneSetData objects
     """
+    if gene_sets_ontology is None and gene_set_names is None:
+        raise ValueError('Either gene_sets or gene_set_names must be specified')
     enriched = []
-    for gene_set_name in gene_set_names:
-        gene_sets = load_gene_sets(gene_set_name, str(organism))
+    if gene_sets_ontology is None:
+        gene_sets_ontology = get_gene_sets(gene_set_names=gene_set_names, organism=organism, go_slims=go_slims)
+    for gene_set_name, gene_sets in gene_sets_ontology.items():
         for gene_set in gene_sets:
             intersect_query = len(gene_set.genes.intersection(query_EID))
             if intersect_query > 0:
@@ -99,8 +108,37 @@ def gene_set_enrichment(query_EID: set, reference_EID: set, gene_set_names: list
                 data.pval = result.p_value
                 data.in_query = intersect_query
                 enriched.append(data)
-    compute_padj(enriched)
+    if len(enriched) > 0:
+        compute_padj(enriched)
+        if padj_threshold is not None:
+            enriched = [data for data in enriched if data.padj <= padj_threshold]
+        if only_name:
+            enriched = dict([(data.gene_set.name, data.padj) for data in enriched])
     return enriched
+
+
+def get_gene_sets(gene_set_names: list, organism: str = ORGANISM, go_slims: bool = False) -> dict:
+    """
+    Get all gene sets.
+    :param gene_set_names: Names of ontologies for which to get gene sets (as returned by list_gene_sets)
+    :param organism: organism id
+    :param go_slims: If ontology type (first element from tuples retured by list_gene_sets) is GO then output
+    only gene sets that are in 'goslim_generic'
+    :return: Dict with key is ontology name and values are its GeneSet objects
+    """
+    gene_set_ontology = dict()
+    if go_slims:
+        anno = go.Annotations(organism)
+        anno._ensure_ontology()
+        anno._ontology.set_slims_subset('goslim_generic')
+        slims = anno._ontology.slims_subset
+    for gene_set_name in gene_set_names:
+        gene_sets = load_gene_sets(gene_set_name, str(organism))
+        if go_slims and gene_set_name[0] == 'GO':
+            gene_sets = [gene_set for gene_set in gene_sets if gene_set.gs_id in slims]
+        gene_set_ontology[gene_set_name] = gene_sets
+    return gene_set_ontology
+
 
 # Not useful as same to normal enrichment due to simetry (Combinatorial identities)
 # https://en.wikipedia.org/wiki/Hypergeometric_distribution
@@ -136,7 +174,7 @@ def compute_padj(data):
         data.padj = padj
 
 
-def filter_enrichment_data_topp(data: list, max_padj: float) -> list:
+def filter_enrichment_data_top(data: list, max_padj: float) -> list:
     """
     Return only enriched data with padj bellow threshold
     :param data: list of GeneSetData
@@ -201,5 +239,11 @@ def gene_set_data_to_df(data):
     return pd.DataFrame(summary)
 
 
-def convert_EID(genes:iter, name_EID:dict):
+def convert_EID(genes: iter, name_EID: dict) -> set:
+    """
+    Convert gene names to EID based on name dict
+    :param genes: gene names
+    :param name_EID: dict where keys are names and values are EIDs
+    :return: set of gene EIDs
+    """
     return set(name_EID[gene] for gene in genes if gene in name_EID.keys())
