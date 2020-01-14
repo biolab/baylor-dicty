@@ -79,7 +79,7 @@ def GO_enrichment(entrez_ids: list, organism: int = ORGANISM, fdr=0.25, slims: b
 
 
 def gene_set_enrichment(query_EID: set, reference_EID: set, gene_set_names: list = None, organism=ORGANISM,
-                        padj_threshold: float = None, only_name: bool = False, go_slims: bool = False,
+                        padj_threshold: float = None, output: str = None, go_slims: bool = False,
                         gene_sets_ontology: dict = None):
     """
     Calculate enrichment for specified gene set ontologies. Padj is performed on combined results of all ontologies.
@@ -89,7 +89,9 @@ def gene_set_enrichment(query_EID: set, reference_EID: set, gene_set_names: list
     :param gene_set_names: Onthologies for which to calculaten enrichment
     :param organism: Organism ID
     :param padj_threshold: Remove all gene sets with padj below threshold
-    :param only_name: Return DataSetData object or only a dict with gene set name as key and padj as value (if True)
+    :param output: By default returns DataSetData object, if 'name': a dict with gene set name as key and padj as value,
+    'name_ontology': a dict with (gene set name, ontology) tuple as key and padj as value
+    :param go_slims: For Go use only generic slims if gene_sets_ontology not given
     :param gene_sets_ontology: Dict with keys ontology names and values gene sets. Use this instead of obtaining gene sets based
     on gene_set_names, go_slims and organism
     :return: List of GeneSetData objects
@@ -112,8 +114,10 @@ def gene_set_enrichment(query_EID: set, reference_EID: set, gene_set_names: list
         compute_padj(enriched)
         if padj_threshold is not None:
             enriched = [data for data in enriched if data.padj <= padj_threshold]
-        if only_name:
+        if output == 'name':
             enriched = dict([(data.gene_set.name, data.padj) for data in enriched])
+        elif output == 'name_ontology':
+            enriched = dict([((data.gene_set.name, data.ontology), data.padj) for data in enriched])
     return enriched
 
 
