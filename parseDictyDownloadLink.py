@@ -143,9 +143,12 @@ strainsDict={
     'AC3_PKAC':'ac3pkaCoe',
     'GTAI':'gtaI',
     '_GTAC_':'gtaC',
-    'ACAA':'acaA',
+    'ACAA-_':'acaA',
+    'ACAA-PKAC1':'acaApkaC1',
+    'ACAAKOPKAC3_':'acaAAKOpkaC3',
     }
 reps=OrderedDict({
+    'Shige':'shige',
       'rep1':'rep1',
       'rep2':'rep2',
       '_r1_':'r1',
