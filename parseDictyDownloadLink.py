@@ -46,7 +46,7 @@ linksFile1=open('/home/karin/Documents/timeTrajectories/data/dicty'+type.upper()
 linksFile2=open('/home/karin/Documents/timeTrajectories/data/dicty'+type.upper()+'2_'+project+'.txt','w')
 removed=0
 if input_type=='file':
-    lines=open('/home/karin/Downloads/export_2020-01-10_12-36.csv','r').readlines()
+    lines=open('/home/karin/Downloads/export_2020-01-14_17-55.csv','r').readlines()
     for line in lines:
         if line != '\n':
             fields = line.split(',')
@@ -143,12 +143,14 @@ strainsDict={
     'AC3_PKAC':'ac3pkaCoe',
     'GTAI':'gtaI',
     '_GTAC_':'gtaC',
-    'ACAA-_':'acaA',
-    'ACAA-PKAC1':'acaApkaC1',
-    'ACAAKOPKAC3_':'acaAAKOpkaC3',
+    'ACAA__':'acaA',
+    'ACAA_PKAC1':'acaApkaC1',
+    'ACAAKO_PKAC3_':'acaAAKOpkaC3',
     }
 reps=OrderedDict({
-    'Shige':'shige',
+    'ShigeAx4_r1':'shiger1',
+'ShigeAx4_r2':'shiger2',
+    'AX4_biorep2':'bio2',
       'rep1':'rep1',
       'rep2':'rep2',
       '_r1_':'r1',

@@ -1952,7 +1952,7 @@ def get_orange_pattern(genes_averaged: pd.DataFrame, group: str) -> pd.DataFrame
 
 class NeighbourhoodParser:
 
-#Set of methods for parsing neighbourhoods
+    # Set of methods for parsing neighbourhoods
 
     @staticmethod
     def add_hub_to_neigh(neighbourhoods: dict):
@@ -2006,20 +2006,27 @@ class NeighbourhoodParser:
         return neighbourhoods_merged
 
     @staticmethod
-    def neighbourhood_distances(neighbourhoods: list, measure: str, genes_dist: pd.DataFrame = None):
+    def neighbourhood_distances(neighbourhoods, measure: str, genes_dist: pd.DataFrame = None):
         """
         Calculate distance between neighbourhoods.
-        :param neighbourhoods: List of sets, gene names in sets
+        :param neighbourhoods: List of sets, gene names in sets.
+        Can be dict with keys as neighbourhood names and values neighbourhoods
         :param measure:Distance : jaccard, percent_shared_smaller, avg_dist.
         To get distance from jaccard and percent_shared_smaller uses 1 - sim_metric (as max is 1).
         :param genes_dist: Must be distance (e.g. for cosine 1-genes_cosine). Index must match gene names in
         neighbourhoods
-        :return: Upper triangular matrix without diagonal in shape of 1D array
+        :return: 1st element is Upper triangular matrix without diagonal in shape of 1D array. 2nd dict with node_id as K
+        and neighbourhood as V. 3th (optional) If neighbourhoods was dict also returns
+         node id (K) -original group name (V) mapping in a dict
         """
         if genes_dist is None and measure == 'avg_dist':
             raise ValueError('If measure is avg_dist genes_dist must be given')
         dist_arr = []
         neigh_ids = range(len(neighbourhoods))
+        neighbourhood_names = None
+        if isinstance(neighbourhoods, dict):
+            neighbourhood_names = list(neighbourhoods.keys())
+            neighbourhoods = list(neighbourhoods.values())
         for idx1 in neigh_ids[:-1]:
             for idx2 in neigh_ids[idx1 + 1:]:
                 genes1 = set(neighbourhoods[idx1])
@@ -2032,7 +2039,13 @@ class NeighbourhoodParser:
                 elif measure == 'avg_dist':
                     dist = genes_dist.loc[genes1, genes2].values.flatten().mean()
                 dist_arr.append(dist)
-        return np.array(dist_arr), dict(zip(neigh_ids, neighbourhoods))
+        group_name_mapping = None
+        if neighbourhood_names is not None:
+            group_name_mapping = dict(zip(neigh_ids, neighbourhood_names))
+        if group_name_mapping is None:
+            return np.array(dist_arr), dict(zip(neigh_ids, neighbourhoods))
+        else:
+            return np.array(dist_arr), dict(zip(neigh_ids, neighbourhoods)), group_name_mapping
 
     @staticmethod
     def plot_size_distn_neighbourhoods(neighbourhoods: list):
@@ -2048,7 +2061,7 @@ class NeighbourhoodParser:
         print('Smallest neighbourhood:', min(sizes), ', largest:', max(sizes))
 
     @staticmethod
-    def merge_by_hc(hc_result, node_neighbourhoods: dict, genes_sims:pd.DataFrame, min_group_sim: float) -> dict:
+    def merge_by_hc(hc_result, node_neighbourhoods: dict, genes_sims: pd.DataFrame, min_group_sim: float) -> dict:
         """
         Merge neighbourhoods based on hc and minimal similarity within merged group
         :param hc_result: HC to use for merging order
@@ -2079,7 +2092,7 @@ class NeighbourhoodParser:
         return node_neighbourhoods
 
     @staticmethod
-    def min_neighbourhood_similarity(neighbourhoods:list, genes_sims:pd.DataFrame)->float:
+    def min_neighbourhood_similarity(neighbourhoods: list, genes_sims: pd.DataFrame) -> float:
         """
         Minimal similarity between any two genes within any of the groups
         :param neighbourhoods: list of sets with gene names
@@ -2100,4 +2113,22 @@ class NeighbourhoodParser:
             for gene in group:
                 orange_groups.append({'Gene': gene, 'Group': id})
         return pd.DataFrame(orange_groups)
+
+    @staticmethod
+    def count_same_group(clusters: pd.DataFrame) -> pd.DataFrame:
+        """
+        Count under how many conditions two genes are in the same group
+        :param clusters: DF with rows being genes and columns different cluster conditions.
+        :return: NrowDF*NrowDF data frame with counts for each pair of genes
+        """
+        similarity = pd.DataFrame(index=clusters.index, columns=clusters.index)
+        for idx, name1 in enumerate(clusters.index[:-1]):
+            for name2 in clusters.index[idx + 1:]:
+                clusters1 = clusters.loc[name1, :]
+                clusters2 = clusters.loc[name2, :]
+                # This already ignores NaNs
+                shared = sum(clusters1 == clusters2)
+                similarity.loc[name1, name2] = shared
+                similarity.loc[name2, name1] = shared
+        return similarity
 

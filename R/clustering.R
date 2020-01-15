@@ -6,6 +6,7 @@ library(tightClust)
 source('/home/karin/Documents/timeTrajectories/deTime/TightCluster_Large.R')
 
 data_path = '/home/karin/Documents/timeTrajectories/data/regulons/clusters/'
+path_selGenes = '/home/karin/Documents/timeTrajectories/data/regulons/selected_genes/'
 
   
 #*******Heatmap
@@ -154,9 +155,76 @@ for( sample in samples){
 
 write.table(genes_cl,paste(data_path,'pvclust_cosine_kNN2_threshold0.95_m0s1log/','clusters_min7.tsv',sep=''),sep='\t',col.names=NA)
 write.table(sizes_cl,paste(data_path,'pvclust_cosine_kNN2_threshold0.95_m0s1log/','cluster_sizes_min7.tsv',sep=''),sep='\t',col.names=NA)
+
 #******************** Tight clustering
 
-#Order strain df fro ploting -TODO
+# Load RPKUM  data and preprocess
+dataRPKUM=read.table('/home/karin/Documents/timeTrajectories/data/RPKUM/combined_mt/combined/mergedGenes_RPKUM.tsv',header=TRUE)
+conditions=read.table('/home/karin/Documents/timeTrajectories/data/RPKUM/combined_mt/combined/conditions_mergedGenes.tsv',header=TRUE)
+conditions$Measurment=make.names(conditions$Measurment)
+if (!all(colnames(dataRPKUM)==conditions['Measurment'])) print('Err in sample name matching ')
+dataRPKUM=log2(dataRPKUM+1)
+
+not_all_na <- function(x) any(x!=0)
+#Selected genes
+sel_genes_file='selectedGenes500_scalemean0std1_logTrue_kN6_splitStrain'
+selected_genes<-read.table(paste(path_selGenes,sel_genes_file,'.tsv',sep=''),sep='\t',header=TRUE)
+
+#Make clustering
+cluster_df<-data.frame(row.names=as.vector(unique(unlist(selected_genes))))
+n_clust_main=20
+for (strain in c(levels(unique(conditions$Strain)),'all')){
+  #Process data after log (above) - select strain, genes and scale
+  if (strain!='all') data=dataRPKUM[,conditions[conditions$Strain==strain,'Measurment']]
+  else  data=dataRPKUM
+  data<-data[as.vector(selected_genes[[strain]]),]
+  print(paste(strain,'samples:',dim(data)[2]))
+  data=as.data.frame(t(data)) %>% select_if(not_all_na)
+  print(paste('Not null genes',dim(data)[2]))
+  data=t(scale(data))
+  # Try clustering with K groups, reduce if error
+  # tries - try same K more than once (N+1 to try N times, N for remainder '%%' below)
+  #Set this to one more if without tries because subtracts the first time
+  n_clust=n_clust_main+1
+  #tries=0
+  failed=TRUE
+  while (failed){
+    #Tries - to try same number of clusters a few times before reducing it
+    #tries=tries+1
+    #if (tries %%6 ==0){
+    #tries=0
+    n_clust=n_clust-1
+    #}
+    tryCatch({
+      clust<-tight.clust (x=data,target=n_clust,k.min=n_clust+5)
+      failed=FALSE
+      print(paste('**** OK ',n_clust))
+    }, error=function(cond) {
+      print(paste('**** NOT ',n_clust))
+  }
+  )
+  }
+  #Add to df
+  gene_names<-rownames(data)
+  clusters<-clust$cluster
+  for (idx in 1:length(gene_names)){
+    cluster_df[gene_names[idx],strain]<-clusters[idx]
+  }
+}
+write.table(cluster_df,paste(data_path,'tight_clust/',sel_genes_file,'tightclust',n_clust_main,'.tsv',sep=''),sep='\t',col.names=NA)
+
+#Count N unclustered genes per strain
+unclust<-function(x){sum(x==-1 & !is.na(x))}
+unclustdf <- function(data) sapply(data, unclust)
+unclustdf(cluster_df)
+#N Clusters 
+colMax <- function(data) sapply(data, max, na.rm = TRUE)
+colMax(cluster_df)
+
+
+
+
+#Order strain df for ploting -TODO
 conditions_strain=conditions[conditions$Strain==strain,]
 conditions_strain=conditions_strain[order(conditions_strain$Replicate,conditions_strain$Time),]
 data=dataRPKUM[,conditions[conditions$Strain==strain,'Measurment']]

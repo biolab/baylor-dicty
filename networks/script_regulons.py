@@ -754,7 +754,7 @@ SCALE = 'mean0std1'
 LOG = True
 NHUBS = 1000
 NEIGHBOURS = 6
-SPLITBY = 'Replicate'
+SPLITBY = 'Strain'
 
 # *** Check if retaining genes by hubs works - compare on all data and previously selected by one close neighbour
 neighbour_calculator_all = NeighbourCalculator(genes=genes)
@@ -799,6 +799,11 @@ retained_genes_dict = dict()
 for rep, sims in sims_dict.items():
     retained_genes_dict[rep] = NeighbourCalculator.find_hubs(similarities=sims_dict[rep], n_hubs=NHUBS)
 
+# Save for R
+pd.DataFrame(retained_genes_dict).to_csv(pathSelGenes + 'selectedGenes' + str(NHUBS) + '_scale' +
+                                         SCALE + '_log' + str(LOG) + '_kN' + str(NEIGHBOURS) + '_split' + SPLITBY
+                                         + '.tsv', sep='\t', index=False)
+
 replicates = list(retained_genes_dict.keys())
 
 # Calculates similarities between retained genes of different samples
@@ -842,6 +847,99 @@ for rep, retained_genes in retained_genes_dict_reps.items():
         genes_in_all = genes_in_all & set(retained_genes)
     print(rep, len(genes_in_all))
 
+# ******** Merge and parse clusters form R tightclust based on selected genes
+clusters = pd.read_table(dataPathSaved +
+                         '/clusters/tight_clust/selectedGenes500_scalemean0std1_logTrue_kN6_splitStraintightclust20.tsv',
+                         index_col=0)
+# clusters = clusters.drop('all', axis=1)
+
+# Remove all NaN (not selected) or all unclustered genes (-1)
+remove = []
+for row in clusters.iterrows():
+    if np.array([a or b for a, b in zip(row[1].isna(), row[1] == -1)]).all():
+        remove.append(row[0])
+clusters = clusters.drop(remove)
+
+# Split data by replicate, scaling is done latter
+SPLITBY = 'Strain'
+merged = ClusterAnalyser.merge_genes_conditions(genes=genes, conditions=conditions[['Measurment', SPLITBY]],
+                                                matching='Measurment')
+splitted = ClusterAnalyser.split_data(data=merged, split_by=SPLITBY)
+for rep, data in splitted.items():
+    splitted[rep] = data.drop([SPLITBY, 'Measurment'], axis=1).T
+splitted['all'] = genes
+
+# Merge clusters for each cluster group
+SCALE = 'mean0std1'
+LOG = True
+shared_count = dict()
+clusters_merged = pd.DataFrame(index=clusters.index, columns=clusters.columns)
+for group in clusters.columns:
+    # print(group)
+    # Neighbourhoods
+    group_data = clusters[group]
+    group_data = group_data.loc[group_data > -1]
+    neighbourhoods = dict()
+    for cluster in pd.DataFrame(group_data).groupby(group):
+        neighbourhoods[cluster[0]] = set(cluster[1].index)
+    # Group expression data
+    genes_normalised = \
+        NeighbourCalculator.get_index_query(genes=splitted[group].loc[group_data.index, :], inverse=False,
+                                            scale=SCALE, log=LOG)[0]
+    genes_cosine = pd.DataFrame(cosine_similarity(genes_normalised), index=group_data.index, columns=group_data.index)
+    # Distances
+    dist_arr, node_neighbourhoods, group_name_mapping = NeighbourhoodParser.neighbourhood_distances(
+        neighbourhoods=neighbourhoods,
+        measure='avg_dist',
+        genes_dist=1 - genes_cosine)
+    # Merge based on hc
+    neigh_hc = hc.ward(dist_arr)
+    min_neighbourhood_similarity = NeighbourhoodParser.min_neighbourhood_similarity(neighbourhoods,
+                                                                                    genes_sims=genes_cosine)
+    node_neighbourhoods = NeighbourhoodParser.merge_by_hc(hc_result=neigh_hc, node_neighbourhoods=node_neighbourhoods,
+                                                          genes_sims=genes_cosine,
+                                                          min_group_sim=min_neighbourhood_similarity)
+    # Dont include all group in count
+    if group != 'all':
+        # print('For count',group)
+        for neighbourhood in node_neighbourhoods.values():
+            neighbourhood = list(neighbourhood)
+            for idx, gene1 in enumerate(neighbourhood[:-1]):
+                for gene2 in neighbourhood[idx + 1:]:
+                    if gene1 < gene2:
+                        add1 = gene1
+                        add2 = gene2
+                    else:
+                        add1 = gene2
+                        add2 = gene1
+                    pair = (add1, add2)
+                    if pair in shared_count.keys():
+                        shared_count[pair] += 1
+                    else:
+                        shared_count[pair] = 1
+
+    for neighbourhood, genes in node_neighbourhoods.items():
+        for gene in genes:
+            clusters_merged.loc[gene, group] = neighbourhood
+
+# Put counts of shared group memeberships in DF
+# Too slow - thus use the dict (as many 0 elements anyways)
+# clusters_groups = clusters_merged.drop('all', axis=1)
+# shared_count_df=NeighbourhoodParser.count_same_group(clusters_groups)
+shared_count_df = pd.DataFrame(np.zeros((clusters_merged.shape[0], clusters_merged.shape[0])),
+                               index=clusters_merged.index, columns=clusters_merged.index)
+for pair, count in shared_count.items():
+    shared_count_df.loc[pair[0], pair[1]] = count
+    shared_count_df.loc[pair[1], pair[0]] = count
+
+# For easier viewing filter genes so that only those that have at least one gene similarity to another gene at
+# least equal to min_shared
+min_shared = 5
+genemax = shared_count_df.max()
+remove_genes = genemax.loc[genemax < min_shared].index
+shared_count_df_filtered = shared_count_df.drop(index=remove_genes, columns=remove_genes)
+plt.axis('off')
+sb.clustermap(shared_count_df_filtered)
 # ******************************************************************************************************************
 # *********** Find hub/seed genes (have strong closest connections) and their neighbourhoods, merge if needed
 # *********************************************************************************************************************
@@ -855,8 +953,8 @@ SIM = 0.95
 neighbour_calculator_all = NeighbourCalculator(genes=genes)
 # Returns 5 neighbours as it removes self (or last neighbour) from neighbour list
 neigh_all, sims_all = neighbour_calculator_all.neighbours(n_neighbours=6, inverse=False, scale=SCALE, log=LOG,
-                                                          return_neigh_dist=True,remove_self=True)
-neigh_all,sims_all=loadPickle(pathMergSim+'kN6_m0s1log_neighbours_sims.pkl')
+                                                          return_neigh_dist=True, remove_self=True)
+neigh_all, sims_all = loadPickle(pathMergSim + 'kN6_m0s1log_neighbours_sims.pkl')
 # Remove self from neighbours and similarities
 
 # Cheking how many are do not have self for neighbour or do not have self as first neighbour:
@@ -875,22 +973,22 @@ neigh_all,sims_all=loadPickle(pathMergSim+'kN6_m0s1log_neighbours_sims.pkl')
 
 # Permute the data
 # Take forn NeighbourCalculator to match the data used for non-permuted neighbours - e.g. removes some null genes
-#genes_permuted = neighbour_calculator_all._genes.apply(lambda x: x.sample(frac=1).values)
-#neighbour_calculator_permuted = NeighbourCalculator(genes=genes_permuted)
-#neigh_permuted, sims_permuted = neighbour_calculator_permuted.neighbours(n_neighbours=6, inverse=False, scale=SCALE, log=LOG,
+# genes_permuted = neighbour_calculator_all._genes.apply(lambda x: x.sample(frac=1).values)
+# neighbour_calculator_permuted = NeighbourCalculator(genes=genes_permuted)
+# neigh_permuted, sims_permuted = neighbour_calculator_permuted.neighbours(n_neighbours=6, inverse=False, scale=SCALE, log=LOG,
 #                                                          return_neigh_dist=True,remove_self=True)
 
 # Plot comparison of permuted and non permuted average similarities of 5 closest neighbours
-#plt.hist(sims_all.mean(axis=1), bins=100,label='original')
-#plt.hist(sims_permuted.mean(axis=1), bins = 100, alpha=0.5,label='feature permuted')
-#plt.title('Average similarity to the closest 5 neighbours')
-#plt.legend()
+# plt.hist(sims_all.mean(axis=1), bins=100,label='original')
+# plt.hist(sims_permuted.mean(axis=1), bins = 100, alpha=0.5,label='feature permuted')
+# plt.title('Average similarity to the closest 5 neighbours')
+# plt.legend()
 
 # Find seed genes. First find genes that have at least 5 close neighbours ,
 #  then select those that have highest avg similarity.
 hubs_all_candidate = NeighbourCalculator.filter_distances_matrix(similarities=sims_all, similarity_threshold=SIM,
                                                                  min_neighbours=5)
-#Candidates at different thresholds:
+# Candidates at different thresholds:
 # similarity_threhold, min neighbours, N candidates
 # 0.96, 5, 166
 # 0.96, 3, 240
@@ -900,10 +998,10 @@ hubs_all_candidate = NeighbourCalculator.filter_distances_matrix(similarities=si
 # Test if same N of genes with 6 or 11 KNN and filter 6 neigh above 0.96 sim (m0s1, log,noninverse):
 # Got same number of genes
 
-#Select top hubs from the ones that were not filtered out
-#hubs_all = NeighbourCalculator.find_hubs(similarities=sims_all.loc[hubs_all_candidate, :], n_hubs=NHUBS)
-#Or select all from above
-hubs_all=hubs_all_candidate
+# Select top hubs from the ones that were not filtered out
+# hubs_all = NeighbourCalculator.find_hubs(similarities=sims_all.loc[hubs_all_candidate, :], n_hubs=NHUBS)
+# Or select all from above
+hubs_all = hubs_all_candidate
 
 # Get neighbours of hub genes
 neigh_hubs, sims_hubs = neighbour_calculator_all.neighbours(n_neighbours=100, inverse=False, scale=SCALE,
@@ -913,7 +1011,7 @@ neighbourhoods = NeighbourCalculator.hub_neighbours(neighbours=neigh_hubs, simil
                                                     similarity_threshold=SIM)
 # ***** Merge neighborhoods
 # Add hub to neighbourhood
-neighbourhoods_merged=list()
+neighbourhoods_merged = list()
 for hub, neighbourhood in neighbourhoods.items():
     neighbourhood_new = neighbourhood.copy()
     neighbourhood_new.append(hub)
