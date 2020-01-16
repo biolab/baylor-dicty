@@ -106,8 +106,8 @@ measurments=[]
 for measurment in list(genes.columns):
     measurments.append(measurment.rstrip('.tab').replace('-','_').replace('.','_'))
 genes.columns=measurments
-genes.to_csv('/home/karin/Documents/timeTrajectories/data/countsRaw/combined/mergedGenes_counts.tsv', sep='\t')
-#genes.to_csv('/home/karin/Documents/timeTrajectories/data/RPKUM/combined/mergedGenes_RPKUM.tsv', sep='\t')
+#genes.to_csv('/home/karin/Documents/timeTrajectories/data/countsRaw/combined/mergedGenes_counts.tsv', sep='\t')
+genes.to_csv('/home/karin/Documents/timeTrajectories/data/RPKUM/combined/mergedGenes_RPKUM.tsv', sep='\t')
 
 #Make conditions table
 
@@ -132,20 +132,20 @@ strainsDict={
     'AMIB':'amiB',
     'CUDA':'cudA',
     'DGCA':'dgcA',
-    'ECMA':'ecmA',
+    'ECMA':'ecmARm',
     'GTAG':'gtaG',
     'II3':'ii3',
-    'PKAC25':'pkaCoeAX4',
-    'PKACOE25':'pkaCoeAX4',
-    'MYBBGFP':'mybBGFP',
+    'PKAC25':'PkaCoe',
+    'PKACOE25':'PkaCoe',
+    'MYBBGFP':'MybBGFP',
     'MYBB_':'mybB',
     'PKAR':'pkaR',
-    'AC3_PKAC':'ac3pkaCoe',
+    'AC3_PKAC':'ac3PkaCoe',
     'GTAI':'gtaI',
     '_GTAC_':'gtaC',
     'ACAA__':'acaA',
-    'ACAA_PKAC1':'acaApkaC1',
-    'ACAAKO_PKAC3_':'acaAAKOpkaC3',
+    'ACAA_PKAC1':'acaAPkaCoe',
+    'ACAAKO_PKAC3_':'acaAPkaCoe',
     }
 reps=OrderedDict({
     'ShigeAx4_r1':'shiger1',
@@ -162,7 +162,7 @@ reps=OrderedDict({
       'pool27':'pool27',
     'Pool29': 'Pool2829',
     'Pool28': 'Pool2829',
-
+    'pool36':'pool36',
     'bio1': 'bio1',
     'biorep2': 'bio2',
     'bio2': 'bio2',
@@ -256,6 +256,12 @@ zippedList =  list(zip(measurments, strains, times,replicate_ids
 conditions = pd.DataFrame(zippedList, columns=['Measurment', 'Strain', 'Time','Replicate'
                                                 #,'Include'
                                                ])
+
+#Rename based on Marikos table
+rep_names=pd.read_csv('/home/karin/Documents/timeTrajectories/data/RPKUM/combined/name_change.csv',index_col=0)
+new_names=rep_names.loc[conditions['Replicate'].values,'name_change']
+if list(new_names.index)==list(conditions['Replicate']):
+    conditions['Replicate']=new_names.values
 
 #conditions.to_csv('/home/karin/Documents/timeTrajectories/data/countsRaw/combined/conditions_mergedGenes.tsv', sep='\t',index=False)
 conditions.to_csv('/home/karin/Documents/timeTrajectories/data/RPKUM/combined/conditions_mergedGenes.tsv', sep='\t',index=False)

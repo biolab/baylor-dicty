@@ -790,9 +790,11 @@ for rep, data in splitted.items():
                                                             return_neigh_dist=True)
 sims_dict['all'] = sims_all
 
-savePickle(
-    pathSelGenes + 'simsDict_scale' + SCALE + '_log' + str(LOG) + '_kN' + str(NEIGHBOURS) + '_split' + SPLITBY + '.pkl',
-    sims_dict)
+# savePickle(
+#    pathSelGenes + 'simsDict_scale' + SCALE + '_log' + str(LOG) + '_kN' + str(NEIGHBOURS) + '_split' + SPLITBY + '.pkl',
+#    sims_dict)
+sims_dict = loadPickle(
+    pathSelGenes + 'simsDict_scale' + SCALE + '_log' + str(LOG) + '_kN' + str(NEIGHBOURS) + '_split' + SPLITBY + '.pkl')
 
 # Select genes with highest average similarity to the neighbours
 retained_genes_dict = dict()
@@ -848,8 +850,11 @@ for rep, retained_genes in retained_genes_dict_reps.items():
     print(rep, len(genes_in_all))
 
 # ******** Merge and parse clusters form R tightclust based on selected genes
+NHUBS = str(1000)
+CLUST = str(25)
 clusters = pd.read_table(dataPathSaved +
-                         '/clusters/tight_clust/selectedGenes500_scalemean0std1_logTrue_kN6_splitStraintightclust20.tsv',
+                         '/clusters/tight_clust/selectedGenes' + NHUBS +
+                         '_scalemean0std1_logTrue_kN6_splitStraintightclust' + CLUST + '.tsv',
                          index_col=0)
 # clusters = clusters.drop('all', axis=1)
 
@@ -918,6 +923,7 @@ for group in clusters.columns:
                     else:
                         shared_count[pair] = 1
 
+    # Add to df of strain clusters
     for neighbourhood, genes in node_neighbourhoods.items():
         for gene in genes:
             clusters_merged.loc[gene, group] = neighbourhood
@@ -932,12 +938,31 @@ for pair, count in shared_count.items():
     shared_count_df.loc[pair[0], pair[1]] = count
     shared_count_df.loc[pair[1], pair[0]] = count
 
+shared_count_df.to_csv(dataPathSaved +
+                       '/clusters/tight_clust/selectedGenes' + NHUBS +
+                       '_scalemean0std1_logTrue_kN6_splitStraintightclust' + CLUST + '_sharedCount.tsv', sep='\t')
+clusters_merged.to_csv(dataPathSaved +
+                       '/clusters/tight_clust/selectedGenes' + NHUBS +
+                       '_scalemean0std1_logTrue_kN6_splitStraintightclust' + CLUST + '_clustersGroups.tsv', sep='\t')
+
+# Distn of max scores per genes
+# Some genes have score 0 because table includes 'all' genes which do not have count
+plt.hist(shared_count_df.max(), bins=shared_count_df.max().max() + 1)
+plt.xlabel('Highest sharing score per gene')
+plt.ylabel('N genes')
+plt.title('Per gene highest score for being shared in clusters across strains with another gene')
+
 # For easier viewing filter genes so that only those that have at least one gene similarity to another gene at
 # least equal to min_shared
 min_shared = 5
 genemax = shared_count_df.max()
 remove_genes = genemax.loc[genemax < min_shared].index
 shared_count_df_filtered = shared_count_df.drop(index=remove_genes, columns=remove_genes)
+shared_count_df_filtered.to_csv(dataPathSaved +
+                                '/clusters/tight_clust/selectedGenes' + NHUBS +
+                                '_scalemean0std1_logTrue_kN6_splitStraintightclust' + CLUST +
+                                '_sharedCount_filtered' + str(min_shared) + '.tsv', sep='\t')
+
 plt.axis('off')
 sb.clustermap(shared_count_df_filtered)
 # ******************************************************************************************************************

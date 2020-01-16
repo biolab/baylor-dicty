@@ -167,12 +167,12 @@ dataRPKUM=log2(dataRPKUM+1)
 
 not_all_na <- function(x) any(x!=0)
 #Selected genes
-sel_genes_file='selectedGenes500_scalemean0std1_logTrue_kN6_splitStrain'
+sel_genes_file='selectedGenes1000_scalemean0std1_logTrue_kN6_splitStrain'
 selected_genes<-read.table(paste(path_selGenes,sel_genes_file,'.tsv',sep=''),sep='\t',header=TRUE)
 
 #Make clustering
 cluster_df<-data.frame(row.names=as.vector(unique(unlist(selected_genes))))
-n_clust_main=20
+n_clust_main=25
 for (strain in c(levels(unique(conditions$Strain)),'all')){
   #Process data after log (above) - select strain, genes and scale
   if (strain!='all') data=dataRPKUM[,conditions[conditions$Strain==strain,'Measurment']]
