@@ -17,7 +17,8 @@ from networks.functionsDENet import loadPickle, savePickle
 # Script parts are to be run separately as needed
 lab = True
 if lab:
-    dataPath = '/home/karin/Documents/timeTrajectories/data/RPKUM/combined_mt/combined/'
+    # dataPath = '/home/karin/Documents/timeTrajectories/data/RPKUM/combined_mt/combined/'
+    dataPath = '/home/karin/Documents/timeTrajectories/data/RPKUM/combined/'
     dataPathSaved = '/home/karin/Documents/timeTrajectories/data/regulons/'
     path_inverse = '/home/karin/Documents/timeTrajectories/data/regulons/inverseReplicate_m0s1log/'
     pathSelGenes = dataPathSaved + 'selected_genes/'
@@ -30,6 +31,37 @@ else:
 genes = pd.read_csv(dataPath + 'mergedGenes_RPKUM.tsv', sep='\t', index_col=0)
 conditions = pd.read_csv(dataPath + 'conditions_mergedGenes.tsv', sep='\t', index_col=None)
 
+# ********** Average AX4 samples form new data
+#Split to AX4 and rest of data
+genes_conditions = ClusterAnalyser.merge_genes_conditions(genes=genes, conditions=conditions, matching='Measurment')
+conditions_AX4=conditions.loc[conditions['Strain'] == 'AX4', :]
+conditions_rest=conditions.loc[conditions['Strain'] != 'AX4', :]
+# Select AX4/rest genes by conditions rows so that they are both ordered the same
+genes_AX4 = genes_conditions.loc[conditions_AX4['Measurment'], :]
+genes_rest = genes_conditions.loc[conditions_rest['Measurment'], :]
+
+# This is dropped in AX4 while averaging
+genes_rest = genes_rest.drop(['Time', 'Strain', 'Replicate', 'Measurment'], axis=1)
+
+# Group and average AX4, add averaged to rest
+groupped_AX4=genes_AX4.set_index('Replicate').groupby({'AX4_FD_r1': 'AX4_FD', 'AX4_FD_r2': 'AX4_FD', 'AX4_PE_r3': 'AX4_PE',
+                                          'AX4_PE_r4': 'AX4_PE', 'AX4_SE_r5': 'AX4_SE', 'AX4_SE_r6': 'AX4_SE',
+                                          'AX4_SE_r7': 'AX4_SE'})
+for name,group in groupped_AX4:
+    group=group.groupby('Time').mean()
+    times=list(group.index)
+    group.index=[str(name)+'_'+str(idx) for idx in times]
+    conditions_rest=conditions_rest.append(pd.DataFrame({'Measurment':group.index,'Strain':['AX4']*group.shape[0],
+                                                         'Replicate':[name]*group.shape[0],'Time':times}),ignore_index=True)
+    genes_rest=genes_rest.append(group)
+
+genes_rest=genes_rest.T
+# Check that ordered the same
+if not (genes_rest.columns.values==conditions_rest['Measurment'].values).all():
+    print('Genes and conditions are not ordered the same')
+
+genes=genes_rest
+conditions=conditions_rest
 # ************************************
 
 sub = genes.shape[1]
@@ -784,17 +816,18 @@ for rep, data in splitted.items():
 # Claulculate neighbours - sims_dict has similarity matrices from samples
 sims_dict = dict()
 for rep, data in splitted.items():
+    print(rep)
     neighbour_calculator = NeighbourCalculator(genes=data)
     neigh, sims_dict[rep] = neighbour_calculator.neighbours(n_neighbours=NEIGHBOURS, inverse=False, scale=SCALE,
                                                             log=LOG,
                                                             return_neigh_dist=True)
 sims_dict['all'] = sims_all
 
-# savePickle(
-#    pathSelGenes + 'simsDict_scale' + SCALE + '_log' + str(LOG) + '_kN' + str(NEIGHBOURS) + '_split' + SPLITBY + '.pkl',
-#    sims_dict)
-sims_dict = loadPickle(
-    pathSelGenes + 'simsDict_scale' + SCALE + '_log' + str(LOG) + '_kN' + str(NEIGHBOURS) + '_split' + SPLITBY + '.pkl')
+savePickle(
+    pathSelGenes + 'newGenes_simsDict_scale' + SCALE + '_log' + str(LOG) + '_kN' + str(NEIGHBOURS) + '_split' + SPLITBY + '.pkl',
+    sims_dict)
+#sims_dict = loadPickle(
+#    pathSelGenes + 'simsDict_scale' + SCALE + '_log' + str(LOG) + '_kN' + str(NEIGHBOURS) + '_split' + SPLITBY + '.pkl')
 
 # Select genes with highest average similarity to the neighbours
 retained_genes_dict = dict()
@@ -802,7 +835,7 @@ for rep, sims in sims_dict.items():
     retained_genes_dict[rep] = NeighbourCalculator.find_hubs(similarities=sims_dict[rep], n_hubs=NHUBS)
 
 # Save for R
-pd.DataFrame(retained_genes_dict).to_csv(pathSelGenes + 'selectedGenes' + str(NHUBS) + '_scale' +
+pd.DataFrame(retained_genes_dict).to_csv(pathSelGenes + 'newGenes_selectedGenes' + str(NHUBS) + '_scale' +
                                          SCALE + '_log' + str(LOG) + '_kN' + str(NEIGHBOURS) + '_split' + SPLITBY
                                          + '.tsv', sep='\t', index=False)
 
