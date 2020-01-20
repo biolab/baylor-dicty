@@ -440,10 +440,10 @@ class NeighbourCalculator:
     def find_hubs(similarities: pd.DataFrame, n_hubs: int) -> list:
         """
         Retain rows that have highest average similarity in the similarities data
-        (Genes in rows, similarity of closest neighbours in columns)
+        (Genes in rows, similarity of closest neighbours in columns).
         :param similarities: Distances to nearest neighbours, queries/genes in rows, distances in columns.
         :param n_hubs: N rows to retain
-        :return: Rownames of selected rows
+        :return: Rownames of selected rows. Sorted by avg similarity.
         """
         averages = similarities.mean(axis=1)
         averages = averages.sort_values(ascending=False)

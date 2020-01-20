@@ -32,10 +32,10 @@ genes = pd.read_csv(dataPath + 'mergedGenes_RPKUM.tsv', sep='\t', index_col=0)
 conditions = pd.read_csv(dataPath + 'conditions_mergedGenes.tsv', sep='\t', index_col=None)
 
 # ********** Average AX4 samples form new data
-#Split to AX4 and rest of data
+# Split to AX4 and rest of data
 genes_conditions = ClusterAnalyser.merge_genes_conditions(genes=genes, conditions=conditions, matching='Measurment')
-conditions_AX4=conditions.loc[conditions['Strain'] == 'AX4', :]
-conditions_rest=conditions.loc[conditions['Strain'] != 'AX4', :]
+conditions_AX4 = conditions.loc[conditions['Strain'] == 'AX4', :]
+conditions_rest = conditions.loc[conditions['Strain'] != 'AX4', :]
 # Select AX4/rest genes by conditions rows so that they are both ordered the same
 genes_AX4 = genes_conditions.loc[conditions_AX4['Measurment'], :]
 genes_rest = genes_conditions.loc[conditions_rest['Measurment'], :]
@@ -44,24 +44,26 @@ genes_rest = genes_conditions.loc[conditions_rest['Measurment'], :]
 genes_rest = genes_rest.drop(['Time', 'Strain', 'Replicate', 'Measurment'], axis=1)
 
 # Group and average AX4, add averaged to rest
-groupped_AX4=genes_AX4.set_index('Replicate').groupby({'AX4_FD_r1': 'AX4_FD', 'AX4_FD_r2': 'AX4_FD', 'AX4_PE_r3': 'AX4_PE',
-                                          'AX4_PE_r4': 'AX4_PE', 'AX4_SE_r5': 'AX4_SE', 'AX4_SE_r6': 'AX4_SE',
-                                          'AX4_SE_r7': 'AX4_SE'})
-for name,group in groupped_AX4:
-    group=group.groupby('Time').mean()
-    times=list(group.index)
-    group.index=[str(name)+'_'+str(idx) for idx in times]
-    conditions_rest=conditions_rest.append(pd.DataFrame({'Measurment':group.index,'Strain':['AX4']*group.shape[0],
-                                                         'Replicate':[name]*group.shape[0],'Time':times}),ignore_index=True)
-    genes_rest=genes_rest.append(group)
+groupped_AX4 = genes_AX4.set_index('Replicate').groupby(
+    {'AX4_FD_r1': 'AX4_FD', 'AX4_FD_r2': 'AX4_FD', 'AX4_PE_r3': 'AX4_PE',
+     'AX4_PE_r4': 'AX4_PE', 'AX4_SE_r5': 'AX4_SE', 'AX4_SE_r6': 'AX4_SE',
+     'AX4_SE_r7': 'AX4_SE'})
+for name, group in groupped_AX4:
+    group = group.groupby('Time').mean()
+    times = list(group.index)
+    group.index = [str(name) + '_' + str(idx) for idx in times]
+    conditions_rest = conditions_rest.append(
+        pd.DataFrame({'Measurment': group.index, 'Strain': ['AX4'] * group.shape[0],
+                      'Replicate': [name] * group.shape[0], 'Time': times}), ignore_index=True, sort=True)
+    genes_rest = genes_rest.append(group, sort=True)
 
-genes_rest=genes_rest.T
+genes_rest = genes_rest.T
 # Check that ordered the same
-if not (genes_rest.columns.values==conditions_rest['Measurment'].values).all():
+if not (genes_rest.columns.values == conditions_rest['Measurment'].values).all():
     print('Genes and conditions are not ordered the same')
 
-genes=genes_rest
-conditions=conditions_rest
+genes = genes_rest
+conditions = conditions_rest
 # ************************************
 
 sub = genes.shape[1]
@@ -788,16 +790,41 @@ NHUBS = 1000
 NEIGHBOURS = 6
 SPLITBY = 'Strain'
 
+# Check what happens when using different replicates/numbers of points
+conditions_all = conditions.copy()
+genes_all = genes.copy()
+# Both with non averaged AX4
+# Data without mybBGFP and only AX4_PE
+conditions = conditions.loc[(conditions['Strain'] != 'MybBGFP') & (~conditions['Replicate'].str.contains('AX4_SE')) &
+                            (~conditions['Replicate'].str.contains('AX4_FD')), :]
+genes = genes.loc[:, conditions['Measurment']]
+
+# Data with only 7 (or 5 for gtaC) measurments per strain
+conditions_gtaC = conditions.loc[conditions['Strain'] == 'gtaC', :]
+conditions = conditions.loc[conditions['Strain'] != 'gtaC', :]
+conditions = conditions.loc[conditions['Time'].isin([0, 4, 8, 12, 16, 20, 24]), :]
+conditions = conditions.append(conditions_gtaC)
+genes = genes.loc[:, conditions['Measurment']]
+
+# Data with only 7 measurments and no MybBGFP and only 1 AX4 (PE)
+conditions = conditions.loc[(conditions['Strain'] != 'MybBGFP') & (~conditions['Replicate'].str.contains('AX4_SE')) &
+                            (~conditions['Replicate'].str.contains('AX4_FD')), :]
+conditions_gtaC = conditions.loc[conditions['Strain'] == 'gtaC', :]
+conditions = conditions.loc[conditions['Strain'] != 'gtaC', :]
+conditions = conditions.loc[conditions['Time'].isin([0, 4, 8, 12, 16, 20, 24]), :]
+conditions = conditions.append(conditions_gtaC)
+genes = genes.loc[:, conditions['Measurment']]
+
 # *** Check if retaining genes by hubs works - compare on all data and previously selected by one close neighbour
 neighbour_calculator_all = NeighbourCalculator(genes=genes)
 neigh_all, sims_all = neighbour_calculator_all.neighbours(n_neighbours=NEIGHBOURS, inverse=False, scale=SCALE, log=LOG,
                                                           return_neigh_dist=True)
-hubs_all = NeighbourCalculator.find_hubs(similarities=sims_all, n_hubs=NHUBS)
-selected_genes_names = list(pd.read_table('/home/karin/Documents/timeTrajectories/Orange_workflows/regulons/' +
-                                          'kNN2_threshold0.95_m0s1log_Orange.tsv')['Gene'])
-jaccard(set(hubs_all), set(selected_genes_names))
+# hubs_all = NeighbourCalculator.find_hubs(similarities=sims_all, n_hubs=NHUBS)
+# selected_genes_names = list(pd.read_table('/home/karin/Documents/timeTrajectories/Orange_workflows/regulons/' +
+#                                         'kNN2_threshold0.95_m0s1log_Orange.tsv')['Gene'])
+# jaccard(set(hubs_all), set(selected_genes_names))
 # 0.647 - lower as hubs has more genes selected
-len(set(hubs_all) & set(selected_genes_names))
+# len(set(hubs_all) & set(selected_genes_names))
 # Shared genes with neighbours=11 (=10+1): 700, out of 1000 in hubs and 782 selectd by 1 close neighbour for Orange
 # if neighbours=6, shared genes=714, jaccard=0.669
 # If 782 hubs are selected with KNN=6 there are 683 shared genes with jaccard index 0.775 (as there is less of hubs selected)
@@ -805,7 +832,6 @@ len(set(hubs_all) & set(selected_genes_names))
 
 # *****
 # *** Workflow on replicates
-
 # Split data by replicate, scaling and zero filtering is done in neighbours
 merged = ClusterAnalyser.merge_genes_conditions(genes=genes, conditions=conditions[['Measurment', SPLITBY]],
                                                 matching='Measurment')
@@ -822,12 +848,17 @@ for rep, data in splitted.items():
                                                             log=LOG,
                                                             return_neigh_dist=True)
 sims_dict['all'] = sims_all
-
+# Descriptions of files
+# newGenes: Has mybBGFP and AX4 averaged, after mt were removed, polyA.
+# noMybBGFP-AX4onlyPE: no MybBGFP and only AX4_PE non averaged, AX4 not averaged
+# 7points: measurements at 0,4,8,12,16,20,24 and gtaC all points (5*4), AX4 not averaged
+file_prefix = 'newGenes_'
 savePickle(
-    pathSelGenes + 'newGenes_simsDict_scale' + SCALE + '_log' + str(LOG) + '_kN' + str(NEIGHBOURS) + '_split' + SPLITBY + '.pkl',
+    pathSelGenes + file_prefix + 'simsDict_scale' + SCALE + '_log' + str(LOG) + '_kN' + str(
+        NEIGHBOURS) + '_split' + SPLITBY + '.pkl',
     sims_dict)
 #sims_dict = loadPickle(
-#    pathSelGenes + 'simsDict_scale' + SCALE + '_log' + str(LOG) + '_kN' + str(NEIGHBOURS) + '_split' + SPLITBY + '.pkl')
+#    pathSelGenes + file_prefix+'simsDict_scale' + SCALE + '_log' + str(LOG) + '_kN' + str(NEIGHBOURS) + '_split' + SPLITBY + '.pkl')
 
 # Select genes with highest average similarity to the neighbours
 retained_genes_dict = dict()
@@ -835,12 +866,11 @@ for rep, sims in sims_dict.items():
     retained_genes_dict[rep] = NeighbourCalculator.find_hubs(similarities=sims_dict[rep], n_hubs=NHUBS)
 
 # Save for R
-pd.DataFrame(retained_genes_dict).to_csv(pathSelGenes + 'newGenes_selectedGenes' + str(NHUBS) + '_scale' +
+pd.DataFrame(retained_genes_dict).to_csv(pathSelGenes + file_prefix + 'selectedGenes' + str(NHUBS) + '_scale' +
                                          SCALE + '_log' + str(LOG) + '_kN' + str(NEIGHBOURS) + '_split' + SPLITBY
                                          + '.tsv', sep='\t', index=False)
 
 replicates = list(retained_genes_dict.keys())
-
 # Calculates similarities between retained genes of different samples
 retained_genes_jaccard = pd.DataFrame()
 retained_genes_shared = pd.DataFrame(index=replicates, columns=replicates)
@@ -882,6 +912,33 @@ for rep, retained_genes in retained_genes_dict_reps.items():
         genes_in_all = genes_in_all & set(retained_genes)
     print(rep, len(genes_in_all))
 
+# Sample random genes
+splitted['all']=genes
+retained_genes_dict = dict()
+for rep, data in splitted.items():
+    rep_genes = list(NeighbourCalculator(genes=data)._genes.index)
+    retained_genes_dict[rep] = random.sample(rep_genes, NHUBS)
+
+# *** How are similarities to 5 closest neighbours distributed in AX4 vs mybB (non averaged data)
+# For both use only some points so that they have same number of measurments -
+# Using AX4_SE 2 replicates results in same number of measurements as mybB
+genes_AX4 = genes.loc[:, (conditions['Replicate'].isin(['AX4_SE_r6', 'AX4_SE_r7'])).values]
+genes_mybB = genes.loc[:, (conditions['Strain'] == 'mybB').values]
+
+neighbour_calculator_AX4 = NeighbourCalculator(genes=genes_AX4)
+neigh_AX4, sims_AX4 = neighbour_calculator_AX4.neighbours(n_neighbours=NEIGHBOURS, inverse=False, scale=SCALE, log=LOG,
+                                                          return_neigh_dist=True, remove_self=True)
+neighbour_calculator_mybB = NeighbourCalculator(genes=genes_mybB)
+neigh_mybB, sims_mybB = neighbour_calculator_mybB.neighbours(n_neighbours=NEIGHBOURS, inverse=False, scale=SCALE,
+                                                             log=LOG,
+                                                             return_neigh_dist=True, remove_self=True)
+
+plt.hist(sims_AX4.mean(axis=1), bins=100, label='AX4_SE_r6,7', alpha=0.5, )
+plt.hist(sims_mybB.mean(axis=1), bins=100, label='mybB', alpha=0.5)
+plt.title('Average similarity to the closest 5 neighbours')
+plt.legend()
+plt.xlabel('Average cosine similarity')
+plt.ylabel('N genes')
 # ******** Merge and parse clusters form R tightclust based on selected genes
 NHUBS = str(1000)
 CLUST = str(25)
