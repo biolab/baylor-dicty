@@ -1053,8 +1053,7 @@ shared_count_df_filtered.to_csv(dataPathSaved +
                                 '_scalemean0std1_logTrue_kN6_splitStraintightclust' + CLUST +
                                 '_sharedCount_filtered' + str(min_shared) + '.tsv', sep='\t')
 
-plt.axis('off')
-sb.clustermap(shared_count_df_filtered)
+sb.clustermap(shared_count_df_filtered,  yticklabels=False, xticklabels=False)
 # ******************************************************************************************************************
 # *********** Find hub/seed genes (have strong closest connections) and their neighbourhoods, merge if needed
 # *********************************************************************************************************************
