@@ -451,6 +451,19 @@ class NeighbourCalculator:
             raise ValueError('n_hubs is greater than N data points')
         return list(averages.iloc[:n_hubs].index)
 
+    @staticmethod
+    def find_hubs_similarity(similarities: pd.DataFrame, similarity_threshold: float) -> list:
+        """
+        Retain rows that have average similarity in the similarities data at least equal to similarity_threshold
+        (Genes in rows, similarity of closest neighbours in columns).
+        :param similarities: Distances to nearest neighbours, queries/genes in rows, distances in columns.
+        :param similarity_threshold: Retain if avg similarity at least this
+        :return: Rownames of selected rows. Sorted by avg similarity.
+        """
+        averages = similarities.mean(axis=1)
+        averages = averages.sort_values(ascending=False)
+        return list(averages[averages >= similarity_threshold].index)
+
     def compare_conditions(self, neighbours_n: int, inverse: bool,
                            scale: str, use_log: bool, thresholds: list, filter_column, filter_column_values_sub: list,
                            filter_column_values_test: list, retained: list = None, batch_column=None,
@@ -2132,3 +2145,18 @@ class NeighbourhoodParser:
                 similarity.loc[name2, name1] = shared
         return similarity
 
+
+def point_histogram(data, bins, **plot_args):
+    """
+    Draw hist with points at bin centers instead of lines
+    :param data: Hist data
+    :param bins: N bins
+    :param plot_args: Passed to plt.scatter
+    """
+    plt.figure()
+    n, x, _ = plt.hist(data, bins=bins, histtype=u'step')
+    plt.clf()
+    bin_centers = 0.5 * (x[1:] + x[:-1])
+    plt.scatter(bin_centers, n, **plot_args)
+    # For non filled hist
+    # plt.hist(x, bins=50, histtype = 'step', fill = None)

@@ -7,6 +7,7 @@ import pickle as pkl
 import glob
 import seaborn as sb
 from sklearn.metrics.pairwise import cosine_similarity
+from collections import defaultdict
 
 from Orange.clustering.louvain import jaccard
 
@@ -474,6 +475,10 @@ genes_orange_scaled.to_csv(dataPathSaved + 'genes_scaled_orange.tsv', sep='\t')
 genes_orange_avg.T.to_csv(dataPathSaved + 'genes_averaged_orange.tsv', sep='\t')
 patterns.to_csv(dataPathSaved + 'gene_patterns_orange.tsv', sep='\t', index=False)
 
+# Add AX4 PE,SE, FD averaged to genes_orange_avg
+# Split to AX4 and rest of data
+#TODO
+
 # ********************
 # Check how many hypothetical and pseudogenes are in onthologies
 # Get gene descriptions and EIDs
@@ -857,7 +862,7 @@ savePickle(
     pathSelGenes + file_prefix + 'simsDict_scale' + SCALE + '_log' + str(LOG) + '_kN' + str(
         NEIGHBOURS) + '_split' + SPLITBY + '.pkl',
     sims_dict)
-#sims_dict = loadPickle(
+# sims_dict = loadPickle(
 #    pathSelGenes + file_prefix+'simsDict_scale' + SCALE + '_log' + str(LOG) + '_kN' + str(NEIGHBOURS) + '_split' + SPLITBY + '.pkl')
 
 # Select genes with highest average similarity to the neighbours
@@ -913,13 +918,13 @@ for rep, retained_genes in retained_genes_dict_reps.items():
     print(rep, len(genes_in_all))
 
 # Sample random genes
-splitted['all']=genes
+splitted['all'] = genes
 retained_genes_dict = dict()
 for rep, data in splitted.items():
     rep_genes = list(NeighbourCalculator(genes=data)._genes.index)
     retained_genes_dict[rep] = random.sample(rep_genes, NHUBS)
 
-# *** How are similarities to 5 closest neighbours distributed in AX4 vs mybB (non averaged data)
+# ******************* How are similarities to 5 closest neighbours distributed in AX4 vs mybB (non averaged data)
 # For both use only some points so that they have same number of measurments -
 # Using AX4_SE 2 replicates results in same number of measurements as mybB
 genes_AX4 = genes.loc[:, (conditions['Replicate'].isin(['AX4_SE_r6', 'AX4_SE_r7'])).values]
@@ -1053,7 +1058,7 @@ shared_count_df_filtered.to_csv(dataPathSaved +
                                 '_scalemean0std1_logTrue_kN6_splitStraintightclust' + CLUST +
                                 '_sharedCount_filtered' + str(min_shared) + '.tsv', sep='\t')
 
-sb.clustermap(shared_count_df_filtered,  yticklabels=False, xticklabels=False)
+sb.clustermap(shared_count_df_filtered, yticklabels=False, xticklabels=False)
 # ******************************************************************************************************************
 # *********** Find hub/seed genes (have strong closest connections) and their neighbourhoods, merge if needed
 # *********************************************************************************************************************
@@ -1214,4 +1219,27 @@ for id, group in node_neighbourhoods.items():
         orange_groups.append({'Gene': gene, 'Group': id})
 orange_groups = pd.DataFrame(orange_groups)
 
-# TODO Compare for each group pair average similarity across strains
+# *********************
+# Compare average per gene expression in individual replicates
+avg_expression = pd.DataFrame()
+SPLITBY = 'Replicate'
+merged = ClusterAnalyser.merge_genes_conditions(genes=genes, conditions=conditions[['Measurment', SPLITBY]],
+                                                matching='Measurment')
+splitted = ClusterAnalyser.split_data(data=merged, split_by=SPLITBY)
+for rep, data in splitted.items():
+    data = data.drop([SPLITBY, 'Measurment'], axis=1).T
+    avg_expression[rep] = data.mean(axis=1)
+avg_expression.to_csv(
+    '/home/karin/Documents/timeTrajectories/Orange_workflows/regulons/avgPerGeneExpression_Replicate.tsv', sep='\t')
+
+# ******************************************************************************
+# *************** Find cosine similarity threshold based on N points in strain/replicate
+#***** Resr in jupyter notebook Npoints_similarity_threshold
+SPLITBY = 'Strain'
+size_dict = defaultdict(list)
+merged = ClusterAnalyser.merge_genes_conditions(genes=genes, conditions=conditions[['Measurment', SPLITBY]],
+                                                matching='Measurment')
+splitted = ClusterAnalyser.split_data(data=merged, split_by=SPLITBY)
+for rep, data in splitted.items():
+    splitted[rep] = data.drop([SPLITBY, 'Measurment'], axis=1).T
+    size_dict[data.shape[0]].append(rep)
