@@ -24,6 +24,7 @@ if lab:
     path_inverse = '/home/karin/Documents/timeTrajectories/data/regulons/inverseReplicate_m0s1log/'
     pathSelGenes = dataPathSaved + 'selected_genes/'
     pathMergSim = dataPathSaved + 'clusters/merge_similarity/'
+    pathByStrain = '/home/karin/Documents/timeTrajectories/data/regulons/by_strain/'
 else:
     dataPath = '/home/karin/Documents/DDiscoideum/data/RPKUM/'
     dataPathSaved = '/home/karin/Documents/DDiscoideum/data/regulons/'
@@ -471,14 +472,48 @@ genes_orange_scaled, genes_orange_avg, patterns = preprocess_for_orange(genes=ge
                                                                         matching='Measurment', group='AX4')
 result.to_csv(dataPathSaved + 'genes_selected_orange_T0_99.tsv', sep='\t', index=False)
 genes_orange_scaled.to_csv(dataPathSaved + 'genes_scaled_orange.tsv', sep='\t')
-# Transpose so that column names unique (else Orange problems)
-genes_orange_avg.T.to_csv(dataPathSaved + 'genes_averaged_orange.tsv', sep='\t')
 patterns.to_csv(dataPathSaved + 'gene_patterns_orange.tsv', sep='\t', index=False)
+# Transpose so that column names unique (else Orange problems)
+genes_orange_avg = genes_orange_avg.T
+genes_orange_avg['Time'] = genes_orange_avg.index
+genes_orange_avg.index = [strain + '_' + str(time) for strain, time in
+                          zip(genes_orange_avg['Group'], genes_orange_avg['Time'])]
+genes_orange_avg.to_csv(dataPathSaved + 'genes_averaged_orange.tsv', sep='\t')
 
 # Add AX4 PE,SE, FD averaged to genes_orange_avg
 # Split to AX4 and rest of data
-#TODO
+genes_orange_avg_AX4 = genes_orange_avg.copy()
+genes_conditions = ClusterAnalyser.merge_genes_conditions(genes=genes, conditions=conditions, matching='Measurment')
+conditions_AX4 = conditions.loc[conditions['Strain'] == 'AX4', :]
+# Select AX4/rest genes by conditions rows so that they are both ordered the same
+genes_AX4 = genes_conditions.loc[conditions_AX4['Measurment'], :]
 
+# Group and average AX4, add averaged to rest
+groupped_AX4 = genes_AX4.set_index('Replicate').groupby(
+    {'AX4_FD_r1': 'AX4_FD', 'AX4_FD_r2': 'AX4_FD', 'AX4_PE_r3': 'AX4_PE',
+     'AX4_PE_r4': 'AX4_PE', 'AX4_SE_r5': 'AX4_SE', 'AX4_SE_r6': 'AX4_SE',
+     'AX4_SE_r7': 'AX4_SE'})
+for name, group in groupped_AX4:
+    group = group.groupby('Time').mean()
+    times = list(group.index)
+    group.index = [str(name) + '_' + str(idx) for idx in times]
+    group['Time'] = times
+    group['Group'] = [name] * group.shape[0]
+    genes_orange_avg_AX4 = genes_orange_avg_AX4.append(group, sort=True)
+
+genes_orange_avg_AX4.to_csv(dataPathSaved + 'genes_averaged_orange_AX4groups.tsv', sep='\t')
+
+# **** Scale averaged genes with AX4 max
+# Take AX4 max and
+genes_orange_avg_scaled = genes_orange_avg.copy()
+genes_avg_AX4 = genes_orange_avg_scaled.loc[genes_orange_avg_scaled['Group'] == 'AX4', :]
+genes_orange_avg_scaled = genes_orange_avg_scaled.drop(['Group', 'Time'], axis=1)
+genes_avg_AX4_max = genes_avg_AX4.drop(['Group', 'Time'], axis=1).max(axis=0)
+genes_orange_avg_scaled = genes_orange_avg_scaled - genes_avg_AX4_max
+genes_avg_AX4_max = genes_avg_AX4_max.replace(0, 1)
+genes_orange_avg_scaled = genes_orange_avg_scaled / genes_avg_AX4_max
+genes_orange_avg_scaled[['Time', 'Group']] = genes_orange_avg[['Time', 'Group']]
+genes_orange_avg_scaled.to_csv(dataPathSaved + 'genes_averaged_orange_maxScaledToAX4.tsv', sep='\t')
 # ********************
 # Check how many hypothetical and pseudogenes are in onthologies
 # Get gene descriptions and EIDs
@@ -1232,14 +1267,46 @@ for rep, data in splitted.items():
 avg_expression.to_csv(
     '/home/karin/Documents/timeTrajectories/Orange_workflows/regulons/avgPerGeneExpression_Replicate.tsv', sep='\t')
 
-# ******************************************************************************
-# *************** Find cosine similarity threshold based on N points in strain/replicate
-#***** Resr in jupyter notebook Npoints_similarity_threshold
-SPLITBY = 'Strain'
-size_dict = defaultdict(list)
-merged = ClusterAnalyser.merge_genes_conditions(genes=genes, conditions=conditions[['Measurment', SPLITBY]],
-                                                matching='Measurment')
-splitted = ClusterAnalyser.split_data(data=merged, split_by=SPLITBY)
-for rep, data in splitted.items():
-    splitted[rep] = data.drop([SPLITBY, 'Measurment'], axis=1).T
-    size_dict[data.shape[0]].append(rep)
+# **************************************************
+# ***************** Regulons by strain, matrix of how many strains had connection
+batches = list(conditions['Strain'])
+batches = np.array(batches)
+
+# Calculate neighbours
+for batch in set(batches):
+    print(batch)
+    genes_sub = genes.T[batches == batch].T
+    neighbour_calculator = NeighbourCalculator(genes_sub)
+    result_inv = neighbour_calculator.neighbours(300, inverse=False, scale='mean0std1', log=True)
+    savePickle(pathByStrain + 'kN300_mean0std1_log/' + batch + '.pkl', result_inv)
+
+threshold_dict = {14: 0.93, 16: 0.91, 18: 0.9, 20: 0.9, 24: 0.89, 26: 0.86, 88: 0.83}
+threshold_dict_strain = dict()
+splitted = conditions.groupby('Strain')
+for group in splitted:
+    threshold_dict_strain[group[0]] = threshold_dict[group[1].shape[0]]
+
+files = [f for f in glob.glob(pathByStrain + 'kN300_mean0std1_log/' + "*.pkl")]
+n_genes = genes.shape[0]
+genes_dict = dict(zip(genes.index, range(n_genes)))
+merged_results = np.zeros((n_genes, n_genes))
+for f in files:
+    strain = f.split('/')[-1].replace('.pkl','')
+    result = loadPickle(f)
+    similarity_threshold = threshold_dict_strain[strain]
+    print(strain,similarity_threshold)
+    for pair, similarity in result.items():
+        if similarity >= similarity_threshold:
+            gene1 = genes_dict[pair[0]]
+            gene2 = genes_dict[pair[1]]
+            merged_results[gene1, gene2] += 1
+            merged_results[gene2, gene1] += 1
+merged_results=pd.DataFrame(merged_results,index=genes.index,columns=genes.index)
+
+merged_results.to_csv(pathByStrain+'kN300_mean0std1_log/'+'mergedGenes.tsv',sep='\t')
+
+genemax = merged_results.max()
+remove_genes = genemax.loc[genemax < 18].index
+merged_results_filtered = merged_results.drop(index=remove_genes, columns=remove_genes)
+
+merged_results_filtered.to_csv(pathByStrain+'kN300_mean0std1_log/'+'mergedGenes_min18.tsv',sep='\t')
