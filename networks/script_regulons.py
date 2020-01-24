@@ -480,7 +480,7 @@ genes_orange_avg.index = [strain + '_' + str(time) for strain, time in
                           zip(genes_orange_avg['Group'], genes_orange_avg['Time'])]
 genes_orange_avg.to_csv(dataPathSaved + 'genes_averaged_orange.tsv', sep='\t')
 
-# Add AX4 PE,SE, FD averaged to genes_orange_avg
+# **** Add AX4 PE,SE, FD averaged to genes_orange_avg
 # Split to AX4 and rest of data
 genes_orange_avg_AX4 = genes_orange_avg.copy()
 genes_conditions = ClusterAnalyser.merge_genes_conditions(genes=genes, conditions=conditions, matching='Measurment')
@@ -504,7 +504,8 @@ for name, group in groupped_AX4:
 genes_orange_avg_AX4.to_csv(dataPathSaved + 'genes_averaged_orange_AX4groups.tsv', sep='\t')
 
 # **** Scale averaged genes with AX4 max
-# Take AX4 max and
+# For each gene: 1.) calculate its max in AX4, 2.) For each value: value-AX4max,
+# 3.) If AX4max is 0 substitute it with 1 and then divide each value with AX4max
 genes_orange_avg_scaled = genes_orange_avg.copy()
 genes_avg_AX4 = genes_orange_avg_scaled.loc[genes_orange_avg_scaled['Group'] == 'AX4', :]
 genes_orange_avg_scaled = genes_orange_avg_scaled.drop(['Group', 'Time'], axis=1)
@@ -1310,3 +1311,4 @@ remove_genes = genemax.loc[genemax < 18].index
 merged_results_filtered = merged_results.drop(index=remove_genes, columns=remove_genes)
 
 merged_results_filtered.to_csv(pathByStrain+'kN300_mean0std1_log/'+'mergedGenes_min18.tsv',sep='\t')
+sb.clustermap(merged_results_filtered, yticklabels=False, xticklabels=False)

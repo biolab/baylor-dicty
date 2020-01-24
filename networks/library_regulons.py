@@ -77,8 +77,8 @@ class NeighbourCalculator:
         :param batches: Should comparisons be made for each batch separately.
             Batches should be a list of batch group names for each column (eg. length of batches is n columns of genes).
         :param remove_batch_zero: Remove genes that have all expression values 0 for each batch individually.
-        :param return_neigh_dist: Instead of parsed dictionary return tuple with NN matrix and distance matrix,
-        as returned by pynndescent but named with gene names in data frame.
+        :param return_neigh_dist: Instead of parsed dictionary return tuple with NN matrix and similarity matrix,
+        as returned by pynndescent (converted to similarities) but named with gene names in data frame.
         :param genes_query_names: Use only the specified genes as query.
         :param remove_self: Used only if return_neigh_dist is true. Whether to remove sample from its closest
         neighbours or not. If retunr_neigh_dist is False this is done automatically. This also removes last
@@ -136,8 +136,8 @@ class NeighbourCalculator:
         :param scale: Scale expression by gene with 'minmax' (min=0, max=1) or 'mean0std1' (mean=0, std=1)
         :param log: Should expression data be log2 transformed
         :param description: If an error occurs in KNN index formation report this with error
-        :param return_neigh_dist: Instead of parsed dictionary return tuple with NN matrix and distance matrix,
-        as returned by pynndescent but named with gene names  in data frame.
+        :param return_neigh_dist: Instead of parsed dictionary return tuple with NN matrix and similarities matrix,
+        as returned by pynndescent (converted to similarities) but named with gene names  in data frame.
         :param genes_query_data: Use this as query. If None use genes.
         :param remove_self: Used only if return_neigh_dist is true. Whether to remove sample from its closest
         neighbours or not. If retunr_neigh_dist is False this is done automatically. This also removes last
@@ -403,11 +403,11 @@ class NeighbourCalculator:
         return dict(filter(lambda elem: elem[1] >= similarity_threshold, results.items()))
 
     @staticmethod
-    def filter_distances_matrix(similarities: pd.DataFrame, similarity_threshold: float,
-                                min_neighbours: int = 2) -> list:
+    def filter_similarities_matrix(similarities: pd.DataFrame, similarity_threshold: float,
+                                   min_neighbours: int = 2) -> list:
         """
-        Returns list of genes that have at least min_neighbours close neighbours. If used on non-inverse profiles
-        min-neighbours must be set to required+1 to account for a gene being its closest neighbour.
+        Returns list of genes that have at least min_neighbours close neighbours. If used on non-inverse profiles that
+        have itself inside min-neighbours must be set to required+1 to account for a gene being its closest neighbour.
         :param similarities: Distances to nearest neighbours, queries/genes in rows, distances in columns.
         :param similarity_threshold: Retain only similarities equal or above threshold.
         :param min_neighbours: Retain only genes/rows with at least that many neighbours above similarity_threshold.
