@@ -29,9 +29,9 @@ def parse_link_parts(patrt1,part2,part6,project,linksFile1,linksFile2):
 
 #Example: https://dictyexpress.research.bcm.edu/data/5cae387f6b13390493cd3b4d/gbfA_r3_04h_2_S127_L002_R1_001_mapped_expression_rc.tab.gz
 #Example table entry: 5ca9aa486b1339abd4cd3b4d,,[],[],Description of tgrC1_r2_12h_16_S32_L002_R1_001_mapped.bam gene expression.,,Gene expressions (tgrC1_r2_12hr_16_S32_L002_R1_001_mapped.bam),"[u'expression', u'profiles']",
-#type='counts'
+type='counts'
 #type='rpkum'
-type='rpkum_polya'
+#type='rpkum_polya'
 
 #project='milestones'
 #project='K_Milestone_ETC'
@@ -84,8 +84,8 @@ print('remouved:',removed)
 # while read l;do read fileName url <<< $l; wget -O "$fileName".tab.gz --load-cookies=/home/karin/Documents/cookies_dicty.txt $url; done < /home/karin/Documents/timeTrajectories/data/dictyRPKUM2_All_milestone_mRNA_gff.txt
 
 #Merge files into one
-#path = '/home/karin/Documents/timeTrajectories/data/countsRaw/'
-path = '/home/karin/Documents/timeTrajectories/data/RPKUM/'
+path = '/home/karin/Documents/timeTrajectories/data/countsRaw/'
+#path = '/home/karin/Documents/timeTrajectories/data/RPKUM/'
 files = [f for f in glob.glob(path + "*.tab", recursive=True)]
 merged=pd.DataFrame()
 first=True
@@ -106,8 +106,8 @@ measurments=[]
 for measurment in list(genes.columns):
     measurments.append(measurment.rstrip('.tab').replace('-','_').replace('.','_'))
 genes.columns=measurments
-#genes.to_csv('/home/karin/Documents/timeTrajectories/data/countsRaw/combined/mergedGenes_counts.tsv', sep='\t')
-genes.to_csv('/home/karin/Documents/timeTrajectories/data/RPKUM/combined/mergedGenes_RPKUM.tsv', sep='\t')
+genes.to_csv('/home/karin/Documents/timeTrajectories/data/countsRaw/combined/mergedGenes_counts.tsv', sep='\t')
+#genes.to_csv('/home/karin/Documents/timeTrajectories/data/RPKUM/combined/mergedGenes_RPKUM.tsv', sep='\t')
 
 #Make conditions table
 
