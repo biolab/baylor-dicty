@@ -1,4 +1,6 @@
 # Build data for DeSeq2
+THREADS=20
+
 buildDDS<-function(conditions,genes,t=NULL,case=NULL,ref,design,main_lvl=NULL,coldata=NULL,filter=1){
   # BUilds a DDS for DESeq2
   # Conditions (M*D), genes (G*M) - dataframes
@@ -135,7 +137,7 @@ estimateDDSScaling<-function(dds,model=NULL){
 }
 
 #Run impulse with custom dispersion, if provided in dds
-impulseCustomDispersion<-function(dds,confounders=NULL,condition='Strain',fdr=0.05,control='AX4',path=NULL){
+impulseCustomDispersion<-function(dds,confounders=NULL,condition='Strain',fdr=0.05,control='AX4',path=NULL,threads=THREADS){
   # dds - DeSeq object
   # confounders
   # condition - for case/control determination, if not control is case
@@ -159,7 +161,7 @@ impulseCustomDispersion<-function(dds,confounders=NULL,condition='Strain',fdr=0.
   if (!is.null(dispersions(dds))) dispersion<-impulseDispersion(dds)
   coldata<-as.data.frame(coldata)
   result<-runImpulseDE2(matCountData = counts(dds), dfAnnotation = coldata,
-                boolCaseCtrl = TRUE, vecConfounders = confounders, scaNProc = 4,
+                boolCaseCtrl = TRUE, vecConfounders = confounders, scaNProc = threads,
                 scaQThres = fdr, vecDispersionsExternal = dispersion,
                 # Computes size factors itself (despite specifiing them) but they match to the DeSeq2 ones
                 #vecSizeFactorsExternal = sizeFactors(dds), 
@@ -209,7 +211,7 @@ impulseDispersion<-function(dds){
 
 # Run Impulse with dispersion factors from modified design matrix
 runImpulseCustomDispersion<-function(conditions,genes,times,case,control='AX4',main_lvl='Strain',nested_dispersion=c('Time'),
-                           confounder_impulse=NULL,fdr=0.05,path=NULL){
+                           confounder_impulse=NULL,fdr=0.05,path=NULL,threads=THREADS){
   # Conditions (M*D), genes (G*M) - dataframes
   # times - use only these timepoints
   # case - from column Strain, which to use/subset
@@ -225,11 +227,12 @@ runImpulseCustomDispersion<-function(conditions,genes,times,case,control='AX4',m
   # Can Stage/Replicate be converted to nested factors
   model<-nestedModelDDSData(coldata=coldata,main_lvl=main_lvl,nested=nested_dispersion)
   dds<-estimateDDSScaling(dds,model)
-  return(impulseCustomDispersion(dds,confounders=confounder_impulse,condition=main_lvl,fdr=fdr,control=control,path=path))
+  return(impulseCustomDispersion(dds,confounders=confounder_impulse,condition=main_lvl,fdr=fdr,control=control,path=path,
+                                 threads=threads))
 }
 
 # Test DE with Impulse without batches, with Impulse provided dispersion
-deImpulse <- function(control='AX4',case,padj=0.05,threads=4,genes,conditions,times_DE,path=NaN) {
+deImpulse <- function(control='AX4',case,padj=0.05,threads=THREADS,genes,conditions,times_DE,path=NaN) {
   genesSub<-as.matrix(genes[,(conditions$Strain %in% c(case,control)) & 
                               (conditions$Time %in% times_DE)])
   conditionsSub<-conditions[(conditions$Strain %in% c(case,control)) & 
@@ -248,7 +251,7 @@ deImpulse <- function(control='AX4',case,padj=0.05,threads=4,genes,conditions,ti
   #time - double; condition,sample
   anno<-data.frame(Sample=rownames(conditionsSub), Condition=case,Time=as.numeric(as.character(conditionsSub$Time)),stringsAsFactors = FALSE)
   rownames(anno)<-anno$Sample
-  de <- runImpulseDE2(matCountData=genesSub,dfAnnotation=anno,boolCaseCtrl= TRUE,scaNProc= 4) 
+  de <- runImpulseDE2(matCountData=genesSub,dfAnnotation=anno,boolCaseCtrl= TRUE,scaNProc= threads) 
   de_filter<-de$dfImpulseDE2Results[de$dfImpulseDE2Results$padj<=padj & ! is.na(de$dfImpulseDE2Results$padj),]
   if (is.nan(path)) return(de_filter)
   else  {
