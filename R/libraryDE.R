@@ -1,11 +1,9 @@
 # Build data for DeSeq2
-<<<<<<< HEAD
+
 THREADS=20
 
-buildDDS<-function(conditions,genes,t=NULL,case=NULL,ref,design,main_lvl=NULL,coldata=NULL,filter=1){
-=======
 buildDDS<-function(conditions,genes,t=NULL,case=NULL,ref,design,main_lvl=NULL,coldata=NULL,filter=1,set_main_lvl=FALSE){
->>>>>>> 2fc03720b71addf7581f9a3a56b1f1848423a249
+
   # BUilds a DDS for DESeq2
   # Conditions (M*D), genes (G*M) - dataframes
   # t - subset Time, vector
@@ -214,13 +212,10 @@ impulseDispersion<-function(dds){
 }
 
 # Run Impulse with dispersion factors from modified design matrix
-<<<<<<< HEAD
+
 runImpulseCustomDispersion<-function(conditions,genes,times,case,control='AX4',main_lvl='Strain',nested_dispersion=c('Time'),
                            confounder_impulse=NULL,fdr=0.05,path=NULL,threads=THREADS){
-=======
-runImpulseCustomDispersion<-function(conditions,genes,times=NULL,case,control='AX4',main_lvl='Strain',nested_dispersion=c('Time'),
-                           confounder_impulse=NULL,fdr=0.05,path=NULL){
->>>>>>> 2fc03720b71addf7581f9a3a56b1f1848423a249
+
   # Conditions (M*D), genes (G*M) - dataframes
   # times - use only these timepoints
   # case - from column Strain, which to use/subset
