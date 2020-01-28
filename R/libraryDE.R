@@ -1,23 +1,27 @@
 # Build data for DeSeq2
+<<<<<<< HEAD
 THREADS=20
 
 buildDDS<-function(conditions,genes,t=NULL,case=NULL,ref,design,main_lvl=NULL,coldata=NULL,filter=1){
+=======
+buildDDS<-function(conditions,genes,t=NULL,case=NULL,ref,design,main_lvl=NULL,coldata=NULL,filter=1,set_main_lvl=FALSE){
+>>>>>>> 2fc03720b71addf7581f9a3a56b1f1848423a249
   # BUilds a DDS for DESeq2
   # Conditions (M*D), genes (G*M) - dataframes
   # t - subset Time, vector
-  # case, ref - retain only these from Strain, case (case can be vector)
+  # case, ref - retain only these from main_lvl, case (case can be vector)
   # ref - Set as reference if main_level is provided
   # design - DeSeq2 design
   # coldata -Prespecify coldata for DeSeq2
-  # Filter - remove genes rows with less than filter rows
+  # Filter - remove genes rows with less than filter row count
   # Returns dds and coldata in list
   if (!is.null(t)){
     genes=genes[,conditions$Time %in% t]
     conditions=conditions[conditions$Time %in% t,]
   }
   if (!is.null(case)){
-    genes=genes[,conditions$Strain %in% c(case,ref)]
-    conditions=conditions[conditions$Strain %in% c(case,ref),]
+    genes=genes[,unlist(conditions[main_lvl] , use.names=FALSE) %in% c(case,ref)]
+    conditions=conditions[unlist(conditions[main_lvl]  , use.names=FALSE) %in% c(case,ref),]
   }
   #Make coldata table for DeSeq2 
   if (is.null(coldata)){
@@ -31,7 +35,7 @@ buildDDS<-function(conditions,genes,t=NULL,case=NULL,ref,design,main_lvl=NULL,co
     dds <- DESeqDataSetFromMatrix(countData = genes,
                                   colData = coldata,
                                   design = design)
-    if (!is.null(main_lvl)) dds[[main_lvl]]<- relevel(dds[[main_lvl]], ref = ref)
+    if (set_main_lvl & !is.null(main_lvl) ) dds[[main_lvl]]<- relevel(dds[[main_lvl]], ref = ref)
     if (! is.null(filter)){
       keep <- rowSums(counts(dds)) >= filter
       dds <- dds[keep,]
@@ -58,13 +62,13 @@ testDE<-function(dds,sample,ref,padjSave,logFCSave,path=NULL,time=NULL,main_lvl=
 runDeSeq2<-function(conditions,genes,time,case,control='AX4',design=~Strain,main_lvl='Strain',padj=0.05,logFC=1,path=NULL){
   # Conditions (M*D), genes (G*M) - dataframes
   # time - subset Time, vector
-  # case, ref - retain only these from Strain, case (case can be vector)
+  # case, ref - retain only these from main_lvl, case (case can be vector)
   # control- Set as reference in main_level design
   # design - DeSeq2 design
   # main_lvl -where DE will be analysed
   # padj, logFC - filter results, remove below logFC or above padj
   # path - save, adds file name
-  dds<-buildDDS(conditions=conditions,genes=genes,t=time,case=case,ref=control,design=design,main_lvl=main_lvl,filter=1)$dds
+  dds<-buildDDS(conditions=conditions,genes=genes,t=time,case=case,ref=control,design=design,main_lvl=main_lvl,filter=1,set_main_lvl=TRUE)$dds
   dds <- DESeq(dds,parallel = TRUE)
   if (is.null(path)) return(testDE(dds=dds,sample=case,ref=control,padjSave=padj,logFCSave=logFC,path=path,main_lvl=main_lvl))
   else testDE(dds=dds,sample=case,ref=control,padjSave=padj,logFCSave=logFC,path=path,time=time,main_lvl=main_lvl)
@@ -210,8 +214,13 @@ impulseDispersion<-function(dds){
 }
 
 # Run Impulse with dispersion factors from modified design matrix
+<<<<<<< HEAD
 runImpulseCustomDispersion<-function(conditions,genes,times,case,control='AX4',main_lvl='Strain',nested_dispersion=c('Time'),
                            confounder_impulse=NULL,fdr=0.05,path=NULL,threads=THREADS){
+=======
+runImpulseCustomDispersion<-function(conditions,genes,times=NULL,case,control='AX4',main_lvl='Strain',nested_dispersion=c('Time'),
+                           confounder_impulse=NULL,fdr=0.05,path=NULL){
+>>>>>>> 2fc03720b71addf7581f9a3a56b1f1848423a249
   # Conditions (M*D), genes (G*M) - dataframes
   # times - use only these timepoints
   # case - from column Strain, which to use/subset
@@ -221,7 +230,9 @@ runImpulseCustomDispersion<-function(conditions,genes,times,case,control='AX4',m
   # confounder_impulse - use in impulse
   # fdr - filter in impulse
   # path - if not null save  to path (adds file name). if null returns result
-  deseq_data<-buildDDS(conditions=conditions,genes=genes,t=times,case=case,ref=control,design=~1,main_lvl=NULL,coldata=NULL,filter = 1)
+  conditions<-conditions[order(conditions$Time),]
+  genes<-genes[,rownames(conditions)]
+  deseq_data<-buildDDS(conditions=conditions,genes=genes,t=times,case=case,ref=control,design=~1,main_lvl=main_lvl,coldata=NULL,filter = 1,set_main_lvl=FALSE)
   coldata<-deseq_data$coldata
   dds<-deseq_data$dds
   # Can Stage/Replicate be converted to nested factors
