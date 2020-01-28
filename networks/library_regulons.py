@@ -25,6 +25,7 @@ from orangecontrib.bioinformatics.ncbi.gene import GeneMatcher
 from orangecontrib.bioinformatics.geneset.__init__ import (list_all, load_gene_sets)
 import orangecontrib.bioinformatics.go as go
 from Orange.clustering.louvain import jaccard
+from orangecontrib.bioinformatics.utils.statistics import Hypergeometric
 
 from correlation_enrichment.library_correlation_enrichment import GeneExpression, SimilarityCalculator
 from deR.enrichment_library import GO_enrichment, name_genes_entrez
@@ -2019,15 +2020,18 @@ class NeighbourhoodParser:
         return neighbourhoods_merged
 
     @staticmethod
-    def neighbourhood_distances(neighbourhoods, measure: str, genes_dist: pd.DataFrame = None):
+    def neighbourhood_distances(neighbourhoods, measure: str, genes_dist: pd.DataFrame = None, all_genes: int = None):
         """
         Calculate distance between neighbourhoods.
         :param neighbourhoods: List of sets, gene names in sets.
         Can be dict with keys as neighbourhood names and values neighbourhoods
-        :param measure:Distance : jaccard, percent_shared_smaller, avg_dist.
+        :param measure:Distance : jaccard, percent_shared_smaller, avg_dist, pval.
         To get distance from jaccard and percent_shared_smaller uses 1 - sim_metric (as max is 1).
+        pval uses hypergeometric test that such overlap is observed: set1=K, set2=n, overlap=k, all_genes=N
+        are parameters of hypergeometric (symbols same as in pmf from wikipedia). P value is used as distance metric.
         :param genes_dist: Must be distance (e.g. for cosine 1-genes_cosine). Index must match gene names in
         neighbourhoods
+        :param all_genes: Used for pval metric as whole population size.
         :return: 1st element is Upper triangular matrix without diagonal in shape of 1D array. 2nd dict with node_id as K
         and neighbourhood as V. 3th (optional) If neighbourhoods was dict also returns
          node id (K) -original group name (V) mapping in a dict
@@ -2040,6 +2044,13 @@ class NeighbourhoodParser:
         if isinstance(neighbourhoods, dict):
             neighbourhood_names = list(neighbourhoods.keys())
             neighbourhoods = list(neighbourhoods.values())
+        hypergeom_test = None
+        min_p=None
+        max_sim=None
+        if measure == 'pval':
+            hypergeom_test = Hypergeometric(all_genes)
+            min_p = 10 ** -323.6
+            max_sim = -np.log10(min_p)
         for idx1 in neigh_ids[:-1]:
             for idx2 in neigh_ids[idx1 + 1:]:
                 genes1 = set(neighbourhoods[idx1])
@@ -2051,6 +2062,14 @@ class NeighbourhoodParser:
                     dist = 1 - intersection / min(len(genes1), len(genes2))
                 elif measure == 'avg_dist':
                     dist = genes_dist.loc[genes1, genes2].values.flatten().mean()
+                elif measure == 'pval':
+                    intersection = len(genes1 & genes2)
+                    # pval(k=k,N=N,m=K,n=n)
+                    p = hypergeom_test.p_value(k=intersection, N=all_genes, m=len(genes1), n=len(genes2))
+                    if p < min_p:
+                        p = min_p
+                    sim = -np.log10(p)
+                    dist = max_sim - sim
                 dist_arr.append(dist)
         group_name_mapping = None
         if neighbourhood_names is not None:

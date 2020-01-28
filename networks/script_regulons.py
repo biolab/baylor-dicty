@@ -515,6 +515,35 @@ genes_avg_AX4_max = genes_avg_AX4_max.replace(0, 1)
 genes_orange_avg_scaled = genes_orange_avg_scaled / genes_avg_AX4_max
 genes_orange_avg_scaled[['Time', 'Group']] = genes_orange_avg[['Time', 'Group']]
 genes_orange_avg_scaled.to_csv(dataPathSaved + 'genes_averaged_orange_maxScaledToAX4.tsv', sep='\t')
+
+# Scale genes with Xth (eg a high one so that outliers can be latter clipped and most variability in
+# lower expressed genes is still observable) percentile
+# Subtract percentile from value and then divide it with the percentile (before division replace 0 with 1)
+percentile = 0.99
+genes_orange_avg_scaled2 = genes_orange_avg.copy()
+genes_orange_avg_scaled2 = genes_orange_avg_scaled2.drop(['Group', 'Time'], axis=1)
+genes_avg_percentile = genes_orange_avg.drop(['Group', 'Time'], axis=1).quantile(q=percentile, axis=0)
+genes_orange_avg_scaled2 = genes_orange_avg_scaled2 - genes_avg_percentile
+genes_avg_percentile = genes_avg_percentile.replace(0, 1)
+genes_orange_avg_scaled2 = genes_orange_avg_scaled2 / genes_avg_percentile
+genes_orange_avg_scaled2[['Time', 'Group']] = genes_orange_avg[['Time', 'Group']]
+genes_orange_avg_scaled2.to_csv(dataPathSaved + 'genes_averaged_orange_scale' + str(percentile)[2:] + 'percentile.tsv',
+                                sep='\t')
+
+# Calculate log2FC=log2(val/max) compared to max WT
+genes_orange_avg_fc = genes_orange_avg.copy()
+genes_avg_AX4 = genes_orange_avg_fc.loc[genes_orange_avg_fc['Group'] == 'AX4', :]
+genes_orange_avg_fc = genes_orange_avg_fc.drop(['Group', 'Time'], axis=1)
+genes_avg_AX4_max = genes_avg_AX4.drop(['Group', 'Time'], axis=1).max(axis=0)
+# Replace zeros to prevent infs - in AX4 scaler and after scaling in expressions to get 0 after log
+genes_avg_AX4_max = genes_avg_AX4_max.replace(0, 1)
+genes_orange_avg_fc = genes_orange_avg_fc / genes_avg_AX4_max
+# Not ok as min now 0 instead of below 0
+genes_orange_avg_fc = genes_orange_avg_fc.replace(0, 1)
+genes_orange_avg_fc = np.log2(genes_orange_avg_fc)
+genes_orange_avg_fc[['Time', 'Group']] = genes_orange_avg[['Time', 'Group']]
+genes_orange_avg_fc.to_csv(dataPathSaved + 'genes_averaged_orange_log2FC.tsv', sep='\t')
+
 # ********************
 # Check how many hypothetical and pseudogenes are in onthologies
 # Get gene descriptions and EIDs
@@ -1292,23 +1321,23 @@ n_genes = genes.shape[0]
 genes_dict = dict(zip(genes.index, range(n_genes)))
 merged_results = np.zeros((n_genes, n_genes))
 for f in files:
-    strain = f.split('/')[-1].replace('.pkl','')
+    strain = f.split('/')[-1].replace('.pkl', '')
     result = loadPickle(f)
     similarity_threshold = threshold_dict_strain[strain]
-    print(strain,similarity_threshold)
+    print(strain, similarity_threshold)
     for pair, similarity in result.items():
         if similarity >= similarity_threshold:
             gene1 = genes_dict[pair[0]]
             gene2 = genes_dict[pair[1]]
             merged_results[gene1, gene2] += 1
             merged_results[gene2, gene1] += 1
-merged_results=pd.DataFrame(merged_results,index=genes.index,columns=genes.index)
+merged_results = pd.DataFrame(merged_results, index=genes.index, columns=genes.index)
 
-merged_results.to_csv(pathByStrain+'kN300_mean0std1_log/'+'mergedGenes.tsv',sep='\t')
+merged_results.to_csv(pathByStrain + 'kN300_mean0std1_log/' + 'mergedGenes.tsv', sep='\t')
 
 genemax = merged_results.max()
 remove_genes = genemax.loc[genemax < 18].index
 merged_results_filtered = merged_results.drop(index=remove_genes, columns=remove_genes)
 
-merged_results_filtered.to_csv(pathByStrain+'kN300_mean0std1_log/'+'mergedGenes_min18.tsv',sep='\t')
+merged_results_filtered.to_csv(pathByStrain + 'kN300_mean0std1_log/' + 'mergedGenes_min18.tsv', sep='\t')
 sb.clustermap(merged_results_filtered, yticklabels=False, xticklabels=False)
