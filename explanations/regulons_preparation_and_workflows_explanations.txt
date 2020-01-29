@@ -1,0 +1,46 @@
+***Workflows: 
+Regulon_extraction.ows: 
+   For extraction of regulons of genes with similar profiles (e.g. both go up or down at the same time). Genes are clustered (resolution parameter regulates cluster tightness) and plotted in tSNE based on expression profile across all samples. This can be used to select genes that have similar profile. Profiles of these genes can be plotted as average profile for each strain. Red arrows show where connections between widgets can be made to plot profiles of the selected gene groups. 
+   Uses files:
+-- kNN2_threshold0.95_RPKUM+pattern_m0s1log_Orange.tab (File widget input): Data of selected genes (each gene has at least one neighbour with profile similarity above the threshold specified in the file name - here 0.95, described in more detail below). Includes RPKUM which is log2 transformed and scaled to mean=0 and sd=1 for each selected gene across all samples - required for clustering and tSNE; and profile pattern data obtained on averaged RPKUM AX4 data (no preprocessing): peak- time, mass_center- time at which half of the expression hapens before and half after, N_atleast - how many time points have expression equal or greater than (min(expression)+max(expression))/2 for each gene - indicates whether there is a narrow peak (or valley) or not. 
+-- genes_averaged_orange.tsv (File1 widget input): RPKUM averaged across each strain. Used to plot expression profiles. 
+   The workflow also contains an option to retain genes with the closest neighbour that passes a different similarity threshold - retaining more or less genes (Python Script widget). The instructions are at the top of the script and threshold parameter must be set. This will produce a new file of type e.g. kNN2_thresholdX_m0s1log_Orange.tsv that contains selected gene names. It must be processed with Preprocessing_RPKUM.ows to obtain other files described above.  
+
+Regulons_inverse.ows: 
+   For extraction of regulons of genes with opposite/inverse profiles (e.g. when one goes up the other goes down). Oposite profiles are shown as connections on the graph. Clustering and tSNE can be performed (done on non-inverse profiles) - genes connected on graph will belong to different clusters and will be shown on oposite parts of the tSNE. Genes can be then selected for profile plotting as described in Regulon_extraction.ows.
+   Uses files:
+-- *.net (Network file widget input): A network with edges representing opposite profile similarity between two genes (nodes). Consturction of netwroks is described below. 
+-- matching file with ...inverse...RPKUM+pattern notation (File widget input): As described for Regulon_extraction.ows file of type RPKUM+pattern. Matches .net file in the prefix.
+-- genes_averaged_orange.tsv (File1 widget input): As described for Regulon_extraction.ows.
+   The workflow also contains option to obtain a network with more or less edges and nodes, depending on the node weight (inverse profile similarity) and number of replicates in which this edge was present with specified similarity. For this use Python Script (similarly as described for Regulon_extraction.ows). Sensible range of parameters is specified. This produces a file containing the word 'nodes' (akin to the file from Regulon_extraction.ows) and a .net network file. 
+
+Preprocessing_RPKUM.ows: 
+   Prepares RPKUM data of selected genes (scaling, log transformation) for clustering and tSNE. This is required if python scripts within the other two workflows are used to extract genes with different similarity thersholds - obtaining more or less genes (and connections on the graph). It can be also used to change preprocessing of RPKUM data, affecting clustering and tSNE. Log can be used or not, and a scaling option (mean=0 + sd=1 or min-max e.g. 0 to 1) must be used. At the end a file of type RPKUM+pattern can be saved.
+   Uses files:
+-- gene_patterns_orange.tsv (File1 widget input): Characteristics of gene expression patterns in AX4, as described above for this part of kNN2_threshold0.95_RPKUM+pattern_m0s1log_Orange.tab file.
+-- File produced by Python Script in Regulon_extraction.ows (e.g. knn2_threshold0.95_m0s1log_Orange.tsv) or in Regulons_inverse.ows (name contains word 'nodes') (File widget input): Names of genes for which expression data and expression patterns data will be extracted. 
+-- mergedGenes_RPKUM.tsv (File2 widget input): RPKUM expression data for all samples.
+
+***Explanations:
+
+Due to large number of genes, many of which have no very close neighbours, I perfomed pre-selection of genes. This ensures that genes in the same cluster or close on tSNE have very similar profiles. The preprocessing used to get clusters, tSNE and networks consisted of two parts: 1.) Extraction of genes (based on RPKUM profile neighbours). Before calculation of expression profile cosine similarity (gene neighbours)  the RPKUM data was log transformed and scaled.
+2.) Data of genes selected in the first step was preprocessed to be apropriate for clustering and tSNE in Orange. I used the same transformation and scaling as for the first step. 
+Scaling is needed in both steps so that genes with similar profile shape are detected as similar regardless of the expression strength.  
+
+Regulons:
+   For regulons extraction genes were selected if they had at least one very close neighbour based on expression profile pattern across all replicates. This was done on log2 transformed RPKUM data scaled to mean=0 and sd=1 with cosine similarity metric for comparison of the profiles. Genes with all 0 expression were removed. To find genes with at least one close neighbour for each genes two closest neighbours were obtained (one being itself and thus excluded). These neighbours are saved in dict_kNN2_m0s1log.pkl and can be used for extraction of genes with at least one neighbour at different similarity thresholds (described for Regulo_extraction.ows). I have chosen threshold 0.95 and file kNN2_threshold0.95_m0s1log_Orange.tsv lists the genes that were retained (have such a close neighbour). 
+
+Inverse regulons:
+   For each gene 200 closest neighbours based on inverse expression porfile (when one genes's expression goes up the other's goes down) were obtained. This was done for each replicate separately, using log2 transformed RPKUM data scaled either with mean=0 and sd=1 or min-max (0 to 1). Genes with all 0 expression were removed for each replicate separately. Cosine similarites were used to compare profiles. Afterwards, gene pairs were filtered based on cosine similarity (e.g. min = 0.96 or 0.86) and only gene pairs present in at least 25 replicates (after similaritiy filtering) were retained. These pairs were converted to edges on a graph with nodes being the genes. Files merged_kNN200_T"X"_min"Y"_"preprocessing scheme".pkl contain the gene pairs that passed initial filtering at specified similarity and replicate presence thresholds. They can be used to obtain smaller or larger netwroks, as described for Regulons_inverse.ows. 
+   The profile calculation similarity was done on each replicate separately at it was previously determined that calculation of similarities using the whole dataset at once results in spurious connections - e.g. a highly expressed gene and mostly 0 expressed genes with a only a few low spikes in certain samples get high similarity. Requiring that connection is present in many replicates automatically removes genes that have 0 expression in most replicates.
+   I have used two different preprocessing schemes: log2 + minmax and log2 + m0s1 (mean=0, sd=1).  It was determined that log2+m0s1 preprocessing results in the most consistent selection of genes with close neighbours. - When searching for genes that have a close neighbour with at least specified similarity in two seprate groups of replicates the results obtained in both groups were the most consistent. However, a graph was constructed also with gene neighbours obtained with log2+minmax scaling. Many of its highly connected nodes (e.g. the most notable junctions) represent regulatory genes and thus it was decided that this graph may be of interest as well. 
+
+***File prefix notation for regulons data files: 
+- kNN: N of neighbours that was initially calculated for each gene
+- threshold (also 'T'): only gene pairs (neighbours/edges) with similarity equal or greater than threshold were retained
+- minPresentReplicates (also 'min') (when calculations were done for each replicate separately): edges above specified similarity threshold were present in at least that many replicates
+- m0s1/minmax/log: preprocessing used for expression profile similarity calculation; In the currently provided files same preprocessing was used both in the retrieval of the closest neighbours and to make files (of type RPKUM+pattern) that Orange uses for clustering and tSNE.
+- inverse: gene pairs with most similar oposite/inverse profiles were sought
+
+
+
