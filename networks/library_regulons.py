@@ -2027,6 +2027,7 @@ class NeighbourhoodParser:
         Can be dict with keys as neighbourhood names and values neighbourhoods
         :param measure:Distance : jaccard, percent_shared_smaller, avg_dist, pval.
         To get distance from jaccard and percent_shared_smaller uses 1 - sim_metric (as max is 1).
+        avg_dist is average distance between all pairs of genes.
         pval uses hypergeometric test that such overlap is observed: set1=K, set2=n, overlap=k, all_genes=N
         are parameters of hypergeometric (symbols same as in pmf from wikipedia). P value is used as distance metric.
         :param genes_dist: Must be distance (e.g. for cosine 1-genes_cosine). Index must match gene names in
