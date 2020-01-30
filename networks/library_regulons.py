@@ -575,7 +575,7 @@ class NeighbourCalculator:
             else:
                 mse = float('NaN')
             n_genes = len(set(gene for pair in result_filtered.keys() for gene in pair))
-            data_summary.append({'N neighbours': neighbours_n, 'inverse': inverse, 'use_log': use_log, 'scale': scale,
+            data_summary.append({'metric':metric,'N neighbours': neighbours_n, 'inverse': inverse, 'use_log': use_log, 'scale': scale,
                                  'threshold': threshold, 'batches': batch_column, 'MSE': mse,
                                  'N pairs': len(result_filtered), 'N genes': n_genes, 'F value': f_val})
             if retained is not None:
