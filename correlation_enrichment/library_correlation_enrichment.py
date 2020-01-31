@@ -992,7 +992,7 @@ class GeneSetComparator:
         """
 
         :param gene_set_data:
-        :param include_identical: If max_overlap is set the identical pairs will be remopuved due to too high overlap.
+        :param include_identical: If max_overlap is set the identical pairs will be remouved due to too high overlap.
         :param max_overlap:
         :return:
         """

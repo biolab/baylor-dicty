@@ -1138,7 +1138,7 @@ neighbour_calculator_all = NeighbourCalculator(genes=genes)
 # Returns 5 neighbours as it removes self (or last neighbour) from neighbour list
 neigh_all, sims_all = neighbour_calculator_all.neighbours(n_neighbours=6, inverse=False, scale=SCALE, log=LOG,
                                                           return_neigh_dist=True, remove_self=True)
-neigh_all, sims_all = loadPickle(pathMergSim + 'kN6_m0s1log_neighbours_sims.pkl')
+neigh_all, sims_all = loadPickle(pathMergSim + 'newGenes_kN6_m0s1log_neighbours_sims.pkl')
 # Remove self from neighbours and similarities
 
 # Cheking how many are do not have self for neighbour or do not have self as first neighbour:

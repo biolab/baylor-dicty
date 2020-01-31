@@ -45,7 +45,7 @@ class NeighbourCalculator:
     MINMAX = 'minmax'
     MEANSTD = 'mean0std1'
     NONE = 'none'
-    SCALES = [MINMAX, MEANSTD,NONE]
+    SCALES = [MINMAX, MEANSTD, NONE]
 
     def __init__(self, genes: pd.DataFrame, remove_zero: bool = True, conditions: pd.DataFrame = None,
                  conditions_names_column=None):
@@ -70,7 +70,7 @@ class NeighbourCalculator:
 
     def neighbours(self, n_neighbours: int, inverse: bool, scale: str = SCALING, log: bool = LOG,
                    batches: list = None, remove_batch_zero: bool = True, return_neigh_dist: bool = False,
-                   genes_query_names: list = None, remove_self: bool = False,metric:str='cosine'):
+                   genes_query_names: list = None, remove_self: bool = False, metric: str = 'cosine'):
         """
         Calculates neighbours of genes on whole gene data or its subset by column.
         :param n_neighbours: Number of neighbours to obtain for each gene
@@ -131,7 +131,7 @@ class NeighbourCalculator:
     @staticmethod
     def calculate_neighbours(genes, n_neighbours: int, inverse: bool, scale: str, log: bool,
                              description: str = '', return_neigh_dist: bool = False,
-                             genes_query_data: pd.DataFrame = None, remove_self: bool = False,metric:str='cosine'):
+                             genes_query_data: pd.DataFrame = None, remove_self: bool = False, metric: str = 'cosine'):
         """
         Calculate neighbours of genes.
         :param genes: Data frame as in init, gene names (rows) should match the one in init
@@ -194,7 +194,7 @@ class NeighbourCalculator:
         :param genes_query_data: Genes data for query, if None uses genes
         :return: genes for index (1st element) and genes for query (2nd element)
         """
-        if scale not in [cls.MINMAX, cls.MEANSTD,cls.NONE]:
+        if scale not in [cls.MINMAX, cls.MEANSTD, cls.NONE]:
             raise ValueError('This scaling parameter is unknown')
         if log:
             genes = np.log2(genes + 1)
@@ -484,7 +484,7 @@ class NeighbourCalculator:
     def compare_conditions(self, neighbours_n: int, inverse: bool,
                            scale: str, use_log: bool, thresholds: list, filter_column, filter_column_values_sub: list,
                            filter_column_values_test: list, retained: list = None, batch_column=None,
-                           do_mse: bool = True,metric:str='cosine'):
+                           do_mse: bool = True, metric: str = 'cosine'):
         """
         Evaluates pattern similarity calculation preprocessing and parameters based on difference between subset and
         test set. Computes MSE from differences between similarities of subset gene pairs and corresponding test gene
@@ -505,6 +505,7 @@ class NeighbourCalculator:
           :param metric: 'cosine' or 'correlation' (person)
         :return: Dictionary with parameters and results, description as key, result/parameter setting as value
         """
+        n_all_genes = self._genes.shape[0]
         # Prepare data
         if not batch_column:
             batches = None
@@ -527,9 +528,9 @@ class NeighbourCalculator:
 
         # Calculate neighbours
         result = neighbour_calculator.neighbours(neighbours_n, inverse=inverse, scale=scale, log=use_log,
-                                                 batches=batches,metric=metric)
+                                                 batches=batches, metric=metric)
         result_test = neighbour_calculator_test.neighbours(neighbours_n, inverse=inverse, scale=scale, log=use_log,
-                                                           batches=batches,metric=metric)
+                                                           batches=batches, metric=metric)
 
         # Filter neighbours on similarity
         data_summary = []
@@ -550,6 +551,9 @@ class NeighbourCalculator:
                     continue
             gene_names_test = {gene for pair in result_filtered_test for gene in pair}
             f_val = NeighbourCalculator.f_value(set1=gene_names_sub, set2=gene_names_test)
+            p_gene_overlap = Hypergeometric().p_value(k=len(gene_names_sub & gene_names_test), N=n_all_genes,
+                                                      m=len(gene_names_sub),
+                                                      n=len(gene_names_test))
             # Calculate MSE for each gene pair -
             # compare similarity from gene subset to similarity of the gene pair in gene test set
             sq_errors = []
@@ -560,11 +564,11 @@ class NeighbourCalculator:
 
                     index1 = gene_names.index(gene1)
                     index2 = gene_names.index(gene2)
-                    if metric =='cosine':
+                    if metric == 'cosine':
                         similarity_test = calc_cosine(test_index, test_query, index1, index2, sim_dist=True,
-                                                  both_directions=both_directions)
+                                                      both_directions=both_directions)
                     elif metric == 'correlation':
-                        similarity_test = 1- correlation(test_index[index1], test_query[index2])
+                        similarity_test = 1 - correlation(test_index[index1], test_query[index2])
 
                     se = (similarity - similarity_test) ** 2
                     # Happens if at least one vector has all 0 values
@@ -574,17 +578,21 @@ class NeighbourCalculator:
                 mse = round(mean(sq_errors), 5)
             else:
                 mse = float('NaN')
-            n_genes = len(set(gene for pair in result_filtered.keys() for gene in pair))
-            data_summary.append({'metric':metric,'N neighbours': neighbours_n, 'inverse': inverse, 'use_log': use_log, 'scale': scale,
-                                 'threshold': threshold, 'batches': batch_column, 'MSE': mse,
-                                 'N pairs': len(result_filtered), 'N genes': n_genes, 'F value': f_val})
+            # n_genes = len(set(gene for pair in result_filtered.keys() for gene in pair))
+            data_summary.append(
+                {'metric': metric, 'N neighbours': neighbours_n, 'inverse': inverse, 'use_log': use_log, 'scale': scale,
+                 'threshold': threshold, 'batches': batch_column, 'MSE': mse,
+                 'N pairs 1': len(result_filtered), 'N genes 1': len(gene_names_sub),
+                 'N pairs 2': len(result_filtered_test), 'N genes 2': len(gene_names_test),
+                 'F value': f_val, 'p gene overlap':p_gene_overlap})
             if retained is not None:
                 break
         return data_summary
 
     def compare_thresholds(self, neighbours_n: int, inverse: bool,
                            scale: str, use_log: bool, thresholds: list, filter_column, filter_column_values1: list,
-                           filter_column_values2: list, genes_query_names: list = None, metric:str='cosine') -> pd.DataFrame:
+                           filter_column_values2: list, genes_query_names: list = None,
+                           metric: str = 'cosine') -> pd.DataFrame:
         """
         Compare retained genes and gene pairs at different similarity thresholds.
         Computes table with F values of retained genes/pairs from two different data subgroups.
@@ -609,9 +617,9 @@ class NeighbourCalculator:
 
         # Calculate neighbours
         result1 = neighbour_calculator1.neighbours(neighbours_n, inverse=inverse, scale=scale, log=use_log,
-                                                   genes_query_names=genes_query_names,metric=metric)
+                                                   genes_query_names=genes_query_names, metric=metric)
         result2 = neighbour_calculator2.neighbours(neighbours_n, inverse=inverse, scale=scale, log=use_log,
-                                                   genes_query_names=genes_query_names,metric=metric)
+                                                   genes_query_names=genes_query_names, metric=metric)
 
         # Filter neighbours on similarity
         data_summary = []
@@ -672,7 +680,7 @@ class NeighbourCalculator:
                                                                  filter_column_values_sub=filter_column_values_sub,
                                                                  filter_column_values_test=filter_column_values_test,
                                                                  batch_column=batch_column, use_log=use_log,
-                                                                 do_mse=False, retained=retained,metric=metric))
+                                                                 do_mse=False, retained=retained, metric=metric))
         pandas_multi_y_plot(filtering_summary, 'threshold', ['N genes', 'F value'])
         return filtering_summary
 
@@ -2068,8 +2076,8 @@ class NeighbourhoodParser:
             neighbourhood_names = list(neighbourhoods.keys())
             neighbourhoods = list(neighbourhoods.values())
         hypergeom_test = None
-        min_p=None
-        max_sim=None
+        min_p = None
+        max_sim = None
         if measure == 'pval':
             hypergeom_test = Hypergeometric(all_genes)
             min_p = 10 ** -323.6
