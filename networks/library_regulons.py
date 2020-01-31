@@ -2210,3 +2210,5 @@ def point_histogram(data, bins, **plot_args):
     plt.scatter(bin_centers, n, **plot_args)
     # For non filled hist
     # plt.hist(x, bins=50, histtype = 'step', fill = None)
+
+
