@@ -17,3 +17,15 @@ for f in files:
     padjs[padjs<=FDR]
     padj_dict[name] = data['padj'].values
 
+# How variable are  strains between replicates - plot variability as boxplots
+# Stds of genes  in strains+timepoints (std of replicates for a gene) divided by mean
+genes_conditions = ClusterAnalyser.merge_genes_conditions(genes=genes, conditions=conditions, matching='Measurment')
+groups=genes_conditions.groupby(['Strain','Time'])
+variation={strain:[] for strain in conditions['Strain'].unique()}
+for group in groups:
+    name=group[0][0]
+    data=group[1].drop(list(conditions.columns),axis=1)
+    std=(data.std()/data.mean()).dropna()
+    variation[name].extend(std)
+plt.boxplot(list(variation.values()))
+plt.gca().set_xticklabels(list(variation.keys()),rotation=90)

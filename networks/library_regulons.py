@@ -34,6 +34,10 @@ from deR.enrichment_library import GO_enrichment, name_genes_entrez
 SCALING = 'minmax'
 LOG = True
 
+# For preparing Orange data
+STRAIN_ORDER = ['AX4','AX4_FD','AX4_PE','AX4_SE', 'MybBGFP', 'ecmARm', 'gtaI', 'cudA', 'dgcA', 'gtaG', 'tagB', 'comH', 'gbfA', 'tgrC1', 'tgrB1',
+                'tgrB1C1', 'gtaC', 'mybB', 'amiB', 'acaA', 'acaAPkaCoe', 'ac3PkaCoe', 'PkaCoe', 'pkaR']
+
 
 class NeighbourCalculator:
     """
@@ -584,7 +588,7 @@ class NeighbourCalculator:
                  'threshold': threshold, 'batches': batch_column, 'MSE': mse,
                  'N pairs 1': len(result_filtered), 'N genes 1': len(gene_names_sub),
                  'N pairs 2': len(result_filtered_test), 'N genes 2': len(gene_names_test),
-                 'F value': f_val, 'p gene overlap':p_gene_overlap})
+                 'F value': f_val, 'p gene overlap': p_gene_overlap})
             if retained is not None:
                 break
         return data_summary
@@ -1994,6 +1998,19 @@ def get_orange_pattern(genes_averaged: pd.DataFrame, group: str) -> pd.DataFrame
     return ClusterAnalyser.pattern_characteristics(data=genes_strain)
 
 
+def sort_strain_data(data:pd.DataFrame):
+    """
+    Sorts a copy of data by strain (as specified in STRAIN_ORDER), Replicate (if present) and then by time.
+    :param data: Data frame with columns Strain, Time and optionally Replicate.
+    """
+    data=data.copy()
+    sort=['Strain','Time']
+    if 'Replicate' in data.columns:
+        sort=['Strain','Replicate','Time']
+    data['Strain'] = pd.Categorical(data['Strain'], categories=STRAIN_ORDER)
+    return data.sort_values(sort)
+
+
 class NeighbourhoodParser:
 
     # Set of methods for parsing neighbourhoods
@@ -2210,5 +2227,3 @@ def point_histogram(data, bins, **plot_args):
     plt.scatter(bin_centers, n, **plot_args)
     # For non filled hist
     # plt.hist(x, bins=50, histtype = 'step', fill = None)
-
-

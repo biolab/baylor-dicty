@@ -30,9 +30,10 @@ def plot_genegroup_similarity(retained_genes_dict, splitby='Strain', jaccard_or_
     replicates = list(retained_genes_dict.keys())
     # Calculates similarities between retained genes of different samples
     dist_arr = []
-    hypergeom_test = Hypergeometric(n_all_genes)
-    min_p = 10 ** -323.6
-    max_sim = -np.log10(min_p)
+    if not jaccard_or_p:
+        hypergeom_test = Hypergeometric(n_all_genes)
+        min_p = 10 ** -323.6
+        max_sim = -np.log10(min_p)
     for idx, rep1 in enumerate(replicates[:-1]):
         for rep2 in replicates[idx + 1:]:
             genes1 = set(retained_genes_dict[rep1])
