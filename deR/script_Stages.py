@@ -57,10 +57,11 @@ for name,data_rep in plot_data.groupby('Replicate'):
     data_rep=data_rep.sort_values('Time')
     group=data_rep['Group'].values[0]
     ax.plot(data_rep['x'],data_rep['y'],color=colours[group],alpha=0.5,linewidth=0.5)
+    ax.text(data_rep['x'][-1],data_rep['y'][-1],data_rep['Replicate'][0], fontsize=6)
 ax.axis('off')
 patchList = []
 for name,colour in colours.items():
         data_key = mpatches.Patch(color=colour, label=name,alpha=0.5)
         patchList.append(data_key)
-ax.legend(handles=patchList)
-
+ax.legend(handles=patchList,title="Group")
+fig.suptitle("t-SNE of measurements. Size denotes time; replicate's progression is market with a line.")
