@@ -529,6 +529,24 @@ genes_orange_avg_scaled2 = genes_orange_avg_scaled2 / genes_avg_percentile
 genes_orange_avg_scaled2[['Time', 'Group']] = genes_orange_avg[['Time', 'Group']]
 genes_orange_avg_scaled2.to_csv(dataPathSaved + 'genes_averaged_orange_scale' + str(percentile)[2:] + 'percentile.tsv',
                                 sep='\t')
+# Bound at max 0.1 (to remove outliers)
+max_val=0.1
+genes_orange_avg_scaled2_bounded=genes_orange_avg_scaled2.drop(['Time', 'Strain'], axis=1)
+genes_orange_avg_scaled2_bounded[genes_orange_avg_scaled2_bounded>max_val]=max_val
+genes_orange_avg_scaled2_bounded[['Time','Strain']]=genes_orange_avg_scaled2[['Time', 'Strain']]
+# Add strain group info
+groups = {'amiB': '1Ag-', 'mybB': '1Ag-', 'acaA': '1Ag-', 'gtaC': '1Ag-',
+          'gbfA': '2LAg', 'tgrC1': '2LAg', 'tgrB1': '2LAg', 'tgrB1C1': '2LAg',
+          'tagB': '3TA', 'comH': '3TA',
+          'ecmARm': '4CD', 'gtaI': '4CD', 'cudA': '4CD', 'dgcA': '4CD', 'gtaG': '4CD',
+          'AX4': '5WT', 'MybBGFP': '5WT',
+          'acaAPkaCoe': '6SFB', 'ac3PkaCoe': '6SFB',
+          'pkaR': '7PD', 'PkaCoe': '7PD'}
+genes_orange_avg_scaled2_bounded['Group']=[groups[strain] for strain in genes_orange_avg_scaled2_bounded['Strain']]
+
+genes_orange_avg_scaled2_bounded.to_csv(dataPathSaved + 'genes_averaged_orange_scale' + str(percentile)[2:] +
+                                        'percentileMax'+str(max_val)+'.tsv',
+                                sep='\t')
 
 # Calculate log2FC=log2(val/max) compared to max WT
 genes_orange_avg_fc = genes_orange_avg.copy()
@@ -1310,12 +1328,18 @@ for batch in set(batches):
     result_inv = neighbour_calculator.neighbours(300, inverse=False, scale='mean0std1', log=True)
     savePickle(pathByStrain + 'kN300_mean0std1_log/' + batch + '.pkl', result_inv)
 
-threshold_dict = {14: 0.93, 16: 0.91, 18: 0.9, 20: 0.9, 24: 0.89, 26: 0.86, 88: 0.83}
-threshold_dict_strain = dict()
-splitted = conditions.groupby('Strain')
-for group in splitted:
-    threshold_dict_strain[group[0]] = threshold_dict[group[1].shape[0]]
+# Extract genes with close neighbours
+# Similarity thresholds
+# threshold_dict = {14: 0.93, 16: 0.91, 18: 0.9, 20: 0.9, 24: 0.89, 26: 0.86, 88: 0.83}
+# threshold_dict_strain = dict()
+# splitted = conditions.groupby('Strain')
+# for group in splitted:
+#    threshold_dict_strain[group[0]] = threshold_dict[group[1].shape[0]]
+threshold_dict_strain=pd.read_table('/home/karin/Documents/timeTrajectories/data/regulons/selected_genes/thresholds/strainThresholds_k2_m0s1log_best0.3.tsv',sep='\t')
+# Here is another round around threshold as otherwise gets converted to longer float
+threshold_dict_strain={data['Strain']:np.round(data['Threshold'],3) for row,data in threshold_dict_strain.iterrows()}
 
+# Extract genes from strains and merge into a single amtrix
 files = [f for f in glob.glob(pathByStrain + 'kN300_mean0std1_log/' + "*.pkl")]
 n_genes = genes.shape[0]
 genes_dict = dict(zip(genes.index, range(n_genes)))
@@ -1335,9 +1359,80 @@ merged_results = pd.DataFrame(merged_results, index=genes.index, columns=genes.i
 
 merged_results.to_csv(pathByStrain + 'kN300_mean0std1_log/' + 'mergedGenes.tsv', sep='\t')
 
+# Filter to best gene candidates (have a close neighbour across many strains)
 genemax = merged_results.max()
 remove_genes = genemax.loc[genemax < 18].index
 merged_results_filtered = merged_results.drop(index=remove_genes, columns=remove_genes)
 
 merged_results_filtered.to_csv(pathByStrain + 'kN300_mean0std1_log/' + 'mergedGenes_min18.tsv', sep='\t')
 sb.clustermap(merged_results_filtered, yticklabels=False, xticklabels=False)
+
+# *******************************
+# ********* Interaction based similarity threshold
+# Find similarity threshold based on known interactions
+
+# Rename the gene names in the String file - this collapses multiple proteins to single genes
+interactions = pd.read_table('/home/karin/Documents/timeTrajectories/data/44689.protein.links.detailed.v11.0.txt',
+                             sep=' ')
+protein_names = pd.read_table('/home/karin/Documents/timeTrajectories/data/DDB-GeneID-UniProt.txt')
+protein_gene_names = dict(zip(protein_names['DDB ID'], protein_names['DDB_G ID']))
+
+
+def rename_stringdb(protein_names):
+    gene_names = []
+    for name in protein_names:
+        name = name.replace('44689.', '')
+        if name in protein_gene_names.keys():
+            gene_names.append(protein_gene_names[name])
+        else:
+            gene_names.append(np.nan)
+    return gene_names
+
+
+interactions['protein1'] = rename_stringdb(interactions['protein1'])
+interactions['protein2'] = rename_stringdb(interactions['protein2'])
+
+# Remove any rows with unnamed genes
+interactions = interactions.dropna()
+
+# Remove any rows that have same gene as protein1 and protein2 due to conversion of names from gene to protein
+interactions = interactions[interactions['protein1'] != interactions['protein2']]
+
+# Remove repeated rows - same protein pair in multiple rows; retain row with maximal combined_score
+pairs = dict()
+remove = set()
+for idx, row in interactions.iterrows():
+    pair = [row['protein1'], row['protein2']]
+    pair.sort()
+    pair = tuple(pair)
+    score = row['combined_score']
+    if pair not in pairs.keys():
+        pairs[pair] = (score, idx)
+    else:
+        max_score, idx_max = pairs[pair]
+        if max_score < score:
+            remove.add(idx_max)
+            pairs[pair] = (score, idx)
+        else:
+            remove.add(idx)
+
+interactions = interactions.drop(remove)
+
+# Save renamed interactions
+interactions.to_csv('/home/karin/Documents/timeTrajectories/data/44689.protein.links.detailed.v11.0.genenames.txt',
+                    sep='\t', index=False)
+# Load renamed
+interactions = pd.read_table(
+    '/home/karin/Documents/timeTrajectories/data/44689.protein.links.detailed.v11.0.genenames.txt')
+
+# Extract high confidence interactions
+confident = interactions[interactions['combined_score'] > 700]
+confident.to_csv(
+    '/home/karin/Documents/timeTrajectories/data/44689.protein.links.detailed.v11.0.genenames.highconfidence.txt',
+    sep='\t', index=False)
+
+# Remove pairs where a member is not in genes
+confident_present = confident[confident[['protein1', 'protein2']].isin(genes.index.values).all(axis=1)]
+confident_present.to_csv(
+    '/home/karin/Documents/timeTrajectories/data/44689.protein.links.detailed.v11.0.genenames_present.highconfidence.txt',
+    sep='\t', index=False)

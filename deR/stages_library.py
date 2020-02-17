@@ -5,6 +5,7 @@ import pandas as pd
 
 from orangecontrib.bioinformatics.utils.statistics import Hypergeometric
 from Orange.clustering.louvain import jaccard
+from scipy.optimize import curve_fit
 
 GROUPS = {'amiB': '1Ag-', 'mybB': '1Ag-', 'acaA': '1Ag-', 'gtaC': '1Ag-',
           'gbfA': '2LAg', 'tgrC1': '2LAg', 'tgrB1': '2LAg', 'tgrB1C1': '2LAg',
@@ -88,3 +89,12 @@ def group_gene_heatmap(genes_df, groups: dict = GROUPS, mode: str = 'sum'):
     elif mode == 'average':
         by_group = genes_df.groupby(by=groups, axis=0).mean()
     return by_group
+
+
+def sigmoid_fit(x,y):
+    p0 = [max(y), np.median(x), 1, min(y)]  # initial guess
+    popt, pcov = curve_fit(sigmoid, x, y, p0)
+
+def sigmoid(x, L, x0, k, b):
+    y = L / (1 + np.exp(-k * (x - x0))) + b
+    return (y)
