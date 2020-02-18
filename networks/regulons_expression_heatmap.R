@@ -64,7 +64,7 @@ max_expression<-max(expressions)
 #** Expression colours
 col = colorRamp2(c(min_expression,mean(c(min_expression,max_expression)),max_expression), c( "#440154FF", "#1F968BFF",'#FDE725FF'))
 first=TRUE
-for (cluster in clusters[1:20]){
+for (cluster in clusters){
   print(cluster)
   genes=as.character(regulons[regulons$Cluster==cluster,'Gene'])
   heatmap=Heatmap(t(avg_expression[,genes]),cluster_columns = FALSE,show_column_names = FALSE,
