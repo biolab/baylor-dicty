@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import scipy.cluster.hierarchy as hc
 import pandas as pd
+from statistics import mean
 
 from orangecontrib.bioinformatics.utils.statistics import Hypergeometric
 from Orange.clustering.louvain import jaccard
@@ -92,9 +93,20 @@ def group_gene_heatmap(genes_df, groups: dict = GROUPS, mode: str = 'sum'):
 
 
 def sigmoid_fit(x,y):
+    x=np.array(x)
+    y=np.array(y)
+    x_diff=(x.max()-x.min())*0.1
+    #y_diff_01=(y.max()-y.min())*0.1
+    bounds=([y.min(),x.min()+x_diff,-np.inf,y.min()],[y.max(),x.max()-x_diff,np.inf,y.max()])
     p0 = [max(y), np.median(x), 1, min(y)]  # initial guess
-    popt, pcov = curve_fit(sigmoid, x, y, p0)
+    return curve_fit(sigmoid, x, y, p0,bounds=bounds)
 
 def sigmoid(x, L, x0, k, b):
     y = L / (1 + np.exp(-k * (x - x0))) + b
     return (y)
+
+def relative_cost(x,y,function,params):
+    yp=[]
+    for xi in x:
+        yp.append(function(xi,*params))
+    return mean([((ypi-yi)/yi)**2 for ypi,yi in zip(yp,y)])
