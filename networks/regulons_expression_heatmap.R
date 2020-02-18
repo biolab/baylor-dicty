@@ -16,10 +16,13 @@ path_regulons='/home/karin/Documents/timeTrajectories/data/regulons/'
 #** three additional comlumns: Time, Strain, and Group (meaning strain group)
 avg_expression=read.table(paste(path_regulons,"genes_averaged_orange_scale99percentileMax0.1.tsv",sep=''),
                           header=TRUE,row.names=1, sep="\t")
-#** Regulon groups tab file: First column lists genes (read in as rownames) and 
+#** Regulon groups tab file: First column lists genes and 
 #** a column named Cluster specifying cluster/regulon of each gene
 regulons=read.table(paste(path_clusters,"mergedGenes_min18_clusters_larger.tab",sep=''),
-                    header=TRUE,row.names=1, sep="\t")
+                    header=TRUE, sep="\t")
+#Name the first column (should contain genes
+colnames(regulons)[1]<-'Gene'
+
 
 # Get clusters - list unique and sort
 clusters=unique(regulons$Cluster)
@@ -61,9 +64,9 @@ max_expression<-max(expressions)
 #** Expression colours
 col = colorRamp2(c(min_expression,mean(c(min_expression,max_expression)),max_expression), c( "#440154FF", "#1F968BFF",'#FDE725FF'))
 first=TRUE
-for (cluster in clusters){
+for (cluster in clusters[1:20]){
   print(cluster)
-  genes=rownames(regulons)[regulons$Cluster==cluster]
+  genes=as.character(regulons[regulons$Cluster==cluster,'Gene'])
   heatmap=Heatmap(t(avg_expression[,genes]),cluster_columns = FALSE,show_column_names = FALSE,
                   show_row_names = FALSE, col=col,column_title=NULL, 
                   #The as.character ensures that the code works with numeric clusters
