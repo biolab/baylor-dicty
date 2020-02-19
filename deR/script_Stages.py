@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 from sklearn.preprocessing import minmax_scale
 import matplotlib.patches as mpatches
-from scipy.stats import rankdata
+from scipy.stats import rankdata, mannwhitneyu
 
 from networks.library_regulons import ClusterAnalyser, NeighbourCalculator, make_tsne
 from networks.functionsDENet import loadPickle
@@ -87,48 +87,73 @@ for strain_data in sims_dict_sim.values():
 similarity_means = pd.DataFrame(index=sel_genes, columns=sims_dict_sim.keys())
 for strain, data in sims_dict_sim.items():
     means = data.loc[similarity_means.index, :].mean(axis=1)
-    similarity_means[strain]=means
+    similarity_means[strain] = means
 # Get overall rank means
 # Groupby groups all of the same rank and then averages values for rank
 rank_mean = similarity_means.stack().groupby(similarity_means.rank(method='first').stack().astype(int)).mean()
 # Normalise values
 # Find (average) rank and map values to rank-specific values. If between 2 ranks uses their average
-rank_df=similarity_means.rank(method='average')
-quantile_normalised=np.empty(rank_df.shape)
-quantile_normalised[:]=np.nan
+rank_df = similarity_means.rank(method='average')
+quantile_normalised = np.empty(rank_df.shape)
+quantile_normalised[:] = np.nan
 for i in range(rank_df.shape[0]):
     for j in range(rank_df.shape[1]):
-        rank=rank_df.iloc[i,j]
+        rank = rank_df.iloc[i, j]
         if rank % 1 == 0:
-            new_value=rank_mean[rank]
+            new_value = rank_mean[rank]
         else:
-            rank_low=rank//1
-            rank_high=rank_low+1
-            new_value=(rank_mean[rank_low]+rank_mean[rank_high])/2
-        quantile_normalised[i,j]=new_value
-quantile_normalised=pd.DataFrame(quantile_normalised,index=rank_df.index,columns=rank_df.columns)
+            rank_low = rank // 1
+            rank_high = rank_low + 1
+            new_value = (rank_mean[rank_low] + rank_mean[rank_high]) / 2
+        quantile_normalised[i, j] = new_value
+quantile_normalised = pd.DataFrame(quantile_normalised, index=rank_df.index, columns=rank_df.columns)
 
+# # Fit sigmoids to find if similarities follow the shape (two plateaus) - not producing ok results
+#
+# fit_data = []
+# could_not_fit = 0
+# for gene in quantile_normalised.index:
+#     x = []
+#     y = []
+#     for strain in quantile_normalised.columns:
+#         group = GROUPS[strain]
+#         if group in GROUP_X.keys():
+#             x_pos = GROUP_X[group]
+#             avg_similarity = quantile_normalised.loc[gene, strain]
+#             x.append(x_pos)
+#             y.append(avg_similarity)
+#     try:
+#         # Sometimes params can not be estimated
+#         params = sigmoid_fit(x=x, y=y)[0]
+#         cost = relative_cost(x=x, y=y, function=sigmoid, params=params)
+#         fit_data.append({'Gene': gene, 'Cost': cost, 'L': params[0], 'x0': params[1], 'k': params[2], 'b': params[3]})
+#     except:
+#         could_not_fit = could_not_fit + 1
+# fit_data = pd.DataFrame(fit_data)
 
-# Fit sigmoids
-group_x_dict = {'1Ag-': 1, '2LAg': 2, '3TA': 3, '4CD': 4,'6SFB':5, '5WT': 6, '7PD': 7}
+# *** Mann–Whitney U for omparing similarities distribution between strain groups
+# How to decide if strain groes into group 1 vs 2 based on group_x_dict
+# Tells which comparison on the strain developmental timeline to make
+# First element group1, second group2, third comparison name
+group_splits = [
+    ([1], [2, 3, 4, 6, 7], 1),
+    ([1, 2], [3, 4, 6, 7], 2),
+    ([1, 2, 3], [4, 6, 7], 3),
+    ([1, 2, 3, 4], [6, 7], 4)
+]
 
-fit_data = []
-could_not_fit = 0
+results = []
 for gene in quantile_normalised.index:
-    x = []
-    y = []
-    for strain in quantile_normalised.columns:
-        group = GROUPS[strain]
-        if group in group_x_dict.keys():
-            x_pos = group_x_dict[group]
-            avg_similarity = quantile_normalised.loc[gene, strain]
-            x.append(x_pos)
-            y.append(avg_similarity)
-    try:
-        # Sometimes params can not be estimated
-        params = sigmoid_fit(x=x, y=y)[0]
-        cost = relative_cost(x=x, y=y, function=sigmoid, params=params)
-        fit_data.append({'Gene': gene, 'Cost': cost, 'L': params[0], 'x0': params[1], 'k': params[2], 'b': params[3]})
-    except:
-        could_not_fit = could_not_fit + 1
-fit_data = pd.DataFrame(fit_data)
+    for comparison in group_splits:
+        strains1 = GROUP_DF[GROUP_DF['X'].isin(comparison[0])]['Strain']
+        strains2 = GROUP_DF[GROUP_DF['X'].isin(comparison[1])]['Strain']
+        values1 = quantile_normalised.loc[gene, strains1].values
+        values2 = quantile_normalised.loc[gene, strains2].values
+        result = mannwhitneyu(values1, values2, alternative='two-sided')
+        m1 = values1.mean()
+        m2 = values2.mean()
+        results.append({'Gene': gene, 'Comparison': comparison[2], 'U': result[0], 'p': result[1],
+                        'mean1': m1, 'mean2': m2, 'difference': m2 - m1})
+results = pd.DataFrame(results)
+
+top_diff = []

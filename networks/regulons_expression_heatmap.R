@@ -20,7 +20,7 @@ avg_expression=read.table(paste(path_regulons,"genes_averaged_orange_scale99perc
 #** a column named Cluster specifying cluster/regulon of each gene
 regulons=read.table(paste(path_clusters,"mergedGenes_min18_clusters_larger.tab",sep=''),
                     header=TRUE, sep="\t")
-#Name the first column (should contain genes)
+#Name the first column (should contain genes
 colnames(regulons)[1]<-'Gene'
 
 

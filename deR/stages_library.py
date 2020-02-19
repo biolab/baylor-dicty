@@ -16,6 +16,13 @@ GROUPS = {'amiB': '1Ag-', 'mybB': '1Ag-', 'acaA': '1Ag-', 'gtaC': '1Ag-',
           'acaAPkaCoe': '6SFB', 'ac3PkaCoe': '6SFB',
           'pkaR': '7PD', 'PkaCoe': '7PD'}
 
+GROUP_X = {'1Ag-': 1, '2LAg': 2, '3TA': 3, '4CD': 4, '6SFB': 5,  '5WT': 6, '7PD': 7}
+
+GROUP_DF=[]
+for strain,group in GROUPS.items():
+    GROUP_DF.append({'Strain':strain, 'Group':group,'X':GROUP_X[group]})
+GROUP_DF=pd.DataFrame(GROUP_DF)
+
 
 def plot_genegroup_similarity(retained_genes_dict, splitby='Strain', jaccard_or_p=True, n_all_genes: int = None,
                               group_colours=None, add_title=''):
