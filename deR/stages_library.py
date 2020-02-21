@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import scipy.cluster.hierarchy as hc
 import pandas as pd
 from statistics import mean
-from scipy.stats import mannwhitneyu
+from scipy.stats import mannwhitneyu, ttest_ind
 from statsmodels.stats.multitest import multipletests
 
 from orangecontrib.bioinformatics.utils.statistics import Hypergeometric
@@ -80,7 +80,10 @@ def plot_genegroup_similarity(retained_genes_dict, splitby='Strain', jaccard_or_
 
 def gene_heatmap(genes, genes_dict):
     """
-    Make DF
+    Make DF with selected genes of each strain.
+    :param genes: DF with genes in index - uses index to make columns of resulting DF.
+    :param genes_dict: Keys are strains (used for index in resulting DF) and values are lists of selected genes.
+    :return: DF with strains in rows, genes in columns. Filled with 0 if not selected and 1 if selected.
     """
     n_genes = len(genes.index)
     n_strains = len(genes_dict.keys())
@@ -97,6 +100,13 @@ def gene_heatmap(genes, genes_dict):
 
 
 def group_gene_heatmap(genes_df, groups: dict = GROUPS, mode: str = 'sum'):
+    """
+    Group DF of selected genes from gene_heatmap by (strain) groups.
+    :param genes_df: Result from gene_heatmap, strains in rows, genes in columns.
+    :param groups: Dict with indices as keys and values representing groups
+    :param mode: Merge with summing or averaging
+    :return: Selected genes DF with groups in rows and genes in columns.
+    """
     if mode == 'sum':
         by_group = genes_df.groupby(by=groups, axis=0).sum()
     elif mode == 'average':
@@ -105,6 +115,11 @@ def group_gene_heatmap(genes_df, groups: dict = GROUPS, mode: str = 'sum'):
 
 
 def sigmoid_fit(x, y):
+    """
+    Fit sigmoid function to x and y.
+    :param x , y: Sequences of x and y values that can be transformed into np.array
+    :return: Result of curve_fit with parameters as in sigmoid (L, x0, k, b) function
+    """
     x = np.array(x)
     y = np.array(y)
     x_diff = (x.max() - x.min()) * 0.1
@@ -114,12 +129,27 @@ def sigmoid_fit(x, y):
     return curve_fit(sigmoid, x, y, p0, bounds=bounds)
 
 
-def sigmoid(x, L, x0, k, b):
+def sigmoid(x: float, L: float, x0: float, k: float, b: float):
+    """
+    Calculate value (y) of sigmoid function based on x and parameters
+    :param x: Single X value
+    :param L, x0, k, b: used to fit sigmoid y = L / (1 + np.exp(-k * (x - x0))) + b
+        L,b - regulate y span, k - steepness of the step, x0 - regulates x position of y=0.5
+    :return: y value at that x.
+    """
     y = L / (1 + np.exp(-k * (x - x0))) + b
     return (y)
 
 
-def relative_cost(x, y, function, params):
+def relative_cost(x: list, y: list, function, params: list):
+    """
+    Relative MSE of function fit.
+    :param x,y: x and y values.
+    :param function: Function used to predict y based on x position and parameters.
+        Accepts one x at a time and returns the y. f(x,params) -> y
+    :param params: Params in order as accepted by the function, excluding x param of function
+    :return: Relative MSE, each error (difference between predicted and true y)  is divided by true y before squaring
+    """
     yp = []
     for xi in x:
         yp.append(function(xi, *params))
@@ -127,6 +157,21 @@ def relative_cost(x, y, function, params):
 
 
 def similarity_mean_df(sims_dict: dict, index: list, replace_na_sims: float = None, replace_na_mean: str = None):
+    """
+    Merges gene neighbour similarities of multiple strains into single DF. Transform similarities dict
+        (strains as keys and values named similarity matrices as from pynndescent)
+        into a table where similarities to all neighbours of a gene are averaged for each gene within a strain.
+    :param sims_dict: Dict with strains qas keys and values similarity DFs as in pynndescent but named - index is
+        gene names, values are similarities to closest N neighbours (0 to N-1 in columns)
+    :param index: All genes to be included into the DF (as index).
+    :param replace_na_sims: If np.nan are present in similariti DFs form sins_dict replace them with replace_na_sims
+        before averaging. If none does not use replacement.
+    :param replace_na_mean: If np.nan are present in means obtained for each gene replace them (e. g. because more genes
+        are in index than in individual sims_dict). Options: 'min' replace with min mean of that strain/key,
+        'zero' replace with zero.
+    :return: DF with genes in row and sims_dict keys in columns. For each gene,key pair the neighbours in each sims_dict
+        key  were averaged, so that each gene has one averaged value per sims_dict key.
+    """
     similarity_means = pd.DataFrame(index=index, columns=sims_dict.keys())
     for strain, data in sims_dict.items():
         if replace_na_sims is not None:
@@ -141,6 +186,14 @@ def similarity_mean_df(sims_dict: dict, index: list, replace_na_sims: float = No
 
 
 def quantile_normalise(similarity_means):
+    """
+    Quantile normalise DF with samples in columns and values in rows, normalise columns to have same distribution.
+    # https://stackoverflow.com/a/41078786/11521462
+    Final mapping of sample ranks to rank means is done based on average rank.
+    :param similarity_means: DF with samples in columns and values in rows.
+    :return: DF of same shape as similarity_means, but with quantile normalised values for each columns.
+    """
+
     # Groupby groups all of the same rank and then averages values for rank
     rank_mean = similarity_means.stack().groupby(similarity_means.rank(method='first').stack().astype(int)).mean()
     # Normalise values
@@ -161,7 +214,26 @@ def quantile_normalise(similarity_means):
     return pd.DataFrame(quantile_normalised, index=rank_df.index, columns=rank_df.columns)
 
 
-def compare_sims_groups(quantile_normalised: pd.DataFrame, group_splits: list, test_params=None):
+def compare_gene_scores(quantile_normalised: pd.DataFrame, group_splits: list, test: str, test_params={}):
+    """
+    Compare gene scores across strain groups. For each gene there is a score (e.g. avg similarity to neighbours) in each
+    strain that belongs to a strain group. Compare scores between groups to find genes that have lower/higher score in
+    some set of groups.
+    :param quantile_normalised: DF with strains in columns and genes in rows. For each gene in each strain there is a
+        score. Strain groups are used as specified in GROUP_DF.
+    :param group_splits: List of which comparisons between groups to perform. Each comparison is specified as a tupple.
+        First tow elements are list of strain groups for comparison (e.g. strain groups in element1 vs strain groups in
+        element 2). The strain groups must be given as in X column of GROUP_DF. The third element is name of the
+        comparison that will be reported.
+    :param test: 'u' for mannwhitneyu or 't' for t-test.
+    :param test_params: Add parameters to the used test (scipy mannwhitneyu or scpiy ttest_ind).
+        E.g. two-sided or lower for mannwhitneyu.
+    :return: DF with columns: Gene, Comparison (as named in group_splits), Statistic (test statistic), p (p value), FDR
+        (across whole results DF), Mean1, Mean2 (mean of each of two groups from group_splits), Difference
+        (mean2-mean1), Separation (How well does the comparison separate the two groups based on means of border
+        elements - min of two differences: mean2-mean of the last strain group in comparison group1 and  mean of first
+        strain group in comparison group2 -mean1; last and first used as specified in group_splits).
+    """
     results = []
     for gene in quantile_normalised.index:
         for comparison in group_splits:
@@ -169,8 +241,10 @@ def compare_sims_groups(quantile_normalised: pd.DataFrame, group_splits: list, t
             strains2 = GROUP_DF[GROUP_DF['X'].isin(comparison[1])]['Strain']
             values1 = quantile_normalised.loc[gene, strains1].values
             values2 = quantile_normalised.loc[gene, strains2].values
-            result = mannwhitneyu(values1, values2, **test_params)
-
+            if test == 'u':
+                result = mannwhitneyu(values1, values2, **test_params)
+            elif test == 't':
+                result = ttest_ind(values1, values2, **test_params)
             m1 = values1.mean()
             m2 = values2.mean()
 
@@ -184,8 +258,8 @@ def compare_sims_groups(quantile_normalised: pd.DataFrame, group_splits: list, t
             dif_2 = mean_first2 - m1
             separation = min([dif_1, dif_2], key=abs)
 
-            results.append({'Gene': gene, 'Comparison': comparison[2], 'U': result[0], 'p': result[1],
-                            'mean1': m1, 'mean2': m2, 'difference': m2 - m1, 'separation': separation})
+            results.append({'Gene': gene, 'Comparison': comparison[2], 'Statistic': result[0], 'p': result[1],
+                            'Mean1': m1, 'Mean2': m2, 'Difference': m2 - m1, 'Separation': separation})
 
     results = pd.DataFrame(results)
     # Adjust all pvals to FDR

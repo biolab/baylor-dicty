@@ -88,10 +88,10 @@ for rep, data in genes_rep.items():
     genes_zero_count[strain] = genes_zero_count[strain] + data
 genes_zero_count.to_csv(dataPath + 'zero_replicates_count.tsv', sep='\t')
 # ***************************
-# ** Similarity to closest neighbours in strains
-# Put 'avg similarity' of all 0 genes to lowest similarity of that strain (many genes should be all 0 but are not -
-# erroneous mapping (not consistent shape between replicates). The low similarities may be results of unexpressed genes.
-# Also do that for genes with at least one replicate all 0.
+# **** Gene profile similarity to closest gene neighbours in strains
+#
+
+
 # All these genes are removed in extraction of closest neighbours
 NEIGHBOURS = 6
 sims_dict = dict()
@@ -168,9 +168,10 @@ sims_dict = loadPickle(
 #    genes_strain = set(strain_data.index.values)
 #    sel_genes = sel_genes & genes_strain
 
-# Quantile normalise similarities in strains (to get them to the same scale) based on avg across strains
-# https://stackoverflow.com/a/41078786/11521462
-# Get means of gene similarities. If similarity was not calculated for a gene (because it had 0 expression), set it to
+# Put 'avg similarity' of all 0 genes to lowest similarity of that strain (many genes should be all 0 but are not -
+# erroneous mapping (not consistent shape between replicates). The low similarities may be results of unexpressed genes.
+# Also do that for genes with at least one replicate all 0.
+## Get means of gene similarities. If similarity was not calculated for a gene (because it had 0 expression), set it to
 # min avg similarity
 similarity_means = similarity_mean_df(sims_dict=sims_dict, index=genes.index, replace_na_sims=None,
                                       replace_na_mean='min')
@@ -180,6 +181,7 @@ quantile_normalised = quantile_normalise(similarity_means=similarity_means)
 quantile_normalised.to_csv(
     pathSelGenes + 'simsQuantileNormalised_newGenes_noAll-removeSelf-removeZeroRep_simsDict_scalemean0std1_logTrue_kN6_splitStrain.tsv',
     sep='\t')
+# quantile_normalised=pd.read_table(pathSelGenes + 'simsQuantileNormalised_newGenes_noAll-removeSelf-removeZeroRep_simsDict_scalemean0std1_logTrue_kN6_splitStrain.tsv', index_col=0)
 
 # # Fit sigmoids to find if similarities follow the shape (two plateaus) - not producing ok results
 #
@@ -204,8 +206,8 @@ quantile_normalised.to_csv(
 #         could_not_fit = could_not_fit + 1
 # fit_data = pd.DataFrame(fit_data)
 
-# *** Mann–Whitney U for omparing similarities distribution between strain groups
-# How to decide if strain groes into group 1 vs 2 based on group_x_dict
+# *** Mann–Whitney U for comparing similarities distribution between strain groups
+# How to decide if strain goes into group 1 vs 2 based on group_x_dict
 # Tells which comparison on the strain developmental timeline to make
 # First element group1, second group2, third comparison name
 group_splits = [
@@ -215,8 +217,10 @@ group_splits = [
     ([1, 2, 3, 4], [6, 7], 4)
 ]
 
-results = compare_sims_groups(quantile_normalised=quantile_normalised, group_splits=group_splits,
-                              test_params={'alternative': 'two-sided'})
+#results = compare_gene_scores(quantile_normalised=quantile_normalised, group_splits=group_splits,test='u',
+ #                             test_params={'alternative': 'two-sided'})
+
+results = compare_gene_scores(quantile_normalised=quantile_normalised, group_splits=group_splits,test='t')
 
 results.to_csv(
     pathSelGenes + 'comparisonsAvgSims_newGenes_noAll-removeSelf-removeZeroRep_simsDict_scalemean0std1_logTrue_kN6_splitStrain.tsv',
@@ -234,8 +238,8 @@ quantile_normalised_WT.to_csv(
     pathSelGenes + 'simsQuantileNormalised_AX4basedNeigh_newGenes_noAll-removeZeroRep_simsDict_scalemean0std1_logTrue_kN11_splitStrain.tsv',
     sep='\t')
 
-results_WT = compare_sims_groups(quantile_normalised=quantile_normalised_WT, group_splits=group_splits,
-                              test_params={'alternative': 'less'})
+results_WT = compare_gene_scores(quantile_normalised=quantile_normalised_WT, group_splits=group_splits,
+                                 test_params={'alternative': 'less'})
 
 results_WT.to_csv(
     pathSelGenes + 'comparisonsAvgSims_AX4basedNeigh_newGenes_noAll-removeZeroRep_simsDict_scalemean0std1_logTrue_kN11_splitStrain.tsv',
