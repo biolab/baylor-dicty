@@ -89,11 +89,8 @@ for rep, data in genes_rep.items():
 genes_zero_count.to_csv(dataPath + 'zero_replicates_count.tsv', sep='\t')
 # ***************************
 # **** Gene profile similarity to closest gene neighbours in strains
-#
-
-
-# All these genes are removed in extraction of closest neighbours
-NEIGHBOURS = 6
+# Genes that are 0 in at least one replicate are removed from extraction of closest neighbours in that strain
+NEIGHBOURS = 11
 sims_dict = dict()
 
 # Split data by strain, scaling and zero filtering is done in neighbours
@@ -116,46 +113,6 @@ for strain, data in splitted.items():
 
 savePickle(pathSelGenes + 'newGenes_noAll-removeSelf-removeZeroRep_simsDict_scalemean0std1_logTrue_kN' +
            str(NEIGHBOURS) + '_splitStrain.pkl', sims_dict)
-# ***** Similarity to closest neighbours of AX4 across strains - do neighbourhoods change
-NEIGHBOURS = 11
-sims_dict_WT = dict()
-# Closest neighbours in AX4
-strain = 'AX4'
-nonzero = genes_zero_count[genes_zero_count[strain] == 0].index
-data = splitted[strain]
-data = data.loc[nonzero, :]
-neighbour_calculator = NeighbourCalculator(genes=data)
-neigh_WT, sims_dict_WT[strain] = neighbour_calculator.neighbours(n_neighbours=NEIGHBOURS, inverse=False,
-                                                                 scale='mean0std1',
-                                                                 log=True,
-                                                                 return_neigh_dist=True, remove_self=True)
-for strain, data in splitted.items():
-    if strain != 'AX4':
-        print(strain)
-        nonzero = set(genes_zero_count[genes_zero_count[strain] == 0].index)
-        genes_WT = set(neigh_WT.index)
-        nonzero = list(nonzero & genes_WT)
-        data = data.loc[nonzero, :]
-        data = pd.DataFrame(
-            NeighbourCalculator.get_index_query(genes=data, inverse=False, scale='mean0std1', log=True)[0],
-            index=data.index, columns=data.columns)
-        n_genes = len(nonzero)
-        similarities = np.empty((n_genes, NEIGHBOURS - 1))
-        similarities[:] = np.nan
-        for idx_gene in range(n_genes):
-            gene = nonzero[idx_gene]
-            neighbours_WT = neigh_WT.loc[gene, :].values
-            for idx_neigh in range(NEIGHBOURS - 1):
-                neigh = neighbours_WT[idx_neigh]
-                if neigh in data.index:
-                    similarities[idx_gene][idx_neigh] = SimilarityCalculator.calc_cosine(data.loc[gene, :],
-                                                                                         data.loc[neigh, :])
-        similarities = pd.DataFrame(similarities, index=nonzero, columns=range(NEIGHBOURS - 1))
-        sims_dict_WT[strain] = similarities
-
-savePickle(
-    pathSelGenes + 'AX4basedNeigh_newGenes-removeZeroRep_neighSimsDict_scalemean0std1_logTrue_kN' + str(NEIGHBOURS) +
-    '_splitStrain.pkl', (neigh_WT, sims_dict_WT))
 
 # **************************
 # ***** Find genes that are more correlated with close neighbours in some strains but not the others
@@ -171,8 +128,8 @@ sims_dict = loadPickle(
 # Put 'avg similarity' of all 0 genes to lowest similarity of that strain (many genes should be all 0 but are not -
 # erroneous mapping (not consistent shape between replicates). The low similarities may be results of unexpressed genes.
 # Also do that for genes with at least one replicate all 0.
-## Get means of gene similarities. If similarity was not calculated for a gene (because it had 0 expression), set it to
-# min avg similarity
+# Get means of gene similarities. If similarity was not calculated for a gene (because it had 0 expression), set it to
+# min avg similarity. Do not set it to 0 as closest neighbours in individual strains are much above 0.
 similarity_means = similarity_mean_df(sims_dict=sims_dict, index=genes.index, replace_na_sims=None,
                                       replace_na_mean='min')
 # Get overall rank means
@@ -206,9 +163,8 @@ quantile_normalised.to_csv(
 #         could_not_fit = could_not_fit + 1
 # fit_data = pd.DataFrame(fit_data)
 
-# *** Mann–Whitney U for comparing similarities distribution between strain groups
-# How to decide if strain goes into group 1 vs 2 based on group_x_dict
-# Tells which comparison on the strain developmental timeline to make
+# *** Mann–Whitney U or t test for comparing similarities distribution between strain groups
+# Below: Tells which comparison on the strain developmental timeline to make
 # First element group1, second group2, third comparison name
 group_splits = [
     ([1], [2, 3, 4, 6, 7], 1),
@@ -217,30 +173,151 @@ group_splits = [
     ([1, 2, 3, 4], [6, 7], 4)
 ]
 
-#results = compare_gene_scores(quantile_normalised=quantile_normalised, group_splits=group_splits,test='u',
- #                             test_params={'alternative': 'two-sided'})
-
-results = compare_gene_scores(quantile_normalised=quantile_normalised, group_splits=group_splits,test='t')
+# results = compare_gene_scores(quantile_normalised=quantile_normalised, group_splits=group_splits,test='u',
+#                             alternative='two-sided')
+test = 't'
+alternative = 'two-sided'
+results = compare_gene_scores(quantile_normalised=quantile_normalised, group_splits=group_splits, test=test,
+                              alternative=alternative)
 
 results.to_csv(
-    pathSelGenes + 'comparisonsAvgSims_newGenes_noAll-removeSelf-removeZeroRep_simsDict_scalemean0std1_logTrue_kN6_splitStrain.tsv',
+    pathSelGenes + 'comparisonsAvgSims_' + test + '-' + alternative + '_newGenes_noAll-removeSelf-removeZeroRep_simsDict_scalemean0std1_logTrue_kN6_splitStrain.tsv',
     sep='\t', index=False)
 
-# ************ Find genes that change neighbourhood compared to AX4
-sims_dict_WT=loadPickle(
+# ***** Extract genes that are potential candidates for deregulation in some strains
+data = pd.read_table(
+    pathSelGenes + 'comparisonsAvgSims_AX4basedNeigh_u-less_newGenes_noAll-removeZeroRep_simsDict_scalemean0std1_logTrue_kN11_splitStrain.tsv',
+    sep='\t')
+# data['Max_mean'] = pd.concat([data['Mean1'], data['Mean2']], axis=1).max(axis=1)
+filtered = data.query('FDR <=0.05 & Separation >=0.3 ')
+filtered_genes = filtered['Gene'].unique()
+genes_dict = dict(zip(filtered_genes, range(len(filtered_genes))))
+comparisons = list(data['Comparison'].unique())
+comparisons.sort()
+comparisons_dict = dict(zip(comparisons, range(len(comparisons))))
+comparison_df = np.zeros((filtered_genes.shape[0], len(comparisons)))
+for row in filtered.iterrows():
+    row = row[1]
+    comparison_df[genes_dict[row['Gene']], comparisons_dict[row['Comparison']]] = 1
+comparison_df = pd.DataFrame(comparison_df, index=filtered_genes, columns=['C' + str(c) for c in comparisons])
+comparison_df.to_csv(
+    pathSelGenes + 'summary_comparisonsAvgSims_AX4basedNeigh_u-less_newGenes_noAll-removeZeroRep_simsDict_scalemean0std1_logTrue_kN11_splitStrain.tsv',
+    sep='\t')
+# ***************
+# # ** Compare close neighbours in AX4 with close neighbours in  other strains
+
+# ***** Similarity to closest neighbours of AX4 across strains
+# In each strain calculate similarity to genes that were identified as closest neighbours in AX4
+# E. g. Do neighbourhoods change?
+NEIGHBOURS = 11
+sims_dict_WT = dict()
+# Closest neighbours in AX4
+strain = 'AX4'
+nonzero = genes_zero_count[genes_zero_count[strain] == 0].index
+data = splitted[strain]
+data = data.loc[nonzero, :]
+neighbour_calculator = NeighbourCalculator(genes=data)
+neigh_WT, sims_dict_WT[strain] = neighbour_calculator.neighbours(n_neighbours=NEIGHBOURS, inverse=False,
+                                                                 scale='mean0std1',
+                                                                 log=True,
+                                                                 return_neigh_dist=True, remove_self=True)
+# Similarity in other strains
+# For individual strains do not include genes that are all 0 in at least one replicate
+for strain, data in splitted.items():
+    if strain != 'AX4':
+        print(strain)
+        nonzero = set(genes_zero_count[genes_zero_count[strain] == 0].index)
+        genes_WT = set(neigh_WT.index)
+        nonzero = list(nonzero & genes_WT)
+        data = data.loc[nonzero, :]
+        data = pd.DataFrame(
+            NeighbourCalculator.get_index_query(genes=data, inverse=False, scale='mean0std1', log=True)[0],
+            index=data.index, columns=data.columns)
+        n_genes = len(nonzero)
+        similarities = np.empty((n_genes, NEIGHBOURS - 1))
+        similarities[:] = np.nan
+        for idx_gene in range(n_genes):
+            gene = nonzero[idx_gene]
+            neighbours_WT = neigh_WT.loc[gene, :].values
+            for idx_neigh in range(NEIGHBOURS - 1):
+                neigh = neighbours_WT[idx_neigh]
+                if neigh in data.index:
+                    similarities[idx_gene][idx_neigh] = SimilarityCalculator.calc_cosine(data.loc[gene, :],
+                                                                                         data.loc[neigh, :])
+        similarities = pd.DataFrame(similarities, index=nonzero, columns=range(NEIGHBOURS - 1))
+        sims_dict_WT[strain] = similarities
+
+savePickle(
+    pathSelGenes + 'AX4basedNeigh_newGenes-removeZeroRep_neighSimsDict_scalemean0std1_logTrue_kN' + str(NEIGHBOURS) +
+    '_splitStrain.pkl', (neigh_WT, sims_dict_WT))
+
+# ************ Find genes  for which neighbours in AX4 do not represent close neighbours (similar as above
+group_splits = [
+    ([1], [2, 3, 4, 6, 7], 1),
+    ([1, 2], [3, 4, 6, 7], 2),
+    ([1, 2, 3], [4, 6, 7], 3),
+    ([1, 2, 3, 4], [6, 7], 4)
+]
+sims_dict_WT = loadPickle(
     pathSelGenes + 'AX4basedNeigh_newGenes-removeZeroRep_neighSimsDict_scalemean0std1_logTrue_kN11_splitStrain.pkl')[1]
 
+# Some neighbours and genes are nan as they had a replicate with all 0 expression.
+# Replace np.nans in neighbours  (before mean calculation) or in gene means (query had all 0 replicate) with 0.
+# Compared to above where neighbours from individual strains are used here the similarities to AX4 neighbours do drop
+# to 0 or below so replacing nan with 0  will not lead to overly skewed (previously nan) values.
 similarity_means_WT = similarity_mean_df(sims_dict=sims_dict_WT, index=genes.index, replace_na_sims=0,
-                                      replace_na_mean='zero')
+                                         replace_na_mean='zero')
 quantile_normalised_WT = quantile_normalise(similarity_means=similarity_means_WT)
 
 quantile_normalised_WT.to_csv(
     pathSelGenes + 'simsQuantileNormalised_AX4basedNeigh_newGenes_noAll-removeZeroRep_simsDict_scalemean0std1_logTrue_kN11_splitStrain.tsv',
     sep='\t')
-
-results_WT = compare_gene_scores(quantile_normalised=quantile_normalised_WT, group_splits=group_splits,
-                                 test_params={'alternative': 'less'})
+# Pre select genes that are above a relative threshold in WT and PD strains (that develop)
+genes_filtered = set(similarity_means_WT.index)
+for strain in GROUP_DF[GROUP_DF['X'] > 5]['Strain']:
+    threshold = np.quantile(similarity_means_WT[strain], 0.4)
+    genes_filtered = genes_filtered & set(similarity_means_WT[similarity_means_WT[strain] >= threshold].index)
+test = 'u'
+alternative = 'less'
+results_WT = compare_gene_scores(quantile_normalised=quantile_normalised_WT.loc[genes_filtered, :],
+                                 group_splits=group_splits, test=test,
+                                 alternative=alternative)
 
 results_WT.to_csv(
-    pathSelGenes + 'comparisonsAvgSims_AX4basedNeigh_newGenes_noAll-removeZeroRep_simsDict_scalemean0std1_logTrue_kN11_splitStrain.tsv',
+    pathSelGenes + 'comparisonsAvgSims_AX4basedNeigh_' + test + '-' + alternative + '_newGenes_noAll-removeZeroRep_simsDict_scalemean0std1_logTrue_kN11_splitStrain.tsv',
     sep='\t', index=False)
+
+# ****** For each strain/gene compare similarities to neighbours from AX4 and closest neighbours in the strain
+# Similarities to neighbours from AX4 - do not quantile normalise !!!!!
+sims_dict_WT = loadPickle(
+    pathSelGenes + 'AX4basedNeigh_newGenes-removeZeroRep_neighSimsDict_scalemean0std1_logTrue_kN11_splitStrain.pkl')[1]
+similarity_means_WT = similarity_mean_df(sims_dict=sims_dict_WT, index=genes.index, replace_na_sims=0,
+                                         replace_na_mean=None)
+
+# Similarities to neighbours from individual strains - do not quantile normalise as changes scale compared to above
+sims_dict = loadPickle(
+    pathSelGenes + 'newGenes_noAll-removeSelf-removeZeroRep_simsDict_scalemean0std1_logTrue_kN11_splitStrain.pkl')
+
+similarity_means = similarity_mean_df(sims_dict=sims_dict, index=genes.index, replace_na_sims=None,
+                                      replace_na_mean=None)
+threshold_dict_strain = dict()
+for strain in similarity_means.columns:
+    threshold_dict_strain[strain] = np.quantile(similarity_means[strain][similarity_means[strain].notna()], 0.3)
+
+genes_AX4 = set(similarity_means[similarity_means['AX4'] >= threshold_dict_strain['AX4']].index)
+diffs_df = pd.DataFrame()
+for strain in conditions['Strain'].unique():
+    # Has genes non-rep-zero in strain
+    # Has genes non-rep-zero in strain and AX4 (less genes than sims_strain)
+    strain_genes = set(sims_dict_WT[strain].index)
+    strain_genes = list(strain_genes & genes_AX4)
+    x = GROUP_DF[GROUP_DF['Strain'] == strain]['X'].values[0]
+    n_genes = len(strain_genes)
+    strain_means = similarity_means.loc[strain_genes, strain].values
+    high = strain_means >= threshold_dict_strain[strain]
+    diffs_df = pd.concat(
+        [diffs_df, pd.DataFrame({'Gene': strain_genes, 'Strain': [strain] * n_genes, 'X': [x] * n_genes,
+                                 'Sim_AX4': similarity_means_WT.loc[strain_genes, strain].values,
+                                 'Sim_strain': strain_means, 'High': high})])
+
+diffs_df.to_csv(pathSelGenes + 'diffs_AX4Strain.tsv', sep='\t', index=False)

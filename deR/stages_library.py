@@ -185,7 +185,7 @@ def similarity_mean_df(sims_dict: dict, index: list, replace_na_sims: float = No
     return similarity_means
 
 
-def quantile_normalise(similarity_means):
+def quantile_normalise(similarity_means,return_ranks:bool=False):
     """
     Quantile normalise DF with samples in columns and values in rows, normalise columns to have same distribution.
     # https://stackoverflow.com/a/41078786/11521462
@@ -211,10 +211,14 @@ def quantile_normalise(similarity_means):
                 rank_high = rank_low + 1
                 new_value = (rank_mean[rank_low] + rank_mean[rank_high]) / 2
             quantile_normalised[i, j] = new_value
-    return pd.DataFrame(quantile_normalised, index=rank_df.index, columns=rank_df.columns)
+    normalised=pd.DataFrame(quantile_normalised, index=rank_df.index, columns=rank_df.columns)
+    if not return_ranks:
+        return normalised
+    else:
+        return normalised, rank_mean
 
 
-def compare_gene_scores(quantile_normalised: pd.DataFrame, group_splits: list, test: str, test_params={}):
+def compare_gene_scores(quantile_normalised: pd.DataFrame, group_splits: list, test: str, alternative: str):
     """
     Compare gene scores across strain groups. For each gene there is a score (e.g. avg similarity to neighbours) in each
     strain that belongs to a strain group. Compare scores between groups to find genes that have lower/higher score in
@@ -226,8 +230,7 @@ def compare_gene_scores(quantile_normalised: pd.DataFrame, group_splits: list, t
         element 2). The strain groups must be given as in X column of GROUP_DF. The third element is name of the
         comparison that will be reported.
     :param test: 'u' for mannwhitneyu or 't' for t-test.
-    :param test_params: Add parameters to the used test (scipy mannwhitneyu or scpiy ttest_ind).
-        E.g. two-sided or lower for mannwhitneyu.
+    :param alternative: less (first group has lesser values than the second), greater, two-sided
     :return: DF with columns: Gene, Comparison (as named in group_splits), Statistic (test statistic), p (p value), FDR
         (across whole results DF), Mean1, Mean2 (mean of each of two groups from group_splits), Difference
         (mean2-mean1), Separation (How well does the comparison separate the two groups based on means of border
@@ -241,10 +244,7 @@ def compare_gene_scores(quantile_normalised: pd.DataFrame, group_splits: list, t
             strains2 = GROUP_DF[GROUP_DF['X'].isin(comparison[1])]['Strain']
             values1 = quantile_normalised.loc[gene, strains1].values
             values2 = quantile_normalised.loc[gene, strains2].values
-            if test == 'u':
-                result = mannwhitneyu(values1, values2, **test_params)
-            elif test == 't':
-                result = ttest_ind(values1, values2, **test_params)
+
             m1 = values1.mean()
             m2 = values2.mean()
 
@@ -258,7 +258,26 @@ def compare_gene_scores(quantile_normalised: pd.DataFrame, group_splits: list, t
             dif_2 = mean_first2 - m1
             separation = min([dif_1, dif_2], key=abs)
 
-            results.append({'Gene': gene, 'Comparison': comparison[2], 'Statistic': result[0], 'p': result[1],
+            if test == 'u':
+                result = mannwhitneyu(values1, values2, alternative=alternative)
+                p = result[1]
+                statistic = result[0]
+            elif test == 't':
+                result = ttest_ind(values1, values2)
+                statistic = result[0]
+                p = result[1]
+                if alternative == 'less':
+                    if statistic <= 0:
+                        p = p / 2
+                    else:
+                        p = 1 - p / 2
+                elif alternative == 'greater':
+                    if statistic >= 0:
+                        p = p / 2
+                    else:
+                        p = 1 - p / 2
+
+            results.append({'Gene': gene, 'Comparison': comparison[2], 'Statistic': statistic, 'p': p,
                             'Mean1': m1, 'Mean2': m2, 'Difference': m2 - m1, 'Separation': separation})
 
     results = pd.DataFrame(results)

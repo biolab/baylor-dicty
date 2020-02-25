@@ -6,6 +6,7 @@
 
 library(ComplexHeatmap)
 library(circlize)
+library(viridis)
 
 #**! Paths where expression data and regulons clusters are saved
 path_clusters='/home/karin/Documents/timeTrajectories/data/regulons/by_strain/kN300_mean0std1_log/'
@@ -62,13 +63,13 @@ expressions<-within(avg_expression, rm('Time', 'Strain','Group'))
 min_expression<-min(expressions)
 max_expression<-max(expressions)
 #** Expression colours
-col = colorRamp2(c(min_expression,mean(c(min_expression,max_expression)),max_expression), c( "#440154FF", "#1F968BFF",'#FDE725FF'))
+#col = colorRamp2(c(min_expression,mean(c(min_expression,max_expression)),max_expression), c( "#440154FF", "#1F968BFF",'#FDE725FF'))
 first=TRUE
 for (cluster in clusters){
   print(cluster)
   genes=as.character(regulons[regulons$Cluster==cluster,'Gene'])
   heatmap=Heatmap(t(avg_expression[,genes]),cluster_columns = FALSE,show_column_names = FALSE,
-                  show_row_names = FALSE, col=col,column_title=NULL, 
+                  show_row_names = FALSE, col=viridis(256),column_title=NULL, 
                   #The as.character ensures that the code works with numeric clusters
                   row_title=gsub('C','',as.character(cluster)),
                   show_heatmap_legend = first,heatmap_legend_param = list(
