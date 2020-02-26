@@ -1339,7 +1339,7 @@ threshold_dict_strain=pd.read_table('/home/karin/Documents/timeTrajectories/data
 # Here is another round around threshold as otherwise gets converted to longer float
 threshold_dict_strain={data['Strain']:np.round(data['Threshold'],3) for row,data in threshold_dict_strain.iterrows()}
 
-# Extract genes from strains and merge into a single amtrix
+# Extract genes from strains and merge into a single matrix
 files = [f for f in glob.glob(pathByStrain + 'kN300_mean0std1_log/' + "*.pkl")]
 n_genes = genes.shape[0]
 genes_dict = dict(zip(genes.index, range(n_genes)))
@@ -1367,6 +1367,14 @@ merged_results_filtered = merged_results.drop(index=remove_genes, columns=remove
 merged_results_filtered.to_csv(pathByStrain + 'kN300_mean0std1_log/' + 'mergedGenes_min18.tsv', sep='\t')
 sb.clustermap(merged_results_filtered, yticklabels=False, xticklabels=False)
 
+# !!! Fill the diagonal with N strains -better result without this?
+N_STRAINS=21
+merged_results_filtered=pd.read_table(pathByStrain + 'kN300_mean0std1_log/' + 'mergedGenes_min18.tsv', index_col=0)
+for i in range(merged_results_filtered.shape[0]):
+    merged_results_filtered.iloc[i,i]=N_STRAINS
+merged_results_filtered.to_csv(pathByStrain + 'kN300_mean0std1_log/' + 'mergedGenes_min18_filledDiagonal.tsv', sep='\t')
+# Replace all values below 18 with 0
+merged_results_filtered
 # *******************************
 # ********* Interaction based similarity threshold
 # Find similarity threshold based on known interactions
