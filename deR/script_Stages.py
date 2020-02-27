@@ -7,6 +7,8 @@ import matplotlib.patches as mpatches
 from scipy.stats import rankdata, mannwhitneyu
 from statsmodels.stats.multitest import multipletests
 
+import DBA as dba
+
 from networks.library_regulons import ClusterAnalyser, NeighbourCalculator, make_tsne
 from networks.functionsDENet import loadPickle, savePickle
 from deR.stages_library import *
@@ -321,3 +323,6 @@ for strain in conditions['Strain'].unique():
                                  'Sim_strain': strain_means, 'High': high})])
 
 diffs_df.to_csv(pathSelGenes + 'diffs_AX4Strain.tsv', sep='\t', index=False)
+
+
+

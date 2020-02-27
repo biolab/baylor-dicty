@@ -12,6 +12,7 @@ buildDDS<-function(conditions,genes,t=NULL,case=NULL,ref,design,main_lvl=NULL,co
   # design - DeSeq2 design
   # coldata -Prespecify coldata for DeSeq2
   # Filter - remove genes rows with less than filter row count
+  # set_main_lvl - set ref as main lvl
   # Returns dds and coldata in list
   if (!is.null(t)){
     genes=genes[,conditions$Time %in% t]
@@ -52,12 +53,19 @@ testDE<-function(dds,sample,ref,padjSave,logFCSave,path=NULL,time=NULL,main_lvl=
   resOrder<-resNN[order(resNN$padj),]
   resFilter<-resOrder[resOrder$padj<=padjSave & abs(resOrder$log2FoldChange)>=logFCSave,]
   #R reads this format fine, but Libre offic shifts colnames!!!
-  if (is.null(path)) return(resFilter)
-  else write.table(x = resFilter,file =paste( path,'DE_',paste(sample,collapse = ''),'_ref_',ref,'_t',time,'h','_padj',padjSave,'_lFC',logFCSave,'.tsv',sep=''),sep='\t')
+  if (is.null(path)){
+    return(resFilter)
+  }else {
+    time_str=''
+    if (!is.null(time)){
+      time_str=paste('_t',time,'h',sep='')
+    }
+    write.table(x = resFilter,file =paste( path,'DE_',paste(sample,collapse = ''),'_ref_',ref,time_str,'_padj',padjSave,'_lFC',logFCSave,'.tsv',sep=''),sep='\t')
+  }
 }
 
 # Run DeSeq2 from raw data. Removes genes with all 0
-runDeSeq2<-function(conditions,genes,time,case,control='AX4',design=~Strain,main_lvl='Strain',padj=0.05,logFC=1,path=NULL){
+runDeSeq2<-function(conditions,genes,time=NULL,case,control='AX4',design=~Strain,main_lvl='Strain',padj=0.05,logFC=1,path=NULL){
   # Conditions (M*D), genes (G*M) - dataframes
   # time - subset Time, vector
   # case, ref - retain only these from main_lvl, case (case can be vector)

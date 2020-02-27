@@ -562,6 +562,38 @@ genes_orange_avg_fc = np.log2(genes_orange_avg_fc)
 genes_orange_avg_fc[['Time', 'Group']] = genes_orange_avg[['Time', 'Group']]
 genes_orange_avg_fc.to_csv(dataPathSaved + 'genes_averaged_orange_log2FC.tsv', sep='\t')
 
+# **** Make expression data for single replicate per strain
+merged = ClusterAnalyser.merge_genes_conditions(genes=genes, conditions=conditions[['Measurment', 'Replicate', 'Time','Strain']],
+                                                matching='Measurment')
+splitted = ClusterAnalyser.split_data(data=merged, split_by='Replicate')
+for rep, data in splitted.items():
+    data=data.drop(["Replicate", 'Measurment'], axis=1)
+    data=data.sort_values('Time')
+    data.index=[strain+'_'+str(time) for strain,time in zip(data['Strain'],data['Time'])]
+    data['Group']=[groups[data['Strain'][0]]]*data.shape[0]
+    splitted[rep] = data
+
+data=[]
+for strain in conditions['Strain'].unique():
+    rep=conditions.query('Strain == "'+strain+'"')['Replicate'].unique()[0]
+    data.append(splitted[rep])
+data=pd.concat(data)
+
+data.to_csv(dataPathSaved + 'genes_oneRep_orange.tsv', sep='\t')
+
+#Scale one-rep data
+percentile = 0.99
+max_val=0.1
+data2 = data.drop(['Group', 'Time','Strain'], axis=1)
+data2_percentile = data2.quantile(q=percentile, axis=0)
+data2 = data2 - data2_percentile
+data2_percentile = data2_percentile.replace(0, 1)
+data2 = data2 / data2_percentile
+data2[data2>max_val]=max_val
+data2[['Time', 'Group','Strain']] = data[['Time', 'Group','Strain']]
+
+data2.to_csv(dataPathSaved + 'genes_oneRep_orange_scale' + str(percentile)[2:] +
+                                        'percentileMax'+str(max_val)+'.tsv', sep='\t')
 # ********************
 # Check how many hypothetical and pseudogenes are in onthologies
 # Get gene descriptions and EIDs
