@@ -24,7 +24,7 @@ filterImpulse <- function(strain,padj=0.05,threads=4,subsetGenes=nrow(genesTNN))
   genesSample<-genesTNN[1:subsetGenes,conditions$Strain==strain & conditions$Include]
   conditionsSub<-conditions[conditions$Strain==strain & conditions$Include,]
   anno<-data.frame(Sample=conditionsSub$Measurment, Condition=rep("case",ncol(genesSample)), Time=conditionsSub$Time, Batch=rep("B_NULL",ncol(genesSample)))
-  #Remove this rounding somehow
+  #Remove this rounding  - should be done on counts!!!!
   de <- runImpulseDE2(matCountData=round(genesSample),dfAnnotation=anno,boolCaseCtrl= FALSE,vecConfounders= NULL,scaNProc= threads )
   deorder<-de$dfImpulseDE2Results[order(de$dfImpulseDE2Results$padj),]
   deImpulse<-deorder[deorder$padj<=padj,]

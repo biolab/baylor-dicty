@@ -6,6 +6,7 @@ if (lab){
   dataPathCode='/home/karin/Documents/timeTrajectories/deTime/'
   dataPath='/home/karin/Documents/timeTrajectories/data/countsRaw/combined/'
   dataPathNormalised='/home/karin/Documents/timeTrajectories/data/RPKUM/combined/'
+  pathDETime='/home/karin/Documents/timeTrajectories/deTime/de_time_impulse_strain/'
 }else {
   dataPathSaved='/home/karin/Documents/DDiscoideum/data/timeDE/transitions/'
   dataPath='/home/karin/Documents/DDiscoideum/data/countsRaw/'
@@ -35,12 +36,12 @@ rownames(conditions)<-make.names(rownames(conditions))
 genesNorm<-read.table(paste(dataPathNormalised,"mergedGenes_RPKUM.tsv",sep=''), header=TRUE,row.names=1, sep="\t")
 
 #For testing - add developmental column to conditions, use AX4,comH,tagB replicates and subset genes to 500:'
-repsTest<-c('AX4_FD_r1','AX4_FD_r2','comH_r1','comH_r2','tagB_r1','tagB_r2','tgrC1_r1','tgrC1_r2')
+repsTest<-c('AX4_FD_r1','AX4_FD_r2','AX4_PE_r3','comH_r1','comH_r2','tagB_r1','tagB_r2','tgrC1_r1','tgrC1_r2')
 genesTest<-genes[1:200,(conditions$Replicate %in% repsTest)]
 conditionsTest<-conditions[(conditions$Replicate %in% repsTest),]
 conditionsTest <- conditionsTest[order(conditionsTest$Replicate, conditionsTest$Time),]
 genesTest<-t(t(genesTest)[rownames(conditionsTest),])
-phenos<-c(rep(c(1,1,2,2,2,3,3,4,4,5,5,6,6,6,6,6,6,6,6),2),rep(c(1,2,2,3,4,4,4,4,4,4),4),rep(c(1,2,2,2,2,2,2,2,2,2),2))
+phenos<-c(rep(c(1,1,2,2,2,3,3,4,4,5,5,6,6,6,6,6,6,6,6),2),c(1,2,3,4,5,6,6),rep(c(1,2,2,3,4,4,4,4,4,4),4),rep(c(1,2,2,2,2,2,2,2,2,2),2))
 conditionsTest$Stage<-phenos
 
 # ******************************************
@@ -189,10 +190,17 @@ for (i in (1:(length(stages)-1))){
     res<-runDeSeq2(conditions_sub,genes_sub,case=stage2,control=stage1,design=~Replicate+Stage,main_lvl='Stage',padj=0.05,logFC=1,path=dataPathSaved)
   }
 }
-
-
-
-
-
+# **********************************************
+# **** DE genes in time in each strain
+padj=1
+for (strain in unique(conditions$Strain)){
+  genesSub<-as.matrix(genes[,conditions$Strain==strain])
+  conditionsSub<-conditions[conditions$Strain==strain,]
+  anno<-data.frame(Sample=rownames(conditionsSub), Condition=rep("case",ncol(genesSub)), Time=conditionsSub$Time, Batch=conditionsSub$Replicate)
+  de <- runImpulseDE2(matCountData=genesSub,dfAnnotation=anno,boolCaseCtrl= FALSE,
+                      vecConfounders= c("Batch"),scaNProc=4, boolIdentifyTransients = TRUE)
+  de_filter<-de$dfImpulseDE2Results[de$dfImpulseDE2Results$padj<=padj & ! is.na(de$dfImpulseDE2Results$padj),]
+  write.table(de_filter,file=paste(pathDETime,'DE_',strain, '_padj',padj,'.tsv',sep=''), sep='\t',row.names = FALSE)
+}
 
 
