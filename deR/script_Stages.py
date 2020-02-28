@@ -324,5 +324,9 @@ for strain in conditions['Strain'].unique():
 
 diffs_df.to_csv(pathSelGenes + 'diffs_AX4Strain.tsv', sep='\t', index=False)
 
-
+# *******************************
+# ***** Add phenotype info to conditions
+files = [f for f in glob.glob( '/home/karin/Documents/timeTrajectories/data/from_huston/phenotypes/' + "*.tab")]
+for f in files:
+    pd.read_table(f,index_col=0)
 

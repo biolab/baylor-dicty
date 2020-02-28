@@ -6,7 +6,7 @@ if (lab){
   dataPathCode='/home/karin/Documents/timeTrajectories/deTime/'
   dataPath='/home/karin/Documents/timeTrajectories/data/countsRaw/combined/'
   dataPathNormalised='/home/karin/Documents/timeTrajectories/data/RPKUM/combined/'
-  pathDETime='/home/karin/Documents/timeTrajectories/deTime/de_time_impulse_strain/'
+  pathDETime='/home/karin/Documents/timeTrajectories/data/deTime/de_time_impulse_strain/'
 }else {
   dataPathSaved='/home/karin/Documents/DDiscoideum/data/timeDE/transitions/'
   dataPath='/home/karin/Documents/DDiscoideum/data/countsRaw/'

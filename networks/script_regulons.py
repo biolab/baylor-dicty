@@ -1407,6 +1407,10 @@ for i in range(merged_results_filtered.shape[0]):
 merged_results_filtered.to_csv(pathByStrain + 'kN300_mean0std1_log/' + 'mergedGenes_min18_filledDiagonal.tsv', sep='\t')
 # Replace all values below 18 with 0
 merged_results_filtered
+
+#*************
+#**** Find genes co-expressed with TFs in strains that progress to FB
+
 # *******************************
 # ********* Interaction based similarity threshold
 # Find similarity threshold based on known interactions
