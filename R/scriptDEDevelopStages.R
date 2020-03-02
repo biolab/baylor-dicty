@@ -3,7 +3,7 @@
 lab=TRUE
 if (lab){
   dataPathSaved='/home/karin/Documents/timeTrajectories/data/deTime/diffTimeTry/'
-  dataPathCode='/home/karin/Documents/timeTrajectories/deTime/'
+  dataPathCode='/home/karin/Documents/git/baylor-dicty/R/'
   dataPath='/home/karin/Documents/timeTrajectories/data/countsRaw/combined/'
   dataPathNormalised='/home/karin/Documents/timeTrajectories/data/RPKUM/combined/'
   pathDETime='/home/karin/Documents/timeTrajectories/data/deTime/de_time_impulse_strain/'
@@ -170,6 +170,8 @@ draw(heatmap_list, ht_gap = unit(0.5, "mm"),  annotation_legend_list = legends)
 
 #********************************
 #****** Stage specific genes
+
+# *** Find stage specific genes with design stage vs stage adjusting for replicates - Not ok as not enough data for this!!! 
 # Compare all unique pairs of stages for DE, use only replicates that have samples in both stages
 # Test adjusted for batch effect or replicates
 stages<-unique(conditionsTest$Stage)
@@ -190,6 +192,56 @@ for (i in (1:(length(stages)-1))){
     res<-runDeSeq2(conditions_sub,genes_sub,case=stage2,control=stage1,design=~Replicate+Stage,main_lvl='Stage',padj=0.05,logFC=1,path=dataPathSaved)
   }
 }
+
+
+STAGES<-c('no_agg','stream','lag','tag','tip','slug','mhat','cul','FB','disappear')
+#*** Find stage specific genes 1 vs all adjusting for replicates
+# For stage A use timepoints with phenotypes A for test and everything without A as control (B, B/C)
+for (stage in STAGES){
+  print(stage)
+  test<-conditions[conditions[stage]==1,]
+  single_stage1<-rowSums(test[,STAGES])==1
+  test<-test[single_stage1,]
+  control<-conditions[conditions[stage]!=1,]
+  replicates<-intersect(control$Replicate,test$Replicate)
+  test<-test[test$Replicate %in% replicates,]
+  control<-control[control$Replicate %in% replicates,]
+  test$Comparison<-rep(stage,dim(test)[1])
+  control$Comparison<-rep('other',dim(control)[1])
+  conditions_sub<-rbind(test,control)
+  genes_sub<-genes[,rownames(conditions_sub)]
+  res<-runDeSeq2(conditions_sub,genes_sub,case=stage,control='other',design=~Replicate+Comparison,main_lvl='Comparison',padj=0.05,logFC=1,
+                 path='/home/karin/Documents/timeTrajectories/data/deTime/stage_vs_other/')
+}  
+
+
+#*** Find stage specific genes 1 vs 1 stage NOT adjusting for replicates
+# For stage A use timepoints with phenotype A for test and B as control (not using mixed phenotypes)
+for (i in (1:(length(STAGES)-1))){
+  for (j in ((i+1):length(STAGES))){
+    stage1=STAGES[i]
+    stage2=STAGES[j]
+    print(paste('Stages:',stage1,stage2))
+    
+    conditions1<-conditions[conditions[stage1]==1,]
+    single_stage1<-rowSums(conditions1[,STAGES])==1
+    conditions1<-conditions1[single_stage1,]
+    conditions1$Comparison<-rep(stage1,dim(conditions1)[1])
+    conditions2<-conditions[conditions[stage2]==1,]
+    single_stage2<-rowSums(conditions2[,STAGES])==1
+    conditions2<-conditions2[single_stage2,]
+    conditions2$Comparison<-rep(stage2,dim(conditions2)[1])
+    if (dim(conditions1)[1]>0 & dim(conditions2)[1]>0){
+      conditions_sub<-rbind(conditions1,conditions2)
+    
+      genes_sub<-genes[,rownames(conditions_sub)]
+      res<-runDeSeq2(conditions_sub,genes_sub,case=stage1,control=stage2,design=~Comparison,main_lvl='Comparison',padj=0.05,logFC=1,
+                   path='/home/karin/Documents/timeTrajectories/data/deTime/stage_vs_stage_multiple/')
+    }
+  }
+}
+    
+
 # **********************************************
 # **** DE genes in time in each strain
 padj=1

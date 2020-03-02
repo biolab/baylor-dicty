@@ -60,7 +60,8 @@ testDE<-function(dds,sample,ref,padjSave,logFCSave,path=NULL,time=NULL,main_lvl=
     if (!is.null(time)){
       time_str=paste('_t',time,'h',sep='')
     }
-    write.table(x = resFilter,file =paste( path,'DE_',paste(sample,collapse = ''),'_ref_',ref,time_str,'_padj',padjSave,'_lFC',logFCSave,'.tsv',sep=''),sep='\t')
+    write.table(x = resFilter,file =paste( path,'DE_',paste(sample,collapse = ''),'_ref_',ref,time_str,'_padj',padjSave,'_lFC',logFCSave,'.tsv',sep=''),
+                sep='\t', col.names=NA)
   }
 }
 

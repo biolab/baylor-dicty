@@ -1367,12 +1367,15 @@ for batch in set(batches):
 # splitted = conditions.groupby('Strain')
 # for group in splitted:
 #    threshold_dict_strain[group[0]] = threshold_dict[group[1].shape[0]]
-threshold_dict_strain=pd.read_table('/home/karin/Documents/timeTrajectories/data/regulons/selected_genes/thresholds/strainThresholds_k2_m0s1log_best0.3.tsv',sep='\t')
+threshold_dict_strain=pd.read_table('/home/karin/Documents/timeTrajectories/data/regulons/selected_genes/thresholds/strainThresholds_k2_m0s1log_best0.7.tsv',sep='\t')
 # Here is another round around threshold as otherwise gets converted to longer float
 threshold_dict_strain={data['Strain']:np.round(data['Threshold'],3) for row,data in threshold_dict_strain.iterrows()}
 
 # Extract genes from strains and merge into a single matrix
 files = [f for f in glob.glob(pathByStrain + 'kN300_mean0std1_log/' + "*.pkl")]
+# To select only FB strains:
+#files = [f for f in glob.glob(pathByStrain + 'kN300_mean0std1_log/' + "*.pkl")
+#         if any(strain in f for strain in ['/AX4','/MybBGFP','/PkaCoe','/pkaR']) ]
 n_genes = genes.shape[0]
 genes_dict = dict(zip(genes.index, range(n_genes)))
 merged_results = np.zeros((n_genes, n_genes))
@@ -1399,14 +1402,41 @@ merged_results_filtered = merged_results.drop(index=remove_genes, columns=remove
 merged_results_filtered.to_csv(pathByStrain + 'kN300_mean0std1_log/' + 'mergedGenes_min18.tsv', sep='\t')
 sb.clustermap(merged_results_filtered, yticklabels=False, xticklabels=False)
 
-# !!! Fill the diagonal with N strains -better result without this?
-N_STRAINS=21
+# Filter based on how many strains reach 'high' expression (50% of 99th percentile)
+ration_max=0.99
+proportion=0.5
+threshold = genes.quantile(q=ration_max, axis=1)*proportion
+# Count how many strains reach expression threshold
+SPLITBY = 'Strain'
+merged = ClusterAnalyser.merge_genes_conditions(genes=genes, conditions=conditions[['Measurment', SPLITBY]],
+                                                matching='Measurment')
+splitted = ClusterAnalyser.split_data(data=merged, split_by=SPLITBY)
+for rep, data in splitted.items():
+    splitted[rep] = data.drop([SPLITBY, 'Measurment'], axis=1).T
+
+strain_expressed=[]
+for strain, data in splitted.items():
+    strain_expressed.append( (data.T >= threshold).any())
+n_strains=pd.concat(strain_expressed,axis=1).sum(axis=1)
+# Require that min is 4 (eg all FB strains)
+n_strains[n_strains<4]=4
+
+ratio_n_expressed=1
+genemax = merged_results.max()
+remove_genes = genemax.loc[genemax < (n_strains * ratio_n_expressed)].index
+merged_results_filtered = merged_results.drop(index=remove_genes, columns=remove_genes)
+merged_results_filtered.to_csv(pathByStrain + 'kN300_mean0std1_log/' + 'mergedGenes_minExpressed'+
+                               str(ration_max)+str(proportion)+'Strains'+
+                               str(ratio_n_expressed)+'.tsv', sep='\t')
+
+
+# !!! Fill the diagonal with N strains ?
+N_STRAINS=18
 merged_results_filtered=pd.read_table(pathByStrain + 'kN300_mean0std1_log/' + 'mergedGenes_min18.tsv', index_col=0)
 for i in range(merged_results_filtered.shape[0]):
     merged_results_filtered.iloc[i,i]=N_STRAINS
 merged_results_filtered.to_csv(pathByStrain + 'kN300_mean0std1_log/' + 'mergedGenes_min18_filledDiagonal.tsv', sep='\t')
-# Replace all values below 18 with 0
-merged_results_filtered
+
 
 #*************
 #**** Find genes co-expressed with TFs in strains that progress to FB

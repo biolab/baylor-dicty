@@ -326,7 +326,73 @@ diffs_df.to_csv(pathSelGenes + 'diffs_AX4Strain.tsv', sep='\t', index=False)
 
 # *******************************
 # ***** Add phenotype info to conditions
-files = [f for f in glob.glob( '/home/karin/Documents/timeTrajectories/data/from_huston/phenotypes/' + "*.tab")]
-for f in files:
-    pd.read_table(f,index_col=0)
+PHENOTYPES = ['no_agg', 'stream', 'lag', 'tag', 'tip', 'slug', 'mhat', 'cul', 'FB', 'disappear']
+conditions = pd.concat([conditions, pd.DataFrame(np.zeros((conditions.shape[0], len(PHENOTYPES))), columns=PHENOTYPES)],
+                       axis=1)
 
+files = [f for f in glob.glob('/home/karin/Documents/timeTrajectories/data/from_huston/phenotypes/' + "*.tab")]
+for f in files:
+    phenotypes = pd.read_table(f, index_col=0)
+    phenotypes = phenotypes.replace('no image', np.nan)
+    for time in phenotypes.index:
+        for replicate in phenotypes.columns:
+            val = phenotypes.loc[time, replicate]
+            if type(val) == str:
+                val = val.replace('rippling', 'stream')
+                val = val.replace('strem', 'stream')
+                val = val.replace('no agg', 'no_agg')
+                val = val.replace('noAgg', 'no_agg')
+                val = val.replace('small', '')
+                val = val.replace(')', '')
+                val = val.replace('(', '')
+                val = val.replace(' ', '')
+                val = val.replace('elongating', '')
+                val = val.replace('shrinking', '')
+                val = val.replace('Spore', '')
+                val = val.replace('streaming', 'stream')
+                val = val.split('/')
+                val = list(filter(lambda a: a != '', val))
+                idx = conditions[(conditions['Replicate'] == replicate) & (conditions['Time'] == time)].index[0]
+                for pheno in val:
+                    if pheno not in PHENOTYPES:
+                        print(f, pheno, time, replicate)
+                    else:
+                        conditions.at[idx, pheno] = 1
+
+# Make all 0 times no_agg if not already filled
+for idx, sample in conditions.iterrows():
+    if sample['Time'] == 0:
+        if not sample[PHENOTYPES].any():
+            conditions.at[idx, 'no_agg'] = 1
+        # else:
+        #    print(sample)
+
+conditions.to_csv(dataPath + 'conditions_mergedGenes.tsv', sep='\t', index=False)
+
+# *********************
+# ******** Find genes overexpressed in a stage (data from R deSeq2 1 vs 1 stage)
+files = [f for f in glob.glob('/home/karin/Documents/timeTrajectories/data/deTime/stage_vs_stage/' + "*.tsv")]
+# Remove disappear as this will be analysed separatley
+files=[f for f in files if 'disappear' not in f]
+stage_genes=pd.DataFrame()
+for stage in PHENOTYPES:
+    files_stage=[f for f in files if stage in f.split('/')[-1]]
+    selected_genes=set(genes.index)
+    print('*****',stage,len(files_stage))
+    if len(files_stage)>0:
+        for file in files_stage:
+            #print(file)
+            data=pd.read_table(file,index_col=0)
+            file_fieleds=file.split('ref')
+            if stage in file_fieleds[0]:
+                direction = '>= '
+            elif stage in file_fieleds[1]:
+                direction = '<= -'
+            markers=set(data.query('log2FoldChange '+direction+'2').index)
+            selected_genes=selected_genes & markers
+            #print(len(selected_genes))
+        print(len(selected_genes))
+        for gene in selected_genes:
+            stage_genes.loc[gene,stage]=1
+
+stage_genes.to_csv('/home/karin/Documents/timeTrajectories/data/deTime/stage_vs_stage/markers.tab',sep='\t')
