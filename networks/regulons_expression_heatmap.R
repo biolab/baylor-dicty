@@ -8,9 +8,12 @@ library(ComplexHeatmap)
 library(circlize)
 library(viridis)
 
-#**! Paths where expression data (average expression, expression patterns) and regulons clusters are saved
+#**! Paths where expression data (average expression, expression patterns, expression height),strain order,
+#** and regulons clusters are saved
 path_clusters='/home/karin/Documents/timeTrajectories/data/regulons/by_strain/kN300_mean0std1_log/'
 path_expression='/home/karin/Documents/timeTrajectories/data/regulons/'
+path_expression_height='/home/karin/Documents/timeTrajectories/data/regulons/by_strain/'
+path_strain_order='/home/karin/Documents/timeTrajectories/data/'
 
 #**! Specify file names for regulons and expression
 #** Expression tab file: Genes in columns (already scaled), averaged strain data in rows, 
@@ -23,10 +26,21 @@ avg_expression=read.table(paste(path_expression,"genes_averaged_orange_scale99pe
 #** used as specified below in cluster sorting
 expression_patterns=read.table(paste(path_expression,"gene_patterns_orange.tsv",sep=''),
                                header=TRUE,row.names=1, sep="\t")
-  
+
+#**! Data about gene having low/high expression in AX4. 
+#** First coulmn gene names, another coulumn named AX4 with True/False denoting if gene has high expression in AX4 relative to other strains.
+expression_height=read.table(paste(path_expression_height,"expressedGenes0.990.5.tsv",sep=''),
+                               header=TRUE,row.names=1, sep="\t")
+expression_height=data.frame(row.names=rownames(expression_height),'AX4'=expression_height$AX4)
+# Convert python True/False to R TRUE/FALSE
+expression_height<-expression_height=='True'
+
+#** Strain order - single column with ordered strain names
+strain_order<-as.vector(read.table(paste(path_strain_order,"strain_order.tsv",sep=''))[,1])
+
 #** Regulon groups tab file: First column lists genes and 
 #** a column named Cluster specifying cluster/regulon of each gene
-regulons=read.table(paste(path_clusters,"mergedGenes_min18_clusters_filledDiagonal11.tab",sep=''),
+regulons=read.table(paste(path_clusters,"mergedGenes_minExpressed0.990.5Strains1_TightClust25.tsv",sep=''),
                     header=TRUE, sep="\t")
 #Name the first column (should contain genes
 colnames(regulons)[1]<-'Gene'
@@ -50,7 +64,9 @@ group_cols=c('1Ag-'= '#d40808', '2LAg'= '#e68209', '3TA'='#d1b30a', '4CD'= '#4eb
 ht_list=Heatmap(t(avg_expression['Group']),show_column_names = FALSE, height = unit(top_annotation_height, "cm"),
                 column_split=factor(avg_expression$Strain,
                                     #** Ordering of the strains in the heatmap (a vector of strain names)
-                                    levels=unique(avg_expression$Strain)),
+                                    #levels=unique(avg_expression$Strain)
+                                    levels=strain_order
+                ),
                 cluster_columns=FALSE,name='Group',
                 #** Strain name font size
                 column_title_gp=gpar(fontsize=12),
@@ -75,9 +91,16 @@ ht_list=ht_list %v% ht_time
 cluster_patterns<-c()
 for (cluster in clusters){
   genes=as.character(regulons[regulons$Cluster==cluster,'Gene'])
+  # Check how many genes were termed unexpressed
+  expressed<-mean(expression_height[genes,])
+  if (expressed > 0.5){
   #** Select column from expression_patterns to sort clusters on
-  pattern<-mean(expression_patterns[genes,'Peak'])
-  cluster_patterns<-c(cluster_patterns,pattern)
+    pattern<-mean(expression_patterns[genes,'Peak'])
+    cluster_patterns<-c(cluster_patterns,pattern)
+  }else{
+    #If manly unexpressed in AX4 put it at the end
+    cluster_patterns<-c(cluster_patterns,max(times))
+  }
 }
 cluster_order<-data.frame('Cluster'=clusters,'Pattern'=cluster_patterns)
 cluster_order<-cluster_order[order(cluster_order$Pattern),]

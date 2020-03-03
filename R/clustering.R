@@ -231,7 +231,20 @@ data=dataRPKUM[,conditions[conditions$Strain==strain,'Measurment']]
 data=data[,order(match(colnames(data),conditions_strain$Measurment))]
 data=t(as.data.frame(t(data)) %>% select_if(not_all_na))
 
+#**** Tight clustering of genes obtained from by_strains
+dataRPKUM=read.table('/home/karin/Documents/timeTrajectories/data/RPKUM/combined/mergedGenes_RPKUM.tsv',header=TRUE)
+conditions=read.table('/home/karin/Documents/timeTrajectories/data/RPKUM/combined/conditions_mergedGenes.tsv',header=TRUE)
+conditions$Measurment=make.names(conditions$Measurment)
+if (!all(colnames(dataRPKUM)==conditions['Measurment'])) print('Err in sample name matching ')
 
+selected_genes<-colnames(read.table('/home/karin/Documents/timeTrajectories/data/regulons/by_strain/kN300_mean0std1_log/mergedGenes_minExpressed0.990.5Strains1.tsv',
+                           sep='\t',header=TRUE,row.names=1))
+# Scale genes to range [0,1]
+expression<-dataRPKUM[selected_genes,]
+expression<-t(apply(t(as.matrix(expression)), MARGIN = 2, FUN = function(X) (X - min(X))/diff(range(X))))
 
-
-
+n_clust=25
+clust<-tight.clust (x=expression,target=n_clust,k.min=n_clust+5)
+cluster_df=data.frame(Gene=rownames(expression),Cluster=clust$cluster)
+write.table(cluster_df,paste('/home/karin/Documents/timeTrajectories/data/regulons/by_strain/kN300_mean0std1_log/mergedGenes_minExpressed0.990.5Strains1_TightClust'
+                             ,n_clust,'.tsv',sep=''),sep='\t')

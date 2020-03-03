@@ -1898,6 +1898,108 @@ def plot_tsne(tsne: ot.TSNEEmbedding, classes: dict = None, names: list = None, 
                 handle._sizes = [10]
                 handle.set_alpha(1)
 
+def plot_tsne_colours(tsnes: list, classes: list = None, names: list = None, legend: bool = False,
+              plotting_params: dict = {'s': 0.2,'alpha':0.2},title=None,colour_dict=None,fig_data=None,
+              order_legend:list=None):
+    """
+    Plot tsne embedding
+    :param tsne: List of embeddings, as returned by make_tsne
+    :param classes: List of class annotations (dict), one per tsne.
+    If not None colour each item in tSNE embedding by class.
+    Keys: names matching names of tSNE embedding, values: class
+    :param names: List of lists. Each list contains names for items in corresponding tSNE embedding.
+    :param legend: Should legend be added
+    :param plotting_params: plt.scatter parameters. Can be: 1.) List with dicts (single or nested, as below) for
+    each tsne,  2.) dict with class names as keys and parameters dicts as values, 3.) dict of parameters.
+    :return:
+    """
+    if fig_data is None:
+        fig, ax = plt.subplots()
+    else:
+        fig,ax=fig_data
+    ax.get_xaxis().set_visible(False)
+    ax.get_yaxis().set_visible(False)
+    if title is not None:
+        fig.suptitle(title)
+    if classes is None:
+        data = pd.DataFrame()
+        for tsne in tsnes:
+            if not isinstance(tsne,np.ndarray):
+                tsne=np.array(tsne)
+            x = [x[0] for x in tsne]
+            y = [x[1] for x in tsne]
+            data = data.append(pd.DataFrame({'x': x, 'y': y}))
+        ax.scatter(data['x'],data['y'] , alpha=0.5, **plotting_params)
+    else:
+        if len(tsnes) != len(names):
+            raise ValueError('N of tSNEs must match N of their name lists')
+        data = pd.DataFrame()
+        for tsne, name, group in zip(tsnes, names, range(len(tsnes))):
+            if not isinstance(tsne,np.ndarray):
+                tsne=np.array(tsne)
+            x = [x[0] for x in tsne]
+            y = [x[1] for x in tsne]
+            data = data.append(pd.DataFrame({'x': x, 'y': y, 'name': name, 'group': [group] * len(x)}))
+        if names is not None and classes is not None:
+            classes_extended = []
+            for row in data.iterrows():
+                row=row[1]
+                group_classes=classes[int(row['group'])]
+                name=row['name']
+                if name in group_classes.keys():
+                    classes_extended.append(group_classes[name])
+                else:
+                    classes_extended.append('NaN')
+            data['class']=classes_extended
+        class_names = set(data['class'])
+        all_colours = ['#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#46f0f0', '#f032e6',
+                       '#bcf60c',
+                       '#fabebe', '#008080', '#e6beff', '#9a6324', '#fffac8', '#800000', '#aaffc3', '#808000',
+                       '#ffd8b1',
+                       '#000075', '#808080', '#000000']
+        if colour_dict is None:
+            all_colours = all_colours * (len(class_names) // len(all_colours) + 1)
+            selected_colours = random.sample(all_colours, len(class_names))
+            # colour_idx = range(len(class_names))
+            colour_dict = dict(zip(class_names, selected_colours))
+
+        for group_name,group_data in data.groupby('group'):
+            for class_name,class_data in group_data.groupby('class'):
+                plotting_params_point=[]
+                if isinstance(plotting_params,list):
+                    plotting_params_group=plotting_params[int(group_name)]
+                    plotting_params_class=plotting_params_group
+                else:
+                    plotting_params_class = plotting_params
+                if isinstance(list(plotting_params_class.values())[0], dict):
+                    plotting_params_class = plotting_params_class[class_name]
+                else:
+                    plotting_params_class = plotting_params_class
+                if 'marker' not in plotting_params_class.keys():
+                    plotting_params_class['marker']='o'
+                ax.scatter(class_data['x'],class_data['y'],
+                       c=[colour_dict[class_name] for class_name in class_data['class']],
+                       label=class_name, **plotting_params_class)
+        if legend:
+            handles, labels = fig.gca().get_legend_handles_labels()
+            if order_legend is not None:
+                labels=[str(label) for label in labels]
+                order_legend=[str(label) for label in order_legend]
+                legend_order_dict=dict(zip(order_legend,range(len(order_legend))))
+                legend_dict=dict(zip(labels,handles))
+                legend_with_order={legend_order_dict[label]:label for label in labels}
+                labels=[label for idx, label in sorted(legend_with_order.items(), key=lambda item: item[0])]
+                handles=[legend_dict[label] for label in labels]
+
+
+            box = ax.get_position()
+            ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
+            legend = ax.legend( handles,labels,loc='center left', bbox_to_anchor=(1, 0.5))
+            for handle in legend.legendHandles:
+                handle._sizes = [10]
+                handle.set_alpha(1)
+
+
 
 def make_tsne_data(tsne, names):
     """

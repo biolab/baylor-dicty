@@ -242,7 +242,7 @@ for (i in (1:(length(STAGES)-1))){
 }
     
 
-# **********************************************
+# **********************************************  
 # **** DE genes in time in each strain
 padj=1
 for (strain in unique(conditions$Strain)){

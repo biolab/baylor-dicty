@@ -352,12 +352,16 @@ for f in files:
                 val = val.replace('streaming', 'stream')
                 val = val.split('/')
                 val = list(filter(lambda a: a != '', val))
-                idx = conditions[(conditions['Replicate'] == replicate) & (conditions['Time'] == time)].index[0]
-                for pheno in val:
-                    if pheno not in PHENOTYPES:
-                        print(f, pheno, time, replicate)
-                    else:
-                        conditions.at[idx, pheno] = 1
+                conditions_row=conditions[(conditions['Replicate'] == replicate) & (conditions['Time'] == time)]
+                if conditions_row.shape[0] > 0:
+                    idx = conditions[(conditions['Replicate'] == replicate) & (conditions['Time'] == time)].index[0]
+                    for pheno in val:
+                        if pheno not in PHENOTYPES:
+                            print(f, pheno, time, replicate)
+                        else:
+                            conditions.at[idx, pheno] = 1
+                else:
+                    print('No sample for',replicate,time)
 
 # Make all 0 times no_agg if not already filled
 for idx, sample in conditions.iterrows():

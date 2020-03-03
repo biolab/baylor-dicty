@@ -1404,7 +1404,7 @@ sb.clustermap(merged_results_filtered, yticklabels=False, xticklabels=False)
 
 # Filter based on how many strains reach 'high' expression (50% of 99th percentile)
 ration_max=0.99
-proportion=0.5
+proportion=0.3
 threshold = genes.quantile(q=ration_max, axis=1)*proportion
 # Count how many strains reach expression threshold
 SPLITBY = 'Strain'
@@ -1414,12 +1414,14 @@ splitted = ClusterAnalyser.split_data(data=merged, split_by=SPLITBY)
 for rep, data in splitted.items():
     splitted[rep] = data.drop([SPLITBY, 'Measurment'], axis=1).T
 
-strain_expressed=[]
+strain_expressed=pd.DataFrame()
 for strain, data in splitted.items():
-    strain_expressed.append( (data.T >= threshold).any())
-n_strains=pd.concat(strain_expressed,axis=1).sum(axis=1)
-# Require that min is 4 (eg all FB strains)
-n_strains[n_strains<4]=4
+    strain_expressed[strain]= (data.T >= threshold).any()
+#strain_expressed.to_csv(pathByStrain +'expressedGenes'+str(ration_max)+str(proportion)+'.tsv',sep='\t')
+n_strains=strain_expressed.sum(axis=1)
+
+# Require that min is 1 (e.g. at least one strain)
+n_strains[n_strains<1]=1
 
 ratio_n_expressed=1
 genemax = merged_results.max()
@@ -1431,15 +1433,24 @@ merged_results_filtered.to_csv(pathByStrain + 'kN300_mean0std1_log/' + 'mergedGe
 
 
 # !!! Fill the diagonal with N strains ?
-N_STRAINS=18
-merged_results_filtered=pd.read_table(pathByStrain + 'kN300_mean0std1_log/' + 'mergedGenes_min18.tsv', index_col=0)
+N_STRAINS=21
+#merged_results_filtered=pd.read_table(pathByStrain + 'kN300_mean0std1_log/' + 'mergedGenes_min18.tsv', index_col=0)
 for i in range(merged_results_filtered.shape[0]):
     merged_results_filtered.iloc[i,i]=N_STRAINS
 merged_results_filtered.to_csv(pathByStrain + 'kN300_mean0std1_log/' + 'mergedGenes_min18_filledDiagonal.tsv', sep='\t')
 
-
+# Adjust RPKUM so that it has 0 expression in strains where it is supposed to be unexpressed
+genes_adjusted=[]
+for strain,data in splitted.items():
+    expressed=strain_expressed[strain]
+    data=data.copy()
+    data.loc[~expressed,:]=0
+    genes_adjusted.append(data)
+genes_adjusted=pd.concat(genes_adjusted,axis=1)
+genes_adjusted.to_csv(pathByStrain+'genesAdjustUnexpressed'+str(ration_max)+str(proportion)+'.tsv',sep='\t')
 #*************
 #**** Find genes co-expressed with TFs in strains that progress to FB
+#TODO
 
 # *******************************
 # ********* Interaction based similarity threshold
@@ -1510,3 +1521,17 @@ confident_present = confident[confident[['protein1', 'protein2']].isin(genes.ind
 confident_present.to_csv(
     '/home/karin/Documents/timeTrajectories/data/44689.protein.links.detailed.v11.0.genenames_present.highconfidence.txt',
     sep='\t', index=False)
+
+# *****************************
+# ********** Make tSNE of all genes to plot regulons on it
+genes_all_pp=NeighbourCalculator.get_index_query(genes=genes,inverse=False,scale='mean0std1',log=True)[0]
+tsne=make_tsne(data=genes_all_pp)
+tsne=pd.DataFrame(tsne,index=genes.index)
+tsne.to_csv(pathByStrain+'tsne.tsv',sep='\t')
+
+classes=dict(zip(genes.index,['other']*genes.shape[0]))
+regulon_genes=pd.read_table(pathByStrain + 'kN300_mean0std1_log/' + 'mergedGenes_minExpressed0.990.5Strains1_clustersLouvain0.4minmaxNologPCA30kN30.tab', index_col=0)
+classes.update(dict(zip(regulon_genes.index,['regulon']*regulon_genes.shape[0])))
+
+plot_tsne_colours([tsne.values], classes=[classes], names=[tsne.index], legend=True,
+          plotting_params={'regulon':{'s':1,'alpha':0.6},'other':{'s':0.5,'alpha':0.3}},colour_dict={'regulon':'red','other':'black'})
