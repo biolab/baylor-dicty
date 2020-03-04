@@ -196,12 +196,13 @@ for (i in (1:(length(stages)-1))){
 
 STAGES<-c('no_agg','stream','lag','tag','tip','slug','mhat','cul','FB','disappear')
 #*** Find stage specific genes 1 vs all adjusting for replicates
-# For stage A use timepoints with phenotypes A for test and everything without A as control (B, B/C)
+# For stage A use timepoints with phenotypes A and A/B for test and everything without A as control (B, B/C)
 for (stage in STAGES){
   print(stage)
   test<-conditions[conditions[stage]==1,]
-  single_stage1<-rowSums(test[,STAGES])==1
-  test<-test[single_stage1,]
+  #Select only measurments where 'stage' is the only phenotype e.g. test only A (not A/B)
+  #single_stage1<-rowSums(test[,STAGES])==1
+  #test<-test[single_stage1,]
   control<-conditions[conditions[stage]!=1,]
   replicates<-intersect(control$Replicate,test$Replicate)
   test<-test[test$Replicate %in% replicates,]
@@ -236,11 +237,12 @@ for (i in (1:(length(STAGES)-1))){
     
       genes_sub<-genes[,rownames(conditions_sub)]
       res<-runDeSeq2(conditions_sub,genes_sub,case=stage1,control=stage2,design=~Comparison,main_lvl='Comparison',padj=0.05,logFC=1,
-                   path='/home/karin/Documents/timeTrajectories/data/deTime/stage_vs_stage_multiple/')
+                   path='/home/karin/Documents/timeTrajectories/data/deTime/stage_vs_stage/')
     }
   }
 }
     
+# Process this in python to retain only genes overexpressed against all other stages
 
 # **********************************************  
 # **** DE genes in time in each strain

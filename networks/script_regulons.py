@@ -530,10 +530,10 @@ genes_orange_avg_scaled2[['Time', 'Group']] = genes_orange_avg[['Time', 'Group']
 genes_orange_avg_scaled2.to_csv(dataPathSaved + 'genes_averaged_orange_scale' + str(percentile)[2:] + 'percentile.tsv',
                                 sep='\t')
 # Bound at max 0.1 (to remove outliers)
-max_val=0.1
-genes_orange_avg_scaled2_bounded=genes_orange_avg_scaled2.drop(['Time', 'Strain'], axis=1)
-genes_orange_avg_scaled2_bounded[genes_orange_avg_scaled2_bounded>max_val]=max_val
-genes_orange_avg_scaled2_bounded[['Time','Strain']]=genes_orange_avg_scaled2[['Time', 'Strain']]
+max_val = 0.1
+genes_orange_avg_scaled2_bounded = genes_orange_avg_scaled2.drop(['Time', 'Strain'], axis=1)
+genes_orange_avg_scaled2_bounded[genes_orange_avg_scaled2_bounded > max_val] = max_val
+genes_orange_avg_scaled2_bounded[['Time', 'Strain']] = genes_orange_avg_scaled2[['Time', 'Strain']]
 # Add strain group info
 groups = {'amiB': '1Ag-', 'mybB': '1Ag-', 'acaA': '1Ag-', 'gtaC': '1Ag-',
           'gbfA': '2LAg', 'tgrC1': '2LAg', 'tgrB1': '2LAg', 'tgrB1C1': '2LAg',
@@ -542,11 +542,11 @@ groups = {'amiB': '1Ag-', 'mybB': '1Ag-', 'acaA': '1Ag-', 'gtaC': '1Ag-',
           'AX4': '5WT', 'MybBGFP': '5WT',
           'acaAPkaCoe': '6SFB', 'ac3PkaCoe': '6SFB',
           'pkaR': '7PD', 'PkaCoe': '7PD'}
-genes_orange_avg_scaled2_bounded['Group']=[groups[strain] for strain in genes_orange_avg_scaled2_bounded['Strain']]
+genes_orange_avg_scaled2_bounded['Group'] = [groups[strain] for strain in genes_orange_avg_scaled2_bounded['Strain']]
 
 genes_orange_avg_scaled2_bounded.to_csv(dataPathSaved + 'genes_averaged_orange_scale' + str(percentile)[2:] +
-                                        'percentileMax'+str(max_val)+'.tsv',
-                                sep='\t')
+                                        'percentileMax' + str(max_val) + '.tsv',
+                                        sep='\t')
 
 # Calculate log2FC=log2(val/max) compared to max WT
 genes_orange_avg_fc = genes_orange_avg.copy()
@@ -563,37 +563,38 @@ genes_orange_avg_fc[['Time', 'Group']] = genes_orange_avg[['Time', 'Group']]
 genes_orange_avg_fc.to_csv(dataPathSaved + 'genes_averaged_orange_log2FC.tsv', sep='\t')
 
 # **** Make expression data for single replicate per strain
-merged = ClusterAnalyser.merge_genes_conditions(genes=genes, conditions=conditions[['Measurment', 'Replicate', 'Time','Strain']],
+merged = ClusterAnalyser.merge_genes_conditions(genes=genes,
+                                                conditions=conditions[['Measurment', 'Replicate', 'Time', 'Strain']],
                                                 matching='Measurment')
 splitted = ClusterAnalyser.split_data(data=merged, split_by='Replicate')
 for rep, data in splitted.items():
-    data=data.drop(["Replicate", 'Measurment'], axis=1)
-    data=data.sort_values('Time')
-    data.index=[strain+'_'+str(time) for strain,time in zip(data['Strain'],data['Time'])]
-    data['Group']=[groups[data['Strain'][0]]]*data.shape[0]
+    data = data.drop(["Replicate", 'Measurment'], axis=1)
+    data = data.sort_values('Time')
+    data.index = [strain + '_' + str(time) for strain, time in zip(data['Strain'], data['Time'])]
+    data['Group'] = [groups[data['Strain'][0]]] * data.shape[0]
     splitted[rep] = data
 
-data=[]
+data = []
 for strain in conditions['Strain'].unique():
-    rep=conditions.query('Strain == "'+strain+'"')['Replicate'].unique()[0]
+    rep = conditions.query('Strain == "' + strain + '"')['Replicate'].unique()[0]
     data.append(splitted[rep])
-data=pd.concat(data)
+data = pd.concat(data)
 
 data.to_csv(dataPathSaved + 'genes_oneRep_orange.tsv', sep='\t')
 
-#Scale one-rep data
+# Scale one-rep data
 percentile = 0.99
-max_val=0.1
-data2 = data.drop(['Group', 'Time','Strain'], axis=1)
+max_val = 0.1
+data2 = data.drop(['Group', 'Time', 'Strain'], axis=1)
 data2_percentile = data2.quantile(q=percentile, axis=0)
 data2 = data2 - data2_percentile
 data2_percentile = data2_percentile.replace(0, 1)
 data2 = data2 / data2_percentile
-data2[data2>max_val]=max_val
-data2[['Time', 'Group','Strain']] = data[['Time', 'Group','Strain']]
+data2[data2 > max_val] = max_val
+data2[['Time', 'Group', 'Strain']] = data[['Time', 'Group', 'Strain']]
 
 data2.to_csv(dataPathSaved + 'genes_oneRep_orange_scale' + str(percentile)[2:] +
-                                        'percentileMax'+str(max_val)+'.tsv', sep='\t')
+             'percentileMax' + str(max_val) + '.tsv', sep='\t')
 # ********************
 # Check how many hypothetical and pseudogenes are in onthologies
 # Get gene descriptions and EIDs
@@ -1367,14 +1368,17 @@ for batch in set(batches):
 # splitted = conditions.groupby('Strain')
 # for group in splitted:
 #    threshold_dict_strain[group[0]] = threshold_dict[group[1].shape[0]]
-threshold_dict_strain=pd.read_table('/home/karin/Documents/timeTrajectories/data/regulons/selected_genes/thresholds/strainThresholds_k2_m0s1log_best0.7.tsv',sep='\t')
+threshold_dict_strain = pd.read_table(
+    '/home/karin/Documents/timeTrajectories/data/regulons/selected_genes/thresholds/strainThresholds_k2_m0s1log_best0.7.tsv',
+    sep='\t')
 # Here is another round around threshold as otherwise gets converted to longer float
-threshold_dict_strain={data['Strain']:np.round(data['Threshold'],3) for row,data in threshold_dict_strain.iterrows()}
+threshold_dict_strain = {data['Strain']: np.round(data['Threshold'], 3) for row, data in
+                         threshold_dict_strain.iterrows()}
 
 # Extract genes from strains and merge into a single matrix
 files = [f for f in glob.glob(pathByStrain + 'kN300_mean0std1_log/' + "*.pkl")]
 # To select only FB strains:
-#files = [f for f in glob.glob(pathByStrain + 'kN300_mean0std1_log/' + "*.pkl")
+# files = [f for f in glob.glob(pathByStrain + 'kN300_mean0std1_log/' + "*.pkl")
 #         if any(strain in f for strain in ['/AX4','/MybBGFP','/PkaCoe','/pkaR']) ]
 n_genes = genes.shape[0]
 genes_dict = dict(zip(genes.index, range(n_genes)))
@@ -1393,6 +1397,7 @@ for f in files:
 merged_results = pd.DataFrame(merged_results, index=genes.index, columns=genes.index)
 
 merged_results.to_csv(pathByStrain + 'kN300_mean0std1_log/' + 'mergedGenes.tsv', sep='\t')
+merged_results = pd.read_table(pathByStrain + 'kN300_mean0std1_log/' + 'mergedGenes.tsv', sep='\t', index_col=0)
 
 # Filter to best gene candidates (have a close neighbour across many strains)
 genemax = merged_results.max()
@@ -1403,9 +1408,9 @@ merged_results_filtered.to_csv(pathByStrain + 'kN300_mean0std1_log/' + 'mergedGe
 sb.clustermap(merged_results_filtered, yticklabels=False, xticklabels=False)
 
 # Filter based on how many strains reach 'high' expression (50% of 99th percentile)
-ration_max=0.99
-proportion=0.3
-threshold = genes.quantile(q=ration_max, axis=1)*proportion
+ration_max = 0.99
+proportion = 0.5
+threshold = genes.quantile(q=ration_max, axis=1) * proportion
 # Count how many strains reach expression threshold
 SPLITBY = 'Strain'
 merged = ClusterAnalyser.merge_genes_conditions(genes=genes, conditions=conditions[['Measurment', SPLITBY]],
@@ -1414,43 +1419,65 @@ splitted = ClusterAnalyser.split_data(data=merged, split_by=SPLITBY)
 for rep, data in splitted.items():
     splitted[rep] = data.drop([SPLITBY, 'Measurment'], axis=1).T
 
-strain_expressed=pd.DataFrame()
+strain_expressed = pd.DataFrame()
 for strain, data in splitted.items():
-    strain_expressed[strain]= (data.T >= threshold).any()
-#strain_expressed.to_csv(pathByStrain +'expressedGenes'+str(ration_max)+str(proportion)+'.tsv',sep='\t')
-n_strains=strain_expressed.sum(axis=1)
+    strain_expressed[strain] = (data.T >= threshold).any()
+# strain_expressed.to_csv(pathByStrain +'expressedGenes'+str(ration_max)+str(proportion)+'.tsv',sep='\t')
+n_strains = strain_expressed.sum(axis=1)
 
 # Require that min is 1 (e.g. at least one strain)
-n_strains[n_strains<1]=1
+min_strains=1
+n_strains[n_strains < min_strains] = min_strains
+# Require that max is below actual N strains as genes may be not found as co-expressed due to an error
+max_strains=18
+n_strains[n_strains > max_strains] = max_strains
 
-ratio_n_expressed=1
+ratio_n_expressed = 1
+#min_neighbours = 1
 genemax = merged_results.max()
 remove_genes = genemax.loc[genemax < (n_strains * ratio_n_expressed)].index
+# Find neighbours present in at least N strains for each gene, using gene specific N strains (columnwise). ->
+# Sum n of such neighbours. -> Check if the N of neighbours is big enough. -> Select columns of genes that do not
+# satisfy the conditions.
+# TODO Problem that filters out genes's neighbours if neighbours have low N neighbours
+#remove_genes = merged_results.loc[:, ~((merged_results >= n_strains).sum() >= min_neighbours)].columns
 merged_results_filtered = merged_results.drop(index=remove_genes, columns=remove_genes)
-merged_results_filtered.to_csv(pathByStrain + 'kN300_mean0std1_log/' + 'mergedGenes_minExpressed'+
-                               str(ration_max)+str(proportion)+'Strains'+
-                               str(ratio_n_expressed)+'.tsv', sep='\t')
-
+merged_results_filtered.to_csv(pathByStrain + 'kN300_mean0std1_log/' + 'mergedGenes_minExpressed' +
+                               str(ration_max) + str(proportion) + 'StrainsProportion' +
+                               str(ratio_n_expressed)+'Min'+str(min_strains)+'Max'+str(max_strains)+
+                               #'minNeigh'+str(min_neighbours) +
+                               '.tsv', sep='\t')
 
 # !!! Fill the diagonal with N strains ?
-N_STRAINS=21
-#merged_results_filtered=pd.read_table(pathByStrain + 'kN300_mean0std1_log/' + 'mergedGenes_min18.tsv', index_col=0)
+N_STRAINS = 21
+# merged_results_filtered=pd.read_table(pathByStrain + 'kN300_mean0std1_log/' + 'mergedGenes_min18.tsv', index_col=0)
 for i in range(merged_results_filtered.shape[0]):
-    merged_results_filtered.iloc[i,i]=N_STRAINS
+    merged_results_filtered.iloc[i, i] = N_STRAINS
 merged_results_filtered.to_csv(pathByStrain + 'kN300_mean0std1_log/' + 'mergedGenes_min18_filledDiagonal.tsv', sep='\t')
 
 # Adjust RPKUM so that it has 0 expression in strains where it is supposed to be unexpressed
-genes_adjusted=[]
-for strain,data in splitted.items():
-    expressed=strain_expressed[strain]
-    data=data.copy()
-    data.loc[~expressed,:]=0
+genes_adjusted = []
+for strain, data in splitted.items():
+    expressed = strain_expressed[strain]
+    data = data.copy()
+    data.loc[~expressed, :] = 0
     genes_adjusted.append(data)
-genes_adjusted=pd.concat(genes_adjusted,axis=1)
-genes_adjusted.to_csv(pathByStrain+'genesAdjustUnexpressed'+str(ration_max)+str(proportion)+'.tsv',sep='\t')
-#*************
-#**** Find genes co-expressed with TFs in strains that progress to FB
-#TODO
+genes_adjusted = pd.concat(genes_adjusted, axis=1)
+genes_adjusted.to_csv(pathByStrain + 'genesAdjustUnexpressed' + str(ration_max) + str(proportion) + '.tsv', sep='\t')
+#******************************88
+#**** Compare regulon clusters
+files = [f for f in glob.glob(pathByStrain + 'kN300_mean0std1_log/clusters/' + "*.tab")]
+clusters_df=[]
+for file in files:
+    clusters=pd.read_table(file,index_col=0)
+    clusters.columns=[file.split('/')[-1].replace('.tab','').replace('mergedGenes_','')]
+    clusters_df.append(clusters)
+clusters_df=pd.concat(clusters_df,axis=1,sort=True)
+#clusters_df=clusters_df.replace(np.nan,'CNA')
+clusters_df.to_csv(pathByStrain + 'kN300_mean0std1_log/clusters/cluster_summary.tsv',sep='\t')
+# *************
+# **** Find genes co-expressed with TFs in strains that progress to FB
+# TODO
 
 # *******************************
 # ********* Interaction based similarity threshold
@@ -1524,14 +1551,17 @@ confident_present.to_csv(
 
 # *****************************
 # ********** Make tSNE of all genes to plot regulons on it
-genes_all_pp=NeighbourCalculator.get_index_query(genes=genes,inverse=False,scale='mean0std1',log=True)[0]
-tsne=make_tsne(data=genes_all_pp)
-tsne=pd.DataFrame(tsne,index=genes.index)
-tsne.to_csv(pathByStrain+'tsne.tsv',sep='\t')
+genes_all_pp = NeighbourCalculator.get_index_query(genes=genes, inverse=False, scale='mean0std1', log=True)[0]
+tsne = make_tsne(data=genes_all_pp)
+tsne = pd.DataFrame(tsne, index=genes.index)
+tsne.to_csv(pathByStrain + 'tsne.tsv', sep='\t')
 
-classes=dict(zip(genes.index,['other']*genes.shape[0]))
-regulon_genes=pd.read_table(pathByStrain + 'kN300_mean0std1_log/' + 'mergedGenes_minExpressed0.990.5Strains1_clustersLouvain0.4minmaxNologPCA30kN30.tab', index_col=0)
-classes.update(dict(zip(regulon_genes.index,['regulon']*regulon_genes.shape[0])))
+classes = dict(zip(genes.index, ['other'] * genes.shape[0]))
+regulon_genes = pd.read_table(
+    pathByStrain + 'kN300_mean0std1_log/' + 'mergedGenes_minExpressed0.990.5Strains1_clustersLouvain0.4minmaxNologPCA30kN30.tab',
+    index_col=0)
+classes.update(dict(zip(regulon_genes.index, ['regulon'] * regulon_genes.shape[0])))
 
 plot_tsne_colours([tsne.values], classes=[classes], names=[tsne.index], legend=True,
-          plotting_params={'regulon':{'s':1,'alpha':0.6},'other':{'s':0.5,'alpha':0.3}},colour_dict={'regulon':'red','other':'black'})
+                  plotting_params={'regulon': {'s': 1, 'alpha': 0.6}, 'other': {'s': 0.5, 'alpha': 0.3}},
+                  colour_dict={'regulon': 'red', 'other': 'black'})

@@ -52,27 +52,91 @@ tsne = make_tsne(data=data, perplexities_range=[50, 160], exaggerations=[1, 1],
                  momentums=[0.6, 0.9], random_state=0)
 # Data for plotting
 plot_data = pd.DataFrame(tsne, index=data.index, columns=['x', 'y'])
-conditions_plot = conditions[['Replicate', 'Time', 'Group']]
-conditions_plot.index = conditions['Measurment']
-plot_data = pd.concat([plot_data, conditions_plot], axis=1)
+# conditions_plot = conditions[['Replicate', 'Time', 'Group']]
+# conditions_plot.index = conditions['Measurment']
+# plot_data = pd.concat([plot_data, conditions_plot], axis=1)
+plot_data = pd.concat([plot_data,
+                       pd.DataFrame(conditions.values, index=conditions['Measurment'].values,
+                                    columns=conditions.columns.values)], axis=1, sort=True)
+plot_data['sizes'] = minmax_scale(plot_data['Time'], (3, 30))
 
 # Plot tSNE with temporal info
-colours = {'1Ag-': '#d40808', '2LAg': '#e68209', '3TA': '#d1b30a', '4CD': '#4eb314', '5WT': '#0fa3ab',
-           '6SFB': '#525252', '7PD': '#7010b0'}
+colours = {'Ag-': '#d40808', 'LAD': '#e68209', 'TAD': '#ffb13d', 'TA': '#d1b30a', 'CD': '#4eb314', 'WT': '#0fa3ab',
+           'SFB': '#525252', 'PD': '#7010b0'}
+colours_stage = {'no_agg': '#c41414', 'stream': '#c24813', 'lag': '#c27013', 'tag': '#c29313', 'tip': '#c2b113',
+                 'slug': '#46b019', 'mhat': '#19b0a6', 'cul': '#1962b0', 'FB': '#7919b0', 'disappear': '#000000',
+                 'NA': '#949494'}
+
 fig, ax = plt.subplots()
-ax.scatter(plot_data['x'], plot_data['y'], s=minmax_scale(plot_data['Time'], (3, 30)),
-           c=[colours[name] for name in plot_data['Group']], alpha=0.5)
+
+# Either add one point per measurment (coloured by group) or multiple jitter points coloured by phenotypes
+# By group
+colour_by_phenotype = False
+if not colour_by_phenotype:
+    ax.scatter(plot_data['x'], plot_data['y'], s=minmax_scale(plot_data['Time'], (3, 30)),
+               c=[colours[name] for name in plot_data['Group']], alpha=0.5)
+# By phenotypes
+else:
+    # Jitter function
+    def rand_jitter(n, min, max):
+        dev = (max - min) / 200
+        return n + np.random.randn(1) * dev
+
+
+    min_x = plot_data['x'].min()
+    min_y = plot_data['y'].min()
+    max_x = plot_data['x'].max()
+    max_y = plot_data['x'].max()
+    for point in plot_data.iterrows():
+        point = point[1]
+        phenotypes = point[PHENOTYPES]
+        if phenotypes.sum() < 1:
+            ax.scatter(point['x'], point['y'], s=point['sizes'],
+                       c=colours_stage['NA'], alpha=0.5)
+        elif phenotypes.sum() == 1:
+            phenotype = phenotypes[phenotypes > 0].index[0]
+            ax.scatter(point['x'], point['y'], s=point['sizes'],
+                       c=colours_stage[phenotype], alpha=0.5)
+        else:
+            first = True
+            for phenotype in PHENOTYPES:
+                if phenotypes[phenotype] == 1:
+                    x = point['x']
+                    y = point['y']
+                    if not first:
+                        x = rand_jitter(n=x, min=min_x, max=max_x)
+                        y = rand_jitter(n=y, min=min_y, max=max_y)
+                    ax.scatter(x, y, s=point['sizes'], c=colours_stage[phenotype], alpha=0.5)
+                    first = False
+
+# Add line between replicates' measurments
 for name, data_rep in plot_data.groupby('Replicate'):
     data_rep = data_rep.sort_values('Time')
     group = data_rep['Group'].values[0]
     ax.plot(data_rep['x'], data_rep['y'], color=colours[group], alpha=0.5, linewidth=0.5)
+    # Add replicate name
     ax.text(data_rep['x'][-1], data_rep['y'][-1], data_rep['Replicate'][0], fontsize=6)
+
 ax.axis('off')
+
+# Legends for groups and phenotypes
 patchList = []
 for name, colour in colours.items():
     data_key = mpatches.Patch(color=colour, label=name, alpha=0.5)
     patchList.append(data_key)
-ax.legend(handles=patchList, title="Group")
+title = 'Group'
+if colour_by_phenotype:
+    title = title + ' (line)'
+legend_groups = ax.legend(handles=patchList, title=title, loc='lower left')
+
+if colour_by_phenotype:
+    patchList = []
+    for name, colour in colours_stage.items():
+        data_key = mpatches.Patch(color=colour, label=name, alpha=0.5)
+        patchList.append(data_key)
+    legend_stages = ax.legend(handles=patchList, title="Phenotype (point)", loc='upper right')
+    ax.add_artist(legend_groups)
+
 fig.suptitle("t-SNE of measurements. Size denotes time; replicate's progression is market with a line.")
 
 # ************************************************************************
@@ -326,7 +390,6 @@ diffs_df.to_csv(pathSelGenes + 'diffs_AX4Strain.tsv', sep='\t', index=False)
 
 # *******************************
 # ***** Add phenotype info to conditions
-PHENOTYPES = ['no_agg', 'stream', 'lag', 'tag', 'tip', 'slug', 'mhat', 'cul', 'FB', 'disappear']
 conditions = pd.concat([conditions, pd.DataFrame(np.zeros((conditions.shape[0], len(PHENOTYPES))), columns=PHENOTYPES)],
                        axis=1)
 
@@ -352,7 +415,7 @@ for f in files:
                 val = val.replace('streaming', 'stream')
                 val = val.split('/')
                 val = list(filter(lambda a: a != '', val))
-                conditions_row=conditions[(conditions['Replicate'] == replicate) & (conditions['Time'] == time)]
+                conditions_row = conditions[(conditions['Replicate'] == replicate) & (conditions['Time'] == time)]
                 if conditions_row.shape[0] > 0:
                     idx = conditions[(conditions['Replicate'] == replicate) & (conditions['Time'] == time)].index[0]
                     for pheno in val:
@@ -361,7 +424,7 @@ for f in files:
                         else:
                             conditions.at[idx, pheno] = 1
                 else:
-                    print('No sample for',replicate,time)
+                    print('No sample for', replicate, time)
 
 # Make all 0 times no_agg if not already filled
 for idx, sample in conditions.iterrows():
@@ -377,26 +440,54 @@ conditions.to_csv(dataPath + 'conditions_mergedGenes.tsv', sep='\t', index=False
 # ******** Find genes overexpressed in a stage (data from R deSeq2 1 vs 1 stage)
 files = [f for f in glob.glob('/home/karin/Documents/timeTrajectories/data/deTime/stage_vs_stage/' + "*.tsv")]
 # Remove disappear as this will be analysed separatley
-files=[f for f in files if 'disappear' not in f]
-stage_genes=pd.DataFrame()
+files = [f for f in files if 'disappear' not in f]
+stage_genes = pd.DataFrame()
 for stage in PHENOTYPES:
-    files_stage=[f for f in files if stage in f.split('/')[-1]]
-    selected_genes=set(genes.index)
-    print('*****',stage,len(files_stage))
-    if len(files_stage)>0:
+    files_stage = [f for f in files if stage in f.split('/')[-1]]
+    selected_genes = set(genes.index)
+    print('*****', stage, len(files_stage))
+    if len(files_stage) > 0:
         for file in files_stage:
-            #print(file)
-            data=pd.read_table(file,index_col=0)
-            file_fieleds=file.split('ref')
-            if stage in file_fieleds[0]:
+            # print(file)
+            data = pd.read_table(file, index_col=0)
+            file_fields = file.split('ref')
+            if stage in file_fields[0]:
                 direction = '>= '
-            elif stage in file_fieleds[1]:
+            elif stage in file_fields[1]:
                 direction = '<= -'
-            markers=set(data.query('log2FoldChange '+direction+'2').index)
-            selected_genes=selected_genes & markers
-            #print(len(selected_genes))
+            # Filter based on fold change to get overexpressed
+            markers = set(data.query('log2FoldChange ' + direction + '1').index)
+            selected_genes = selected_genes & markers
+            # print(len(selected_genes))
         print(len(selected_genes))
         for gene in selected_genes:
-            stage_genes.loc[gene,stage]=1
+            stage_genes.loc[gene, stage] = 1
 
-stage_genes.to_csv('/home/karin/Documents/timeTrajectories/data/deTime/stage_vs_stage/markers.tab',sep='\t')
+stage_genes.to_csv('/home/karin/Documents/timeTrajectories/data/deTime/stage_vs_stage/markers.tab', sep='\t')
+
+# ******************************************************
+# ********** Genes that always peak in certain stage
+
+# Find for each gene a peak time in each replicate. Leave nan if gene constantly 0.
+merged = ClusterAnalyser.merge_genes_conditions(genes=genes, conditions=conditions[['Measurment', 'Replicate']],
+                                                matching='Measurment')
+splitted = ClusterAnalyser.split_data(data=merged, split_by='Replicate')
+for strain, data in splitted.items():
+    splitted[strain] = data.drop(["Replicate", 'Measurment'], axis=1).T
+
+genes_dict = dict(zip(genes.index, range(genes.shape[0])))
+replicates = list(splitted.keys())
+reps_dict = dict(zip(replicates, range(len(replicates))))
+peak_data = np.empty((genes.shape[0], len(replicates)))
+peak_data[:] = np.nan
+conditions.index = conditions['Measurment']
+for rep, data in splitted.items():
+    print(rep)
+    data = data.copy()
+    data.columns = conditions.loc[data.columns]['Time'].values
+    for gene, expression in data.iterrows():
+        if not (expression == 0).all():
+            peak_data[genes_dict[gene]][reps_dict[rep]] = ClusterAnalyser.peak(expression)
+
+peak_data=pd.DataFrame(peak_data,index=genes.index,columns=replicates)
+peak_data.to_csv('/home/karin/Documents/timeTrajectories/data/stages/peaks.tsv',sep='\t')

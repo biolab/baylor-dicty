@@ -10,15 +10,15 @@ from orangecontrib.bioinformatics.utils.statistics import Hypergeometric
 from Orange.clustering.louvain import jaccard
 from scipy.optimize import curve_fit
 
-GROUPS = {'amiB': '1Ag-', 'mybB': '1Ag-', 'acaA': '1Ag-', 'gtaC': '1Ag-',
-          'gbfA': '2LAg', 'tgrC1': '2LAg', 'tgrB1': '2LAg', 'tgrB1C1': '2LAg',
-          'tagB': '3TA', 'comH': '3TA',
-          'ecmARm': '4CD', 'gtaI': '4CD', 'cudA': '4CD', 'dgcA': '4CD', 'gtaG': '4CD',
-          'AX4': '5WT', 'MybBGFP': '5WT',
-          'acaAPkaCoe': '6SFB', 'ac3PkaCoe': '6SFB',
-          'pkaR': '7PD', 'PkaCoe': '7PD'}
+GROUPS = {'amiB': 'Ag-', 'mybB': 'Ag-', 'acaA': 'Ag-', 'gtaC': 'Ag-',
+          'gbfA': 'LAD', 'tgrC1': 'LAD', 'tgrB1': 'TAD', 'tgrB1C1': 'TAD',
+          'tagB': 'TA', 'comH': 'TA',
+          'ecmARm': 'CD', 'gtaI': 'CD', 'cudA': 'CD', 'dgcA': 'CD', 'gtaG': 'CD',
+          'AX4': 'WT', 'MybBGFP': 'WT',
+          'acaAPkaCoe': 'SFB', 'ac3PkaCoe': 'SFB',
+          'pkaR': 'PD', 'PkaCoe': 'PD'}
 
-GROUP_X = {'1Ag-': 1, '2LAg': 2, '3TA': 3, '4CD': 4, '6SFB': 5, '5WT': 6, '7PD': 7}
+GROUP_X = {'Ag-': 1, 'LAD': 2,'TAD':3, 'TA': 4, 'CD': 5, 'SFB': 6, 'WT': 7, 'PD': 8}
 
 GROUP_DF = []
 for strain, group in GROUPS.items():
@@ -26,8 +26,10 @@ for strain, group in GROUPS.items():
 GROUP_DF = pd.DataFrame(GROUP_DF)
 
 
-# GROUP_DF.to_csv('/home/karin/Documents/timeTrajectories/data/regulons/selected_genes/group_df.tsv',sep='\t',
-# index=False)
+#GROUP_DF.to_csv('/home/karin/Documents/timeTrajectories/data/regulons/selected_genes/group_df.tsv',sep='\t',
+#index=False)
+
+PHENOTYPES = ['no_agg', 'stream', 'lag', 'tag', 'tip', 'slug', 'mhat', 'cul', 'FB', 'disappear']
 
 def plot_genegroup_similarity(retained_genes_dict, splitby='Strain', jaccard_or_p=True, n_all_genes: int = None,
                               group_colours=None, add_title=''):
