@@ -19,6 +19,7 @@ lab = True
 if lab:
     dataPath = '/home/karin/Documents/timeTrajectories/data/RPKUM/combined/'
     pathSelGenes = '/home/karin/Documents/timeTrajectories/data/regulons/selected_genes/'
+    peakPath = '/home/karin/Documents/timeTrajectories/data/stages/'
 
 else:
     dataPath = '/home/karin/Documents/DDiscoideum/data/RPKUM/'
@@ -489,5 +490,65 @@ for rep, data in splitted.items():
         if not (expression == 0).all():
             peak_data[genes_dict[gene]][reps_dict[rep]] = ClusterAnalyser.peak(expression)
 
-peak_data=pd.DataFrame(peak_data,index=genes.index,columns=replicates)
-peak_data.to_csv('/home/karin/Documents/timeTrajectories/data/stages/peaks.tsv',sep='\t')
+peak_data = pd.DataFrame(peak_data, index=genes.index, columns=replicates)
+peak_data.to_csv(peakPath + 'peaks.tsv', sep='\t')
+
+# Count in how many measurements for each strain had a gene a peak in certain stage
+peak_data = pd.read_table(peakPath + 'peaks.tsv', index_col=0)
+
+# For each strain find N replicates that had peak in certain stage for each gene
+genes_dict = dict(zip(genes.index, range(genes.shape[0])))
+phenotypes_dict = dict(zip(PHENOTYPES, range(len(PHENOTYPES))))
+peak_counts = dict()
+
+for replicate in conditions['Replicate'].unique():
+    peak_stage = np.zeros((len(genes_dict), len(phenotypes_dict)))
+    print(replicate)
+    stage_data = conditions[conditions['Replicate'] == replicate][PHENOTYPES]
+    stage_data.index = conditions[conditions['Replicate'] == replicate]['Time']
+    for gene, peak in peak_data[replicate].iteritems():
+        if not np.isnan(peak):
+            stages = stage_data.loc[peak, :]
+            for stage, present in stages.iteritems():
+                if present == 1:
+                    peak_stage[genes_dict[gene]][phenotypes_dict[stage]] += 1
+    peak_counts[replicate] = pd.DataFrame(peak_stage, index=genes.index, columns=PHENOTYPES)
+
+# Merge for all replicates
+combined_counts = pd.DataFrame(np.zeros((len(genes_dict), len(phenotypes_dict))), index=genes.index, columns=PHENOTYPES)
+for data in peak_counts.values():
+    combined_counts = combined_counts + data
+
+# Convert counts of peak to propotions (divide by N of replicates that have that stage)
+combined_proportion = pd.DataFrame()
+for phenotype in combined_counts.columns:
+    n = conditions[conditions[phenotype] == 1]['Replicate'].unique().shape[0]
+    combined_proportion[phenotype] = combined_counts[phenotype] / n
+combined_proportion.to_csv(peakPath + 'stage_peak_proportion.tsv', sep='\t')
+# Problem as misses genes that have a peak in stage without image
+
+# Only Wt data
+combined_counts_WT = pd.DataFrame(np.zeros((len(genes_dict), len(phenotypes_dict))), index=genes.index,
+                                  columns=PHENOTYPES)
+for replicate in conditions[conditions['Group'] == 'WT']['Replicate'].unique():
+    combined_counts_WT = combined_counts_WT + peak_counts[replicate]
+
+combined_proportion_WT = pd.DataFrame()
+for phenotype in combined_counts_WT.columns:
+    n = conditions.query(phenotype + ' == 1 & Group =="WT"')['Replicate'].unique().shape[0]
+    combined_proportion_WT[phenotype] = combined_counts_WT[phenotype] / n
+combined_proportion_WT.to_csv(peakPath + 'stage_peak_proportion_WT.tsv', sep='\t')
+
+# Compute random null distribution for N (or % in each stage) by shuffling counts within stages for each replicate
+# (stage gets same number of samples, but they are distributed randomly)
+# Then do other steps (summing, proportion) to get the null distribution for each stage
+peak_counts_permuted = dict()
+for replicate, data in peak_counts.items():
+    data_shuffled = pd.DataFrame(index=data.index,columns=data.columns)
+    for col in data.columns:
+        col_copy=data[col].copy().values
+        np.random.shuffle(col_copy)
+        data_shuffled[col] = col_copy
+    peak_counts_permuted[replicate]=data_shuffled
+
+# For WT and all strains the differences in distn are so big that it is not relevant (e.g. threshold could be at 0.5/0.6) (tested on tag)

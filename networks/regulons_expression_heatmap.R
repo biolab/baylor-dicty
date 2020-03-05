@@ -40,17 +40,17 @@ strain_order<-as.vector(read.table(paste(path_strain_order,"strain_order.tsv",se
 
 #** Regulon groups tab file: First column lists genes and 
 #** a column named Cluster specifying cluster/regulon of each gene
-regulons=read.table(paste(path_clusters,"mergedGenes_min18_clusters_filledDiagonal11.tab",sep=''),
+regulons=read.table(paste(path_clusters,"clusters/mergedGenes_minExpressed0.990.1Strains1Min1Max18_clustersLouvain0.4minmaxNologPCA30kN30.tab",sep=''),
                     header=TRUE, sep="\t")
 #Name the first column (should contain genes
 colnames(regulons)[1]<-'Gene'
 
-
+  
 # Get clusters - list unique and sort
 clusters=unique(regulons$Cluster)
 vals <- as.numeric(gsub("C","", clusters))
 clusters=clusters[order(vals)]
-
+    
 #** Some plotting parameters
 legend_font=12
 legened_height=1.5
@@ -135,3 +135,6 @@ for (cluster in cluster_order$Cluster){
 #Plots the combined heatmap 
 ht_list
 
+
+
+  

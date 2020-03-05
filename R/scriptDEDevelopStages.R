@@ -244,6 +244,55 @@ for (i in (1:(length(STAGES)-1))){
     
 # Process this in python to retain only genes overexpressed against all other stages
 
+# Find genes overexpressed in WT (AX4, MybBGFP) stage compared to rest of WT and strains that do not reach the stage, excluding PD
+# Other strains that reach the stage are excluded because they can be different from WT despite the similar phenotype
+# PD is excluded as it shows WT expression in non WT phenotypes
+# Comparison: test: WT A and A/B, control: WT non A, all measurments from all replicates (excluding PD) that do not reach the satge
+stage_order<-data.frame(Stage=c('no_agg', 'stream', 'lag', 'tag', 'tip', 'slug', 'mhat', 'cul', 'FB'), Order=1:9)
+max_stages<-c()
+replicates<-as.vector(unique(conditions$Replicate))
+for(replicate in replicates){
+  data_strain<-conditions[conditions$Replicate == replicate,as.vector(stage_order$Stage)]
+  max_stage=1
+  for (stage in stage_order$Stage){
+    if (any(data_strain[stage]==1)){
+      order<-stage_order[stage_order$Stage==stage,'Order'][1]
+      if (order > max_stage) max_stage=order
+    }
+  }
+  max_stages<-c(max_stages,max_stage)
+}
+max_stages<-data.frame(Replicate=replicates,Max_stage=max_stages)
+#Replace max stages of strains with no data with 'NA'
+for( strain in c('ac3PkaCoe','gtaC','gtaI')){
+  for (replicate in unique(conditions[conditions$Strain ==strain, 'Replicate'])){
+    max_stages[max_stages$Replicate==replicate,'Max_stage']<-'NA'
+  }
+}
+#Add tip to tagB_r2, so that it is not used in comparisons for not-tip as it may have a tip (image was not taken)
+max_stages[max_stages$Replicate=='tagB_r2','Max_stage']<-5
+
+for (stage in stage_order$Stage[2:9]){
+  print(stage)
+  stage_n<-stage_order[stage_order$Stage==stage,'Order'][1]
+  test<-conditions[conditions[stage]==1 & conditions['Group']=='WT',]
+  control_WT<-conditions[conditions[stage]!=1 & conditions['Group']=='WT',]
+  other_reps<-as.vector(max_stages[max_stages$Max_stage < stage_n,'Replicate'])
+  control_other<-conditions[conditions$Replicate %in% other_reps & conditions$Group !='PD',]
+  print(unique(control_other$Replicate))
+  control<-rbind(control_WT,control_other)
+  print(paste(dim(test),dim(control_WT),dim(control_other),dim(control),sep=','))
+  
+  test$Comparison<-rep(stage,dim(test)[1])
+  control$Comparison<-rep('other',dim(control)[1])
+  conditions_sub<-rbind(test,control)
+  genes_sub<-genes[,rownames(conditions_sub)]
+  res<-runDeSeq2(conditions_sub,genes_sub,case=stage,control='other',design=~Comparison,main_lvl='Comparison',padj=0.05,logFC=1,
+                 path='/home/karin/Documents/timeTrajectories/data/deTime/stageWT_vs_other/')
+}  
+
+
+
 # **********************************************  
 # **** DE genes in time in each strain
 padj=1

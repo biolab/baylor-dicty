@@ -18,18 +18,18 @@ GROUPS = {'amiB': 'Ag-', 'mybB': 'Ag-', 'acaA': 'Ag-', 'gtaC': 'Ag-',
           'acaAPkaCoe': 'SFB', 'ac3PkaCoe': 'SFB',
           'pkaR': 'PD', 'PkaCoe': 'PD'}
 
-GROUP_X = {'Ag-': 1, 'LAD': 2,'TAD':3, 'TA': 4, 'CD': 5, 'SFB': 6, 'WT': 7, 'PD': 8}
+GROUP_X = {'Ag-': 1, 'LAD': 2, 'TAD': 3, 'TA': 4, 'CD': 5, 'SFB': 6, 'WT': 7, 'PD': 8}
 
 GROUP_DF = []
 for strain, group in GROUPS.items():
     GROUP_DF.append({'Strain': strain, 'Group': group, 'X': GROUP_X[group]})
 GROUP_DF = pd.DataFrame(GROUP_DF)
 
-
-#GROUP_DF.to_csv('/home/karin/Documents/timeTrajectories/data/regulons/selected_genes/group_df.tsv',sep='\t',
-#index=False)
+# GROUP_DF.to_csv('/home/karin/Documents/timeTrajectories/data/regulons/selected_genes/group_df.tsv',sep='\t',
+# index=False)
 
 PHENOTYPES = ['no_agg', 'stream', 'lag', 'tag', 'tip', 'slug', 'mhat', 'cul', 'FB', 'disappear']
+
 
 def plot_genegroup_similarity(retained_genes_dict, splitby='Strain', jaccard_or_p=True, n_all_genes: int = None,
                               group_colours=None, add_title=''):
@@ -187,7 +187,7 @@ def similarity_mean_df(sims_dict: dict, index: list, replace_na_sims: float = No
     return similarity_means
 
 
-def quantile_normalise(similarity_means,return_ranks:bool=False):
+def quantile_normalise(similarity_means, return_ranks: bool = False):
     """
     Quantile normalise DF with samples in columns and values in rows, normalise columns to have same distribution.
     # https://stackoverflow.com/a/41078786/11521462
@@ -213,14 +213,15 @@ def quantile_normalise(similarity_means,return_ranks:bool=False):
                 rank_high = rank_low + 1
                 new_value = (rank_mean[rank_low] + rank_mean[rank_high]) / 2
             quantile_normalised[i, j] = new_value
-    normalised=pd.DataFrame(quantile_normalised, index=rank_df.index, columns=rank_df.columns)
+    normalised = pd.DataFrame(quantile_normalised, index=rank_df.index, columns=rank_df.columns)
     if not return_ranks:
         return normalised
     else:
         return normalised, rank_mean
 
 
-def compare_gene_scores(quantile_normalised: pd.DataFrame, group_splits: list, test: str, alternative: str):
+def compare_gene_scores(quantile_normalised: pd.DataFrame, group_splits: list, test: str, alternative: str,
+                        select_single_comparsion: list = None, ref1:list=None, ref2:list=None):
     """
     Compare gene scores across strain groups. For each gene there is a score (e.g. avg similarity to neighbours) in each
     strain that belongs to a strain group. Compare scores between groups to find genes that have lower/higher score in
@@ -241,6 +242,26 @@ def compare_gene_scores(quantile_normalised: pd.DataFrame, group_splits: list, t
     """
     results = []
     for gene in quantile_normalised.index:
+        if select_single_comparsion is not None:
+            ref_m1 = group_mean(groups=ref1, quantile_normalised=quantile_normalised, gene=gene)
+            ref_m2 = group_mean(groups=ref2, quantile_normalised=quantile_normalised, gene=gene)
+ #TODO comments, documentation, test
+            if ref_m1>ref_m2:
+                order=-1
+                m_high = ref_m1
+                m_low = ref_m2
+            else:
+                order = 1
+                m_high = ref_m2
+                m_low = ref_m1
+
+            for group in [x for x in select_single_comparsion if x not in ref1 and x not in ref2][::order]:
+                m = group_mean(groups=[group], quantile_normalised=quantile_normalised,
+                                gene=gene)
+                diff_high=abs(m-m_high)
+                diff_low=abs(m-m_low)
+                if diff_high > diff_low:
+                    break
         for comparison in group_splits:
             strains1 = GROUP_DF[GROUP_DF['X'].isin(comparison[0])]['Strain']
             strains2 = GROUP_DF[GROUP_DF['X'].isin(comparison[1])]['Strain']
@@ -286,3 +307,9 @@ def compare_gene_scores(quantile_normalised: pd.DataFrame, group_splits: list, t
     # Adjust all pvals to FDR
     results['FDR'] = multipletests(pvals=results['p'], method='fdr_bh', is_sorted=False)[1]
     return results
+
+
+def group_mean(groups, quantile_normalised, gene):
+    strains = GROUP_DF[GROUP_DF['X'].isin(groups)]['Strain']
+    values = quantile_normalised.loc[gene, strains].values
+    return values.mean()
