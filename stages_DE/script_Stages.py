@@ -341,7 +341,7 @@ quantile_normalised_WT.to_csv(
     sep='\t')
 # Pre select genes that are above a relative threshold in WT and PD strains (that develop)
 genes_filtered = set(similarity_means_WT.index)
-for strain in GROUP_DF[GROUP_DF['X'] > 5]['Strain']:
+for strain in GROUP_DF[GROUP_DF['Group'].isin(['PD','WT'])]['Strain']:
     threshold = np.quantile(similarity_means_WT[strain], 0.4)
     genes_filtered = genes_filtered & set(similarity_means_WT[similarity_means_WT[strain] >= threshold].index)
 test = 'u'

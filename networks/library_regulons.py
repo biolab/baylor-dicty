@@ -29,7 +29,7 @@ from Orange.clustering.louvain import jaccard
 from orangecontrib.bioinformatics.utils.statistics import Hypergeometric
 
 from correlation_enrichment.library_correlation_enrichment import GeneExpression, SimilarityCalculator
-from deR.enrichment_library import GO_enrichment, name_genes_entrez
+from stages_DE.enrichment_library import GO_enrichment, name_genes_entrez
 
 SCALING = 'mean0std1'
 LOG = True

@@ -40,7 +40,7 @@ strain_order<-as.vector(read.table(paste(path_strain_order,"strain_order.tsv",se
 
 #** Regulon groups tab file: First column lists genes and 
 #** a column named Cluster specifying cluster/regulon of each gene
-regulons=read.table(paste(path_clusters,"clusters/mergedGenes_minExpressed0.990.1Strains1Min1Max18_clustersLouvain0.4minmaxNologPCA30kN30.tab",sep=''),
+regulons=read.table(paste(path_clusters,"clusters/mergedGenes_minExpressed0.990.3Strains1Min1Max18_clustersLouvain0.4minmaxNologPCA30kN30.tab",sep=''),
                     header=TRUE, sep="\t")
 #Name the first column (should contain genes
 colnames(regulons)[1]<-'Gene'

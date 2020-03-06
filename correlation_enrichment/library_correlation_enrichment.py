@@ -15,7 +15,7 @@ mpmath.mp.dps = 500
 
 from orangecontrib.bioinformatics.geneset.utils import (GeneSet, GeneSets)
 
-import deR.enrichment_library as el
+import stages_DE.enrichment_library as el
 
 MAX_RANDOM_PAIRS = 10000
 
