@@ -11,7 +11,7 @@ import DBA as dba
 
 from networks.library_regulons import ClusterAnalyser, NeighbourCalculator, make_tsne
 from networks.functionsDENet import loadPickle, savePickle
-from deR.stages_library import *
+from stages_DE.stages_library import *
 from correlation_enrichment.library_correlation_enrichment import SimilarityCalculator
 
 path = '/home/karin/Documents/timeTrajectories/data/deTime/de_time_impulse/'
@@ -233,6 +233,7 @@ quantile_normalised.to_csv(
 # *** Mann–Whitney U or t test for comparing similarities distribution between strain groups
 # Below: Tells which comparison on the strain developmental timeline to make
 # First element group1, second group2, third comparison name
+# TODO correct
 group_splits = [
     ([1], [2, 3, 4, 6, 7], 1),
     ([1, 2], [3, 4, 6, 7], 2),
@@ -318,7 +319,8 @@ savePickle(
     pathSelGenes + 'AX4basedNeigh_newGenes-removeZeroRep_neighSimsDict_scalemean0std1_logTrue_kN' + str(NEIGHBOURS) +
     '_splitStrain.pkl', (neigh_WT, sims_dict_WT))
 
-# ************ Find genes  for which neighbours in AX4 do not represent close neighbours (similar as above
+# ************ Find genes  for which neighbours in AX4 do not represent close neighbours (similar as above)
+# TODO correct!!!
 group_splits = [
     ([1], [2, 3, 4, 6, 7], 1),
     ([1, 2], [3, 4, 6, 7], 2),
@@ -336,22 +338,30 @@ similarity_means_WT = similarity_mean_df(sims_dict=sims_dict_WT, index=genes.ind
                                          replace_na_mean='zero')
 quantile_normalised_WT = quantile_normalise(similarity_means=similarity_means_WT)
 
-quantile_normalised_WT.to_csv(
-    pathSelGenes + 'simsQuantileNormalised_AX4basedNeigh_newGenes_noAll-removeZeroRep_simsDict_scalemean0std1_logTrue_kN11_splitStrain.tsv',
-    sep='\t')
+# quantile_normalised_WT.to_csv(
+#    pathSelGenes + 'simsQuantileNormalised_AX4basedNeigh_newGenes_noAll-removeZeroRep_simsDict_scalemean0std1_logTrue_kN11_splitStrain.tsv',
+#    sep='\t')
 # Pre select genes that are above a relative threshold in WT and PD strains (that develop)
 genes_filtered = set(similarity_means_WT.index)
-for strain in GROUP_DF[GROUP_DF['Group'].isin(['PD','WT'])]['Strain']:
-    threshold = np.quantile(similarity_means_WT[strain], 0.4)
+for strain in GROUP_DF[GROUP_DF['Group'].isin(['PD', 'WT'])]['Strain']:
+    threshold = np.quantile(similarity_means_WT[strain], 0.3)
     genes_filtered = genes_filtered & set(similarity_means_WT[similarity_means_WT[strain] >= threshold].index)
 test = 'u'
 alternative = 'less'
+# Test for all possible separation points
 results_WT = compare_gene_scores(quantile_normalised=quantile_normalised_WT.loc[genes_filtered, :],
                                  group_splits=group_splits, test=test,
                                  alternative=alternative)
-
 results_WT.to_csv(
     pathSelGenes + 'comparisonsAvgSims_AX4basedNeigh_' + test + '-' + alternative + '_newGenes_noAll-removeZeroRep_simsDict_scalemean0std1_logTrue_kN11_splitStrain.tsv',
+    sep='\t', index=False)
+
+# OR Test for single separation point
+results_WT = compare_gene_scores(quantile_normalised=quantile_normalised_WT.loc[genes_filtered, :],
+                                 group_splits=None, test=test,
+                                 alternative=alternative, select_single_comparsion=[[1, 2, 3, 4, 5, 7, 8], [1], [7, 8]])
+results_WT.to_csv(
+    pathSelGenes + 'comparisonsAvgSimsSingle_AX4basedNeigh_' + test + '-' + alternative + '_newGenes_noAll-removeZeroRep_simsDict_scalemean0std1_logTrue_kN11_splitStrain.tsv',
     sep='\t', index=False)
 
 # ****** For each strain/gene compare similarities to neighbours from AX4 and closest neighbours in the strain
@@ -544,11 +554,11 @@ combined_proportion_WT.to_csv(peakPath + 'stage_peak_proportion_WT.tsv', sep='\t
 # Then do other steps (summing, proportion) to get the null distribution for each stage
 peak_counts_permuted = dict()
 for replicate, data in peak_counts.items():
-    data_shuffled = pd.DataFrame(index=data.index,columns=data.columns)
+    data_shuffled = pd.DataFrame(index=data.index, columns=data.columns)
     for col in data.columns:
-        col_copy=data[col].copy().values
+        col_copy = data[col].copy().values
         np.random.shuffle(col_copy)
         data_shuffled[col] = col_copy
-    peak_counts_permuted[replicate]=data_shuffled
+    peak_counts_permuted[replicate] = data_shuffled
 
 # For WT and all strains the differences in distn are so big that it is not relevant (e.g. threshold could be at 0.5/0.6) (tested on tag)

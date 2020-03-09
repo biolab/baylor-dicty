@@ -220,8 +220,8 @@ def quantile_normalise(similarity_means, return_ranks: bool = False):
         return normalised, rank_mean
 
 
-def compare_gene_scores(quantile_normalised: pd.DataFrame, group_splits: list, test: str, alternative: str,
-                        select_single_comparsion: list = None, ref1:list=None, ref2:list=None):
+def compare_gene_scores(quantile_normalised: pd.DataFrame, test: str, alternative: str, group_splits: list=None,
+                        select_single_comparsion:list=None):
     """
     Compare gene scores across strain groups. For each gene there is a score (e.g. avg similarity to neighbours) in each
     strain that belongs to a strain group. Compare scores between groups to find genes that have lower/higher score in
@@ -241,27 +241,48 @@ def compare_gene_scores(quantile_normalised: pd.DataFrame, group_splits: list, t
         strain group in comparison group2 -mean1; last and first used as specified in group_splits).
     """
     results = []
+    if select_single_comparsion is None and group_splits is None:
+        raise ValueError('select_single_comparsion or group_splits must be specified')
+    if select_single_comparsion is not None:
+        unsplit1 = select_single_comparsion[1]
+        unsplit2 = select_single_comparsion[2]
+        select_single_comparsion = select_single_comparsion[0]
     for gene in quantile_normalised.index:
         if select_single_comparsion is not None:
-            ref_m1 = group_mean(groups=ref1, quantile_normalised=quantile_normalised, gene=gene)
-            ref_m2 = group_mean(groups=ref2, quantile_normalised=quantile_normalised, gene=gene)
- #TODO comments, documentation, test
-            if ref_m1>ref_m2:
-                order=-1
-                m_high = ref_m1
-                m_low = ref_m2
-            else:
+            unsplit_m1 = group_mean(groups=unsplit1, quantile_normalised=quantile_normalised, gene=gene)
+            unsplit_m2 = group_mean(groups=unsplit2, quantile_normalised=quantile_normalised, gene=gene)
+            # TODO comments, documentation, test
+            if unsplit_m1 > unsplit_m2:
                 order = 1
-                m_high = ref_m2
-                m_low = ref_m1
+                high_groups = unsplit1.copy()
+            else:
+                order = -1
+                high_groups = unsplit2.copy()
 
-            for group in [x for x in select_single_comparsion if x not in ref1 and x not in ref2][::order]:
-                m = group_mean(groups=[group], quantile_normalised=quantile_normalised,
-                                gene=gene)
-                diff_high=abs(m-m_high)
-                diff_low=abs(m-m_low)
+            for group in [x for x in select_single_comparsion if x not in unsplit1 and x not in unsplit2][::order]:
+                m_high = group_mean(groups=high_groups, quantile_normalised=quantile_normalised, gene=gene)
+                low_groups = [x for x in select_single_comparsion if x not in high_groups and x != group]
+                m_low = group_mean(groups=low_groups, quantile_normalised=quantile_normalised, gene=gene)
+                #print(high_groups,low_groups,group)
+                m = group_mean(groups=[group], quantile_normalised=quantile_normalised, gene=gene)
+                diff_high = abs(m - m_high)
+                diff_low = abs(m - m_low)
+                #print(m_high,m_low,m)
                 if diff_high > diff_low:
+                    low_groups.append(group)
                     break
+                else:
+                    high_groups.append(group)
+            if order == -1:
+                group1 = low_groups.copy()
+                group2 = high_groups.copy()
+            else:
+                group1 = high_groups.copy()
+                group2 = low_groups.copy()
+            group1.sort()
+            compariosn_name=group1[-1]
+            group_splits = [(group1, group2,  compariosn_name)]
+            #print(group_splits)
         for comparison in group_splits:
             strains1 = GROUP_DF[GROUP_DF['X'].isin(comparison[0])]['Strain']
             strains2 = GROUP_DF[GROUP_DF['X'].isin(comparison[1])]['Strain']
