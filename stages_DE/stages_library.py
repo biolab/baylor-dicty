@@ -6,6 +6,9 @@ from statistics import mean
 from scipy.stats import mannwhitneyu, ttest_ind
 from statsmodels.stats.multitest import multipletests
 
+from sklearn.mixture import GaussianMixture
+from sklearn.metrics import adjusted_rand_score
+
 from orangecontrib.bioinformatics.utils.statistics import Hypergeometric
 from Orange.clustering.louvain import jaccard
 from scipy.optimize import curve_fit
@@ -220,8 +223,8 @@ def quantile_normalise(similarity_means, return_ranks: bool = False):
         return normalised, rank_mean
 
 
-def compare_gene_scores(quantile_normalised: pd.DataFrame, test: str, alternative: str, group_splits: list=None,
-                        select_single_comparsion:list=None):
+def compare_gene_scores(quantile_normalised: pd.DataFrame, test: str, alternative: str, group_splits: list = None,
+                        select_single_comparsion: list = None):
     """
     Compare gene scores across strain groups. For each gene there is a score (e.g. avg similarity to neighbours) in each
     strain that belongs to a strain group. Compare scores between groups to find genes that have lower/higher score in
@@ -247,10 +250,24 @@ def compare_gene_scores(quantile_normalised: pd.DataFrame, test: str, alternativ
         unsplit1 = select_single_comparsion[1]
         unsplit2 = select_single_comparsion[2]
         select_single_comparsion = select_single_comparsion[0]
+
+
+        groups = []
+        g1 = []
+        for group in select_single_comparsion:
+            g1.append(group)
+            g2 = [x for x in select_single_comparsion if x not in g1]
+            #print(g1,g2)
+            if set(unsplit1).issubset(g1) and set(unsplit2).issubset(g2):
+                # print(high,low)
+                groups.append((g1.copy(), g2.copy()))
+                #print(groups)
+
     for gene in quantile_normalised.index:
+        #print(gene)
         if select_single_comparsion is not None:
-            unsplit_m1 = group_mean(groups=unsplit1, quantile_normalised=quantile_normalised, gene=gene)
-            unsplit_m2 = group_mean(groups=unsplit2, quantile_normalised=quantile_normalised, gene=gene)
+            unsplit_m1 = group_statistic(groups=unsplit1, quantile_normalised=quantile_normalised, gene=gene)
+            unsplit_m2 = group_statistic(groups=unsplit2, quantile_normalised=quantile_normalised, gene=gene)
             # TODO comments, documentation, test
             if unsplit_m1 > unsplit_m2:
                 order = 1
@@ -258,30 +275,67 @@ def compare_gene_scores(quantile_normalised: pd.DataFrame, test: str, alternativ
             else:
                 order = -1
                 high_groups = unsplit2.copy()
+            # for group in [x for x in select_single_comparsion if x not in unsplit1 and x not in unsplit2][::order]:
+            #     m_high = group_statistic(groups=high_groups, quantile_normalised=quantile_normalised, gene=gene)
+            #     #std_high = group_statistic(groups=high_groups, quantile_normalised=quantile_normalised, gene=gene,
+            #                                mode='std')
+            #     low_groups = [x for x in select_single_comparsion if x not in high_groups and x != group]
+            #     m_low = group_statistic(groups=low_groups, quantile_normalised=quantile_normalised, gene=gene)
+            #     #print(high_groups, low_groups, group)
+            #     m = group_statistic(groups=[group], quantile_normalised=quantile_normalised, gene=gene)
+            #     diff_high = abs(m - m_high)
+            #     diff_low = abs(m - m_low)
+            #     #print(m_high,m_low,m)
+            #     if diff_high > diff_low:
+            #     ##print(m_high, std_high, m)
+            #     #if m < (m_high - 2 * std_high):
+            #         low_groups.append(group)
+            #         break
+            #     else:
+            #         high_groups.append(group)
 
-            for group in [x for x in select_single_comparsion if x not in unsplit1 and x not in unsplit2][::order]:
-                m_high = group_mean(groups=high_groups, quantile_normalised=quantile_normalised, gene=gene)
-                low_groups = [x for x in select_single_comparsion if x not in high_groups and x != group]
-                m_low = group_mean(groups=low_groups, quantile_normalised=quantile_normalised, gene=gene)
-                #print(high_groups,low_groups,group)
-                m = group_mean(groups=[group], quantile_normalised=quantile_normalised, gene=gene)
-                diff_high = abs(m - m_high)
-                diff_low = abs(m - m_low)
-                #print(m_high,m_low,m)
-                if diff_high > diff_low:
-                    low_groups.append(group)
-                    break
-                else:
-                    high_groups.append(group)
-            if order == -1:
-                group1 = low_groups.copy()
-                group2 = high_groups.copy()
-            else:
-                group1 = high_groups.copy()
-                group2 = low_groups.copy()
+            # diffs=list()
+            # for group_pair in groups:
+            #     if order==1:
+            #         low_groups=group_pair[1]
+            #         high_groups = group_pair[0]
+            #     else:
+            #         low_groups = group_pair[0]
+            #         high_groups = group_pair[1]
+            #     m_high = group_statistic(groups=high_groups, quantile_normalised=quantile_normalised, gene=gene)
+            #     m_low = group_statistic(groups=low_groups, quantile_normalised=quantile_normalised, gene=gene)
+            #     print(high_groups, low_groups,m_high-m_low)
+            #     diffs.append((m_high-m_low,low_groups,high_groups))
+            #     #print(diffs,m_high,m_low)
+            # best_sep=max(diffs,key=lambda item:item[0])
+            # low_groups=best_sep[1]
+            # high_groups=best_sep[2]
+
+            clusters=GaussianMixture(n_components=2).fit_predict(quantile_normalised.loc[gene,:].values.reshape(-1,1))
+            scores=[]
+            for group_pair in groups:
+                strains1 = GROUP_DF[GROUP_DF['X'].isin(group_pair[0])]['Strain']
+                comparison_clusters=[]
+                for strain in quantile_normalised.columns:
+                    if strain in strains1.values:
+                        comparison_clusters.append(0)
+                    else:
+                        comparison_clusters.append(1)
+                #print((adjusted_rand_score(clusters,comparison_clusters),group_pair))
+                scores.append((adjusted_rand_score(clusters,comparison_clusters),group_pair))
+            best_sep = max(scores, key=lambda item: item[0])
+            group1=best_sep[1][0]
+            group2 = best_sep[1][1]
+            # if order == -1:
+            #     group1 = low_groups.copy()
+            #     group2 = high_groups.copy()
+            # else:
+            #     group1 = high_groups.copy()
+            #     group2 = low_groups.copy()
+
             group1.sort()
-            compariosn_name=group1[-1]
-            group_splits = [(group1, group2,  compariosn_name)]
+            compariosn_name = group1[-1]
+            group_splits = [(group1, group2, compariosn_name)]
             #print(group_splits)
         for comparison in group_splits:
             strains1 = GROUP_DF[GROUP_DF['X'].isin(comparison[0])]['Strain']
@@ -330,7 +384,10 @@ def compare_gene_scores(quantile_normalised: pd.DataFrame, test: str, alternativ
     return results
 
 
-def group_mean(groups, quantile_normalised, gene):
+def group_statistic(groups, quantile_normalised, gene, mode: str = 'mean'):
     strains = GROUP_DF[GROUP_DF['X'].isin(groups)]['Strain']
     values = quantile_normalised.loc[gene, strains].values
-    return values.mean()
+    if mode == 'mean':
+        return values.mean()
+    elif mode == 'std':
+        return values.std()

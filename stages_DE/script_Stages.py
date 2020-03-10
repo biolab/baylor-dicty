@@ -254,10 +254,10 @@ results.to_csv(
 
 # ***** Extract genes that are potential candidates for deregulation in some strains
 data = pd.read_table(
-    pathSelGenes + 'comparisonsAvgSims_AX4basedNeigh_u-less_newGenes_noAll-removeZeroRep_simsDict_scalemean0std1_logTrue_kN11_splitStrain.tsv',
+    pathSelGenes + 'comparisonsAvgSimsSingle_AX4basedNeigh_u-less_newGenes_noAll-removeZeroRep_simsDict_scalemean0std1_logTrue_kN11_splitStrain.tsv',
     sep='\t')
 # data['Max_mean'] = pd.concat([data['Mean1'], data['Mean2']], axis=1).max(axis=1)
-filtered = data.query('FDR <=0.05 & Separation >=0.3 ')
+filtered = data.query('FDR <=0.01 & Separation >=0.4 ')
 filtered_genes = filtered['Gene'].unique()
 genes_dict = dict(zip(filtered_genes, range(len(filtered_genes))))
 comparisons = list(data['Comparison'].unique())
@@ -269,7 +269,7 @@ for row in filtered.iterrows():
     comparison_df[genes_dict[row['Gene']], comparisons_dict[row['Comparison']]] = 1
 comparison_df = pd.DataFrame(comparison_df, index=filtered_genes, columns=['C' + str(c) for c in comparisons])
 comparison_df.to_csv(
-    pathSelGenes + 'summary_comparisonsAvgSims_AX4basedNeigh_u-less_newGenes_noAll-removeZeroRep_simsDict_scalemean0std1_logTrue_kN11_splitStrain.tsv',
+    pathSelGenes + 'summary_comparisonsAvgSimsSingle_AX4basedNeigh_u-less_newGenes_noAll-removeZeroRep_simsDict_scalemean0std1_logTrue_kN11_splitStrain.tsv',
     sep='\t')
 # ***************
 # # ** Compare close neighbours in AX4 with close neighbours in  other strains

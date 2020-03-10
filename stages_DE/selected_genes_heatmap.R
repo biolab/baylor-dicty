@@ -9,10 +9,13 @@ path_comparisons='/home/karin/Documents/timeTrajectories/data/regulons/selected_
 
 avg_expression=read.table(paste(path_regulons,"genes_averaged_orange_scale99percentileMax0.1.tsv",sep=''),
                           header=TRUE,row.names=1, sep="\t")
-comparisons=read.table(paste(path_comparisons,"summary_comparisonsAvgSims_AX4basedNeigh_u-less_newGenes_noAll-removeZeroRep_simsDict_scalemean0std1_logTrue_kN11_splitStrain.tsv",
+comparisons=read.table(paste(path_comparisons,"summary_comparisonsAvgSimsSingle_AX4basedNeigh_u-less_newGenes_noAll-removeZeroRep_simsDict_scalemean0std1_logTrue_kN11_splitStrain.tsv",
                              sep=''), header=TRUE,row.names=1, sep="\t")
 comparisons=as.matrix(data.frame(lapply(comparisons,as.character),row.names = row.names(comparisons)))
 comparisons<-mapvalues(comparisons, from = c("1", "0"), to = c("Difference", "Not difference"))
+
+path_strain_order='/home/karin/Documents/timeTrajectories/data/'
+strain_order<-as.vector(read.table(paste(path_strain_order,"strain_order.tsv",sep=''))[,1])
 
 legend_font=12
 legened_height=1.5
@@ -55,7 +58,7 @@ max_expression<-max(expressions)
 genes=as.character(row.names(comparisons))
 heatmap=Heatmap(t(avg_expression[,genes]),cluster_columns = FALSE,show_column_names = FALSE,
                 column_title_gp=gpar(fontsize=12),
-                column_split=factor(avg_expression$Strain,levels=unique(avg_expression$Strain)),
+                column_split=factor(avg_expression$Strain,levels=strain_order),
                   show_row_names = FALSE, col=viridis(256),
                   show_heatmap_legend = TRUE,heatmap_legend_param = list(
                     title = "Relative expression",
@@ -92,7 +95,7 @@ min_sims=round(min(similarities_plot),1)
 max_sims=round(max(similarities_plot),1)
 heatmap=Heatmap(similarities_plot,cluster_columns = FALSE,show_column_names = FALSE,
                 column_title_gp=gpar(fontsize=12),
-                column_split=factor(colnames(similarities),levels=unique(avg_expression$Strain)),
+                column_split=factor(colnames(similarities),levels=strain_order),
                 show_row_names = FALSE, col=magma(256),
                 show_heatmap_legend = TRUE,heatmap_legend_param = list(
                   title = "Average similarity",
