@@ -472,7 +472,14 @@ genes_orange_scaled, genes_orange_avg, patterns = preprocess_for_orange(genes=ge
                                                                         matching='Measurment', group='AX4')
 result.to_csv(dataPathSaved + 'genes_selected_orange_T0_99.tsv', sep='\t', index=False)
 genes_orange_scaled.to_csv(dataPathSaved + 'genes_scaled_orange.tsv', sep='\t')
-patterns.to_csv(dataPathSaved + 'gene_patterns_orange.tsv', sep='\t', index=False)
+
+zero_replicates=pd.read_table('/home/karin/Documents/timeTrajectories/data/RPKUM/combined/zero_replicates_count.tsv',
+                              index_col=0)
+zero_AX4=zero_replicates.query('AX4>0').index
+patterns.index=patterns['Gene']
+patterns=patterns.drop(zero_AX4)
+patterns.to_csv(dataPathSaved + 'gene_patternsRemoveRep0_orange.tsv', sep='\t', index=False)
+
 # Transpose so that column names unique (else Orange problems)
 genes_orange_avg = genes_orange_avg.T
 genes_orange_avg['Time'] = genes_orange_avg.index

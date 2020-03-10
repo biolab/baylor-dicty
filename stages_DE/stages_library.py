@@ -234,7 +234,13 @@ def compare_gene_scores(quantile_normalised: pd.DataFrame, test: str, alternativ
     :param group_splits: List of which comparisons between groups to perform. Each comparison is specified as a tupple.
         First tow elements are list of strain groups for comparison (e.g. strain groups in element1 vs strain groups in
         element 2). The strain groups must be given as in X column of GROUP_DF. The third element is name of the
-        comparison that will be reported.
+        comparison that will be reported. If this is None the select_single_comparsion must be specified.
+    :param select_single_comparsion: Order of strain groups to select single separation threshold to split groups in
+        two parts (low and high neighbour similarity). This is a list where first element is a list of all strain groups
+        as in X column of GROPUP_DF, groups should be ordered (e.g. by development). Second and third elements are lists
+         of groups that should not be split up (e.g. references, can be just first and last group from the list of
+         all groups. The splitting is performed between any two groups in the specified order so that the reference
+         groups are not split.
     :param test: 'u' for mannwhitneyu or 't' for t-test.
     :param alternative: less (first group has lesser values than the second), greater, two-sided
     :return: DF with columns: Gene, Comparison (as named in group_splits), Statistic (test statistic), p (p value), FDR
@@ -275,6 +281,9 @@ def compare_gene_scores(quantile_normalised: pd.DataFrame, test: str, alternativ
             else:
                 order = -1
                 high_groups = unsplit2.copy()
+            # This was used to select the best group split when first groups starts to deviate too much from the higher
+            # (similarity) set of groups - either based on the difference to the mean of low/high or too many high's
+            # standard deviations away from the high
             # for group in [x for x in select_single_comparsion if x not in unsplit1 and x not in unsplit2][::order]:
             #     m_high = group_statistic(groups=high_groups, quantile_normalised=quantile_normalised, gene=gene)
             #     #std_high = group_statistic(groups=high_groups, quantile_normalised=quantile_normalised, gene=gene,
@@ -294,6 +303,8 @@ def compare_gene_scores(quantile_normalised: pd.DataFrame, test: str, alternativ
             #     else:
             #         high_groups.append(group)
 
+            # This was used to find best split based on separation that results in max differences between the
+            # means of two groups
             # diffs=list()
             # for group_pair in groups:
             #     if order==1:
@@ -311,6 +322,7 @@ def compare_gene_scores(quantile_normalised: pd.DataFrame, test: str, alternativ
             # low_groups=best_sep[1]
             # high_groups=best_sep[2]
 
+            # This splits groups so that they match the most Gaussian mixture clustering into two groups
             clusters=GaussianMixture(n_components=2).fit_predict(quantile_normalised.loc[gene,:].values.reshape(-1,1))
             scores=[]
             for group_pair in groups:
@@ -385,6 +397,14 @@ def compare_gene_scores(quantile_normalised: pd.DataFrame, test: str, alternativ
 
 
 def group_statistic(groups, quantile_normalised, gene, mode: str = 'mean'):
+    """
+    Calculates statistic (mean/std) of group of strain groups data (quantile normalised) for a single gene.
+    :param groups: List of strain groups as in X column of GROUP_DF
+    :param quantile_normalised: DF with strains in columns and genes in rows. For each gene in each strain there is a
+        score (e.g. average similarity to neighbours).
+    :param gene: Gene ID for which to calculate the statistic
+    :param mode: mean or std
+    """
     strains = GROUP_DF[GROUP_DF['X'].isin(groups)]['Strain']
     values = quantile_normalised.loc[gene, strains].values
     if mode == 'mean':

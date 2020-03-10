@@ -257,7 +257,7 @@ data = pd.read_table(
     pathSelGenes + 'comparisonsAvgSimsSingle_AX4basedNeigh_u-less_newGenes_noAll-removeZeroRep_simsDict_scalemean0std1_logTrue_kN11_splitStrain.tsv',
     sep='\t')
 # data['Max_mean'] = pd.concat([data['Mean1'], data['Mean2']], axis=1).max(axis=1)
-filtered = data.query('FDR <=0.01 & Separation >=0.4 ')
+filtered = data.query('FDR <=0.01 & Difference >=0.4 ')
 filtered_genes = filtered['Gene'].unique()
 genes_dict = dict(zip(filtered_genes, range(len(filtered_genes))))
 comparisons = list(data['Comparison'].unique())
@@ -503,10 +503,9 @@ for rep, data in splitted.items():
 peak_data = pd.DataFrame(peak_data, index=genes.index, columns=replicates)
 peak_data.to_csv(peakPath + 'peaks.tsv', sep='\t')
 
-# Count in how many measurements for each strain had a gene a peak in certain stage
+# Count in how many measurements  had a gene a peak in certain stage
 peak_data = pd.read_table(peakPath + 'peaks.tsv', index_col=0)
 
-# For each strain find N replicates that had peak in certain stage for each gene
 genes_dict = dict(zip(genes.index, range(genes.shape[0])))
 phenotypes_dict = dict(zip(PHENOTYPES, range(len(PHENOTYPES))))
 peak_counts = dict()
@@ -529,7 +528,7 @@ combined_counts = pd.DataFrame(np.zeros((len(genes_dict), len(phenotypes_dict)))
 for data in peak_counts.values():
     combined_counts = combined_counts + data
 
-# Convert counts of peak to propotions (divide by N of replicates that have that stage)
+# Convert counts of peak to proportions (divide by N of replicates that have that stage)
 combined_proportion = pd.DataFrame()
 for phenotype in combined_counts.columns:
     n = conditions[conditions[phenotype] == 1]['Replicate'].unique().shape[0]
@@ -561,4 +560,5 @@ for replicate, data in peak_counts.items():
         data_shuffled[col] = col_copy
     peak_counts_permuted[replicate] = data_shuffled
 
-# For WT and all strains the differences in distn are so big that it is not relevant (e.g. threshold could be at 0.5/0.6) (tested on tag)
+# For WT and all strains the differences in distn are so big that it is not relevant (e.g. threshold could be at
+# 0.5/0.6) (tested on tag)
