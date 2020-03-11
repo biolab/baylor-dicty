@@ -290,7 +290,7 @@ neigh_WT, sims_dict_WT[strain] = neighbour_calculator.neighbours(n_neighbours=NE
                                                                  log=True,
                                                                  return_neigh_dist=True, remove_self=True)
 # Similarity in other strains
-# For individual strains do not include genes that are all 0 in at least one replicate
+# For individual strains do not include genes that are all 0 in at least one replicate for calculation of any neighbours
 for strain, data in splitted.items():
     if strain != 'AX4':
         print(strain)
@@ -503,7 +503,7 @@ for rep, data in splitted.items():
 peak_data = pd.DataFrame(peak_data, index=genes.index, columns=replicates)
 peak_data.to_csv(peakPath + 'peaks.tsv', sep='\t')
 
-# Count in how many measurements  had a gene a peak in certain stage
+# Determine for each replicate in which stage(s) had each gene a peak
 peak_data = pd.read_table(peakPath + 'peaks.tsv', index_col=0)
 
 genes_dict = dict(zip(genes.index, range(genes.shape[0])))
@@ -523,7 +523,7 @@ for replicate in conditions['Replicate'].unique():
                     peak_stage[genes_dict[gene]][phenotypes_dict[stage]] += 1
     peak_counts[replicate] = pd.DataFrame(peak_stage, index=genes.index, columns=PHENOTYPES)
 
-# Merge for all replicates
+# Merge for all replicates - Count in how many replicates  had a gene a peak in certain stage
 combined_counts = pd.DataFrame(np.zeros((len(genes_dict), len(phenotypes_dict))), index=genes.index, columns=PHENOTYPES)
 for data in peak_counts.values():
     combined_counts = combined_counts + data
@@ -549,8 +549,8 @@ for phenotype in combined_counts_WT.columns:
 combined_proportion_WT.to_csv(peakPath + 'stage_peak_proportion_WT.tsv', sep='\t')
 
 # Compute random null distribution for N (or % in each stage) by shuffling counts within stages for each replicate
-# (stage gets same number of samples, but they are distributed randomly)
-# Then do other steps (summing, proportion) to get the null distribution for each stage
+# (stage gets same number of genes that peak in it, but they are distributed randomly)
+# Then do other steps (summing across replicates, proportion of replicates) to get the null distribution for each stage
 peak_counts_permuted = dict()
 for replicate, data in peak_counts.items():
     data_shuffled = pd.DataFrame(index=data.index, columns=data.columns)

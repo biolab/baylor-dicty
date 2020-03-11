@@ -83,9 +83,9 @@ embedding = pd.read_table(path_embedding + 'EmbeddedImages_inception-v3.tab', in
 
 # Some genes may be naturally more variable - compare variability on all measurements vs in image groups.
 # E.g. genes almost unexpressed in all conditions will be constantly near 0
-# Deviation in all conditions (even those without images)
+# Relative std (RSD) in all conditions (even those without images)
 gene_vars_all = variation_statistic(genes)
-# Remove genes with 0 deviation/mean in whole population
+# Remove genes with 0 relative deviation (and possibly 0 mean) in whole population
 remove_genes = gene_vars_all[gene_vars_all == 0].index
 gene_vars_all = gene_vars_all.drop(remove_genes)
 
@@ -100,7 +100,7 @@ measurement_images = [conditions_img[conditions_img['Image'] == image]['Measurme
                       for image in embedding.index]
 cosine_sims = pd.DataFrame(cosine_similarity(embedding), index=measurement_images, columns=measurement_images)
 
-# Calculate gene deviances within image groups of closest neighbours
+# Calculate gene relative std (scaled by mean) within image groups of closest neighbours
 gene_vars_similar = pd.DataFrame()
 # Not needed as used for approximated neighbours
 # for query,neighs in neigh.iterrows():
@@ -115,23 +115,24 @@ for query, data in cosine_sims.iterrows():
     statistic = variation_statistic(gene_data)
     gene_vars_similar = pd.concat([gene_vars_similar, statistic], axis=1, sort=True)
 
-# Plot mean and median var distn
+# Plot mean and median RSD distn
 # plot_variation_distn(gene_vars_similar)
 
-# Remove all genes whose median deviation is 0 (mostly unexpressed, hard to reason about them)
+# Remove all genes whose median RSD is 0 (mostly unexpressed, hard to reason about them)
 # However, this could remove genes not expressed only in some stages
-# (Below scaling by deviation on the whole profile is not enough to remove them from top genes)
+# (Just using the below scaling by RSD on the whole profile is not enough to remove them from top genes, possibly
+# because their 0 expression with a few peaks leads to relatively high RSD)
 gene_vars_similar = remove_zero_median(gene_vars_similar)
 
-# Compare with deviations on all measurements
+# Scale by RSD on all measurements
 gene_vars_diff = diff_vars_all(gene_vars=gene_vars_similar, gene_vars_all=gene_vars_all)
 
-# Plot distn of deviations for random genes
+# Plot distn of RSD for random genes
 chosen = np.random.choice(gene_vars_similar.index, 30, replace=False)
 plt.violinplot(gene_vars_similar.loc[chosen, :].values.T, showmeans=True, showmedians=True)
 plt.violinplot(gene_vars_diff.loc[chosen, :].values.T, showmeans=True, showmedians=True)
-# Compare expression profiles based on ranking from median deviations within images and median devisation after scaling
-# based on deviation on whole profile - select top genes
+# Compare expression profiles based on ranking from median RSD within images and median RSD after scaling
+# based on RSD on whole profile - select top genes
 genes_avg = pd.read_table(
     '/home/karin/Documents/timeTrajectories/data/regulons/genes_averaged_orange_scale99percentileMax0.1.tsv',
     index_col=0).T
@@ -145,7 +146,7 @@ sb.clustermap(genes_avg.loc[best_sim, :].astype('float'), col_cluster=False, xti
 sb.clustermap(genes_avg.loc[best_diff, :].astype('float'), col_cluster=False, xticklabels=False, yticklabels=False)
 # The selection based on diff is better
 
-# Calculate deviations on random sets of 4 images
+# Calculate RSD on random sets of 4 images
 gene_vars_random = pd.DataFrame()
 for i in range(gene_vars_similar.shape[1]):
     selected = np.random.choice(measurement_images, image_group_size, replace=False)
@@ -171,7 +172,8 @@ best_diff = gene_vars_diff[gene_vars_diff.median(axis=1) <= threshold].index
 # Plot expression of these genes
 sb.clustermap(genes_avg.loc[best_diff, :].astype('float'), col_cluster=False, xticklabels=False, yticklabels=False)
 
-# Average expression of the selected genes in each stage
+# Average expression of the selected genes in each stage -
+# this may miss genes expressed only a subset of a stage (e.g. single strain,...)
 mean_expression_data = pd.DataFrame(columns=PHENOTYPES)
 for gene in best_diff:
     stage_expression = defaultdict(list)
@@ -190,7 +192,7 @@ for gene in best_diff:
             stage_expression_mean[stage] = mean(stage_expression[stage])
     #print(stage_expression_mean)
     mean_expression_data=mean_expression_data.append(pd.Series(stage_expression_mean,name=gene))
-# Scale based on largest avg expression in any stage
+# Scale stage expressions based on largest avg expression in any stage
 mean_expression_data=(mean_expression_data.T/mean_expression_data.max(axis=1)).T
 mean_expression_data.to_csv('/home/karin/Documents/timeTrajectories/data/stages/images/stageExpression_lowVariabilityGenes_img'+
                             str(image_group_size)+'_p'+str(p_threshold)+'.tsv',sep='\t')
