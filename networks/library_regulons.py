@@ -19,6 +19,7 @@ import random
 from collections import OrderedDict
 from sklearn.mixture import GaussianMixture
 from scipy.integrate import cumtrapz
+from scipy.spatial.distance import correlation
 
 import Orange.clustering.louvain as orange_louvain_graph
 from orangecontrib.bioinformatics.ncbi.gene import GeneMatcher
@@ -28,10 +29,14 @@ from Orange.clustering.louvain import jaccard
 from orangecontrib.bioinformatics.utils.statistics import Hypergeometric
 
 from correlation_enrichment.library_correlation_enrichment import GeneExpression, SimilarityCalculator
-from deR.enrichment_library import GO_enrichment, name_genes_entrez
+from stages_DE.enrichment_library import GO_enrichment, name_genes_entrez
 
-SCALING = 'minmax'
+SCALING = 'mean0std1'
 LOG = True
+
+# For preparing Orange data
+STRAIN_ORDER = ['AX4','AX4_FD','AX4_PE','AX4_SE', 'MybBGFP', 'ecmARm', 'gtaI', 'cudA', 'dgcA', 'gtaG', 'tagB', 'comH', 'gbfA', 'tgrC1', 'tgrB1',
+                'tgrB1C1', 'gtaC', 'mybB', 'amiB', 'acaA', 'acaAPkaCoe', 'ac3PkaCoe', 'PkaCoe', 'pkaR']
 
 
 class NeighbourCalculator:
@@ -43,7 +48,8 @@ class NeighbourCalculator:
 
     MINMAX = 'minmax'
     MEANSTD = 'mean0std1'
-    SCALES = [MINMAX, MEANSTD]
+    NONE = 'none'
+    SCALES = [MINMAX, MEANSTD, NONE]
 
     def __init__(self, genes: pd.DataFrame, remove_zero: bool = True, conditions: pd.DataFrame = None,
                  conditions_names_column=None):
@@ -68,12 +74,12 @@ class NeighbourCalculator:
 
     def neighbours(self, n_neighbours: int, inverse: bool, scale: str = SCALING, log: bool = LOG,
                    batches: list = None, remove_batch_zero: bool = True, return_neigh_dist: bool = False,
-                   genes_query_names: list = None, remove_self: bool = False):
+                   genes_query_names: list = None, remove_self: bool = False, metric: str = 'cosine'):
         """
         Calculates neighbours of genes on whole gene data or its subset by column.
         :param n_neighbours: Number of neighbours to obtain for each gene
         :param inverse: Calculate most similar neighbours (False) or neighbours with inverse profile (True)
-        :param scale: Scale expression by gene with 'minmax' (min=0, max=1) or 'mean0std1' (mean=0, std=1)
+        :param scale: Scale expression by gene with 'minmax' (min=0, max=1) or 'mean0std1' (mean=0, std=1) or 'none'
         :param log: Should expression data be log2 transformed
         :param batches: Should comparisons be made for each batch separately.
             Batches should be a list of batch group names for each column (eg. length of batches is n columns of genes).
@@ -84,6 +90,7 @@ class NeighbourCalculator:
         :param remove_self: Used only if return_neigh_dist is true. Whether to remove sample from its closest
         neighbours or not. If retunr_neigh_dist is False this is done automatically. This also removes last
         column/neighbours is self is not present - should not be used with inverse.
+        param metric: cosine or correlation (pearson)
         :return: Dict with gene names as tupple keys (smaller by alphabet is first tuple value) and
             values representing cosine similarity. If batches are used such dicts are returned for each batch
             in form of dict with batch names as keys and above mentioned dicts as values. Or see return_neigh_dist.
@@ -128,13 +135,13 @@ class NeighbourCalculator:
     @staticmethod
     def calculate_neighbours(genes, n_neighbours: int, inverse: bool, scale: str, log: bool,
                              description: str = '', return_neigh_dist: bool = False,
-                             genes_query_data: pd.DataFrame = None, remove_self: bool = False):
+                             genes_query_data: pd.DataFrame = None, remove_self: bool = False, metric: str = 'cosine'):
         """
         Calculate neighbours of genes.
         :param genes: Data frame as in init, gene names (rows) should match the one in init
         :param n_neighbours: Number of neighbours to obtain for each gene
         :param inverse: Calculate most similar neighbours (False) or neighbours with inverse profile (True)
-        :param scale: Scale expression by gene with 'minmax' (min=0, max=1) or 'mean0std1' (mean=0, std=1)
+        :param scale: Scale expression by gene with 'minmax' (min=0, max=1) or 'mean0std1' (mean=0, std=1) or 'none'
         :param log: Should expression data be log2 transformed
         :param description: If an error occurs in KNN index formation report this with error
         :param return_neigh_dist: Instead of parsed dictionary return tuple with NN matrix and similarities matrix,
@@ -143,6 +150,7 @@ class NeighbourCalculator:
         :param remove_self: Used only if return_neigh_dist is true. Whether to remove sample from its closest
         neighbours or not. If retunr_neigh_dist is False this is done automatically. This also removes last
         column/neighbours is self is not present - should not be used with inverse.
+        :param metric: 'cosine' or Pearson 'correlation'
         :return: Dict with gene names as tuple keys (smaller by alphabet is first tuple value) and
             values representing cosine similarity. Or see return_neigh_dist
         """
@@ -151,10 +159,10 @@ class NeighbourCalculator:
                                                                        genes_query_data=genes_query_data)
         # Can set speed-quality trade-off, default is ok
         try:
-            index = NNDescent(genes_index, metric='cosine', n_jobs=4)
+            index = NNDescent(genes_index, metric=metric, n_jobs=4)
         except ValueError:
             try:
-                index = NNDescent(genes_index, metric='cosine', tree_init=False, n_jobs=4)
+                index = NNDescent(genes_index, metric=metric, tree_init=False, n_jobs=4)
                 warnings.warn(
                     'Dataset ' + description + ' index computed without tree initialisation',
                     Warning)
@@ -185,11 +193,13 @@ class NeighbourCalculator:
         Get gene data scaled to be index or query for neighbour search.
         :param genes: Gene data for index and query.
         :param inverse: Inverse query to compute neighbours with opposite profile. True if use inverse.
-        :param scale: Scale expression by gene with 'minmax' (min=0, max=1) or 'mean0std1' (mean=0, std=1).
+        :param scale: Scale expression by gene with 'minmax' (min=0, max=1) or 'mean0std1' (mean=0, std=1) or 'none'.
         :param log: Should expression data be log2 transformed.
         :param genes_query_data: Genes data for query, if None uses genes
         :return: genes for index (1st element) and genes for query (2nd element)
         """
+        if scale not in [cls.MINMAX, cls.MEANSTD, cls.NONE]:
+            raise ValueError('This scaling parameter is unknown')
         if log:
             genes = np.log2(genes + 1)
             if genes_query_data is not None:
@@ -205,6 +215,9 @@ class NeighbourCalculator:
             elif scale == cls.MEANSTD:
                 genes_query = cls.meanstd_scale(genes_query)
                 genes_index = cls.meanstd_scale(genes_index)
+            elif scale == cls.NONE:
+                genes_query = genes_query.values
+                genes_index = genes_index.values
         else:
             if scale == cls.MINMAX:
                 genes = cls.minmax_scale(genes)
@@ -214,6 +227,10 @@ class NeighbourCalculator:
                 genes = cls.meanstd_scale(genes)
                 if genes_query_data is not None:
                     genes_query_data = cls.meanstd_scale(genes_query_data)
+            elif scale == cls.NONE:
+                genes = genes.values
+                if genes_query_data is not None:
+                    genes_query_data = genes_query_data.values
             genes_index = genes
             if genes_query_data is None:
                 genes_query_data = genes
@@ -341,6 +358,9 @@ class NeighbourCalculator:
 
     @staticmethod
     def cosine_dist_to_sim(dist):
+        """
+        Works on cosine and Pearson correlation distances
+        """
         return 1 - dist
 
     @staticmethod
@@ -468,14 +488,14 @@ class NeighbourCalculator:
     def compare_conditions(self, neighbours_n: int, inverse: bool,
                            scale: str, use_log: bool, thresholds: list, filter_column, filter_column_values_sub: list,
                            filter_column_values_test: list, retained: list = None, batch_column=None,
-                           do_mse: bool = True):
+                           do_mse: bool = True, metric: str = 'cosine'):
         """
         Evaluates pattern similarity calculation preprocessing and parameters based on difference between subset and
         test set. Computes MSE from differences between similarities of subset gene pairs and corresponding test gene
         pairs.
         :param neighbours_n: N of calculated neighbours for each gene
         :param inverse: find neighbours with opposite profile
-        :param scale: 'minmax' (from 0 to 1) or 'mean0std1' (to mean 0 and std 1)
+        :param scale: 'minmax' (from 0 to 1) or 'mean0std1' (to mean 0 and std 1) or 'none'
         :param use_log: Log transform expression values before scaling
         :param thresholds: filter out any result with similarity below threshold, do for each threshold
         :param filter_column: On which column of conditions should genes be subset for separation in subset and test set
@@ -486,8 +506,10 @@ class NeighbourCalculator:
         :param retained: Two element list - how many genes must be retained. If not within range
          ignore and use next threshold from list. First element min, second max; inclusive.
           If None calculates on all thresholds.
+          :param metric: 'cosine' or 'correlation' (person)
         :return: Dictionary with parameters and results, description as key, result/parameter setting as value
         """
+        n_all_genes = self._genes.shape[0]
         # Prepare data
         if not batch_column:
             batches = None
@@ -503,16 +525,16 @@ class NeighbourCalculator:
                                                                      log=use_log)
         gene_names = list(genes_test.index)
 
-        # Is similarity matrix expected to be simetric or not
+        # Is cosine similarity matrix expected to be simetric or not
         both_directions = False
         if inverse and (scale == 'minmax'):
             both_directions = True
 
         # Calculate neighbours
         result = neighbour_calculator.neighbours(neighbours_n, inverse=inverse, scale=scale, log=use_log,
-                                                 batches=batches)
+                                                 batches=batches, metric=metric)
         result_test = neighbour_calculator_test.neighbours(neighbours_n, inverse=inverse, scale=scale, log=use_log,
-                                                           batches=batches)
+                                                           batches=batches, metric=metric)
 
         # Filter neighbours on similarity
         data_summary = []
@@ -533,6 +555,9 @@ class NeighbourCalculator:
                     continue
             gene_names_test = {gene for pair in result_filtered_test for gene in pair}
             f_val = NeighbourCalculator.f_value(set1=gene_names_sub, set2=gene_names_test)
+            p_gene_overlap = Hypergeometric().p_value(k=len(gene_names_sub & gene_names_test), N=n_all_genes,
+                                                      m=len(gene_names_sub),
+                                                      n=len(gene_names_test))
             # Calculate MSE for each gene pair -
             # compare similarity from gene subset to similarity of the gene pair in gene test set
             sq_errors = []
@@ -543,8 +568,11 @@ class NeighbourCalculator:
 
                     index1 = gene_names.index(gene1)
                     index2 = gene_names.index(gene2)
-                    similarity_test = calc_cosine(test_index, test_query, index1, index2, sim_dist=True,
-                                                  both_directions=both_directions)
+                    if metric == 'cosine':
+                        similarity_test = calc_cosine(test_index, test_query, index1, index2, sim_dist=True,
+                                                      both_directions=both_directions)
+                    elif metric == 'correlation':
+                        similarity_test = 1 - correlation(test_index[index1], test_query[index2])
 
                     se = (similarity - similarity_test) ** 2
                     # Happens if at least one vector has all 0 values
@@ -554,29 +582,34 @@ class NeighbourCalculator:
                 mse = round(mean(sq_errors), 5)
             else:
                 mse = float('NaN')
-            n_genes = len(set(gene for pair in result_filtered.keys() for gene in pair))
-            data_summary.append({'N neighbours': neighbours_n, 'inverse': inverse, 'use_log': use_log, 'scale': scale,
-                                 'threshold': threshold, 'batches': batch_column, 'MSE': mse,
-                                 'N pairs': len(result_filtered), 'N genes': n_genes, 'F value': f_val})
+            # n_genes = len(set(gene for pair in result_filtered.keys() for gene in pair))
+            data_summary.append(
+                {'metric': metric, 'N neighbours': neighbours_n, 'inverse': inverse, 'use_log': use_log, 'scale': scale,
+                 'threshold': threshold, 'batches': batch_column, 'MSE': mse,
+                 'N pairs 1': len(result_filtered), 'N genes 1': len(gene_names_sub),
+                 'N pairs 2': len(result_filtered_test), 'N genes 2': len(gene_names_test),
+                 'F value': f_val, 'p gene overlap': p_gene_overlap})
             if retained is not None:
                 break
         return data_summary
 
     def compare_thresholds(self, neighbours_n: int, inverse: bool,
                            scale: str, use_log: bool, thresholds: list, filter_column, filter_column_values1: list,
-                           filter_column_values2: list, genes_query_names: list = None) -> pd.DataFrame:
+                           filter_column_values2: list, genes_query_names: list = None,
+                           metric: str = 'cosine') -> pd.DataFrame:
         """
         Compare retained genes and gene pairs at different similarity thresholds.
         Computes table with F values of retained genes/pairs from two different data subgroups.
          :param neighbours_n: N of calculated neighbours for each gene
         :param inverse: find neighbours with opposite profile
-        :param scale: 'minmax' (from 0 to 1) or 'mean0std1' (to mean 0 and std 1)
+        :param scale: 'minmax' (from 0 to 1) or 'mean0std1' (to mean 0 and std 1) or 'none'
         :param use_log: Log transform expression values before scaling
         :param thresholds: filter out any result with similarity below threshold, do for each threshold
         :param filter_column: On which column of conditions should genes be subset for separation in subsets
         :param filter_column_values1: Values of filter_column to use for subset1 genes
         :param filter_column_values2:Values of filter_column to use for subset2 genes
         :param genes_query_names: Use only these genes for query.
+        :param metric: 'cosine' or 'correlation' (person)
         :return: Data Frame with columns: paramteres (log, inverse,scaling, threshold, N neighbours)
         and number of retained genes/pairs for each subset and their agreement (F value).
         """
@@ -588,9 +621,9 @@ class NeighbourCalculator:
 
         # Calculate neighbours
         result1 = neighbour_calculator1.neighbours(neighbours_n, inverse=inverse, scale=scale, log=use_log,
-                                                   genes_query_names=genes_query_names)
+                                                   genes_query_names=genes_query_names, metric=metric)
         result2 = neighbour_calculator2.neighbours(neighbours_n, inverse=inverse, scale=scale, log=use_log,
-                                                   genes_query_names=genes_query_names)
+                                                   genes_query_names=genes_query_names, metric=metric)
 
         # Filter neighbours on similarity
         data_summary = []
@@ -639,7 +672,8 @@ class NeighbourCalculator:
     def plot_select_threshold(self, thresholds: list, filter_column,
                               filter_column_values_sub: list,
                               filter_column_values_test: list, neighbours_n: int = 2, inverse: bool = False,
-                              scale: str = SCALING, use_log: bool = LOG, batch_column=None, retained: list = None):
+                              scale: str = SCALING, use_log: bool = LOG, batch_column=None, retained: list = None,
+                              metric='cosine'):
         """
         Plots number of retained genes and MSE based on filtering threshold.
         Parameters are the same as in compare_conditions.
@@ -650,7 +684,7 @@ class NeighbourCalculator:
                                                                  filter_column_values_sub=filter_column_values_sub,
                                                                  filter_column_values_test=filter_column_values_test,
                                                                  batch_column=batch_column, use_log=use_log,
-                                                                 do_mse=False, retained=retained))
+                                                                 do_mse=False, retained=retained, metric=metric))
         pandas_multi_y_plot(filtering_summary, 'threshold', ['N genes', 'F value'])
         return filtering_summary
 
@@ -1864,6 +1898,108 @@ def plot_tsne(tsne: ot.TSNEEmbedding, classes: dict = None, names: list = None, 
                 handle._sizes = [10]
                 handle.set_alpha(1)
 
+def plot_tsne_colours(tsnes: list, classes: list = None, names: list = None, legend: bool = False,
+              plotting_params: dict = {'s': 0.2,'alpha':0.2},title=None,colour_dict=None,fig_data=None,
+              order_legend:list=None):
+    """
+    Plot tsne embedding
+    :param tsne: List of embeddings, as returned by make_tsne
+    :param classes: List of class annotations (dict), one per tsne.
+    If not None colour each item in tSNE embedding by class.
+    Keys: names matching names of tSNE embedding, values: class
+    :param names: List of lists. Each list contains names for items in corresponding tSNE embedding.
+    :param legend: Should legend be added
+    :param plotting_params: plt.scatter parameters. Can be: 1.) List with dicts (single or nested, as below) for
+    each tsne,  2.) dict with class names as keys and parameters dicts as values, 3.) dict of parameters.
+    :return:
+    """
+    if fig_data is None:
+        fig, ax = plt.subplots()
+    else:
+        fig,ax=fig_data
+    ax.get_xaxis().set_visible(False)
+    ax.get_yaxis().set_visible(False)
+    if title is not None:
+        fig.suptitle(title)
+    if classes is None:
+        data = pd.DataFrame()
+        for tsne in tsnes:
+            if not isinstance(tsne,np.ndarray):
+                tsne=np.array(tsne)
+            x = [x[0] for x in tsne]
+            y = [x[1] for x in tsne]
+            data = data.append(pd.DataFrame({'x': x, 'y': y}))
+        ax.scatter(data['x'],data['y'] , alpha=0.5, **plotting_params)
+    else:
+        if len(tsnes) != len(names):
+            raise ValueError('N of tSNEs must match N of their name lists')
+        data = pd.DataFrame()
+        for tsne, name, group in zip(tsnes, names, range(len(tsnes))):
+            if not isinstance(tsne,np.ndarray):
+                tsne=np.array(tsne)
+            x = [x[0] for x in tsne]
+            y = [x[1] for x in tsne]
+            data = data.append(pd.DataFrame({'x': x, 'y': y, 'name': name, 'group': [group] * len(x)}))
+        if names is not None and classes is not None:
+            classes_extended = []
+            for row in data.iterrows():
+                row=row[1]
+                group_classes=classes[int(row['group'])]
+                name=row['name']
+                if name in group_classes.keys():
+                    classes_extended.append(group_classes[name])
+                else:
+                    classes_extended.append('NaN')
+            data['class']=classes_extended
+        class_names = set(data['class'])
+        all_colours = ['#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#46f0f0', '#f032e6',
+                       '#bcf60c',
+                       '#fabebe', '#008080', '#e6beff', '#9a6324', '#fffac8', '#800000', '#aaffc3', '#808000',
+                       '#ffd8b1',
+                       '#000075', '#808080', '#000000']
+        if colour_dict is None:
+            all_colours = all_colours * (len(class_names) // len(all_colours) + 1)
+            selected_colours = random.sample(all_colours, len(class_names))
+            # colour_idx = range(len(class_names))
+            colour_dict = dict(zip(class_names, selected_colours))
+
+        for group_name,group_data in data.groupby('group'):
+            for class_name,class_data in group_data.groupby('class'):
+                plotting_params_point=[]
+                if isinstance(plotting_params,list):
+                    plotting_params_group=plotting_params[int(group_name)]
+                    plotting_params_class=plotting_params_group
+                else:
+                    plotting_params_class = plotting_params
+                if isinstance(list(plotting_params_class.values())[0], dict):
+                    plotting_params_class = plotting_params_class[class_name]
+                else:
+                    plotting_params_class = plotting_params_class
+                if 'marker' not in plotting_params_class.keys():
+                    plotting_params_class['marker']='o'
+                ax.scatter(class_data['x'],class_data['y'],
+                       c=[colour_dict[class_name] for class_name in class_data['class']],
+                       label=class_name, **plotting_params_class)
+        if legend:
+            handles, labels = fig.gca().get_legend_handles_labels()
+            if order_legend is not None:
+                labels=[str(label) for label in labels]
+                order_legend=[str(label) for label in order_legend]
+                legend_order_dict=dict(zip(order_legend,range(len(order_legend))))
+                legend_dict=dict(zip(labels,handles))
+                legend_with_order={legend_order_dict[label]:label for label in labels}
+                labels=[label for idx, label in sorted(legend_with_order.items(), key=lambda item: item[0])]
+                handles=[legend_dict[label] for label in labels]
+
+
+            box = ax.get_position()
+            ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
+            legend = ax.legend( handles,labels,loc='center left', bbox_to_anchor=(1, 0.5))
+            for handle in legend.legendHandles:
+                handle._sizes = [10]
+                handle.set_alpha(1)
+
+
 
 def make_tsne_data(tsne, names):
     """
@@ -1964,6 +2100,19 @@ def get_orange_pattern(genes_averaged: pd.DataFrame, group: str) -> pd.DataFrame
     return ClusterAnalyser.pattern_characteristics(data=genes_strain)
 
 
+def sort_strain_data(data:pd.DataFrame):
+    """
+    Sorts a copy of data by strain (as specified in STRAIN_ORDER), Replicate (if present) and then by time.
+    :param data: Data frame with columns Strain, Time and optionally Replicate.
+    """
+    data=data.copy()
+    sort=['Strain','Time']
+    if 'Replicate' in data.columns:
+        sort=['Strain','Replicate','Time']
+    data['Strain'] = pd.Categorical(data['Strain'], categories=STRAIN_ORDER)
+    return data.sort_values(sort)
+
+
 class NeighbourhoodParser:
 
     # Set of methods for parsing neighbourhoods
@@ -2027,6 +2176,7 @@ class NeighbourhoodParser:
         Can be dict with keys as neighbourhood names and values neighbourhoods
         :param measure:Distance : jaccard, percent_shared_smaller, avg_dist, pval.
         To get distance from jaccard and percent_shared_smaller uses 1 - sim_metric (as max is 1).
+        avg_dist is average distance between all pairs of genes.
         pval uses hypergeometric test that such overlap is observed: set1=K, set2=n, overlap=k, all_genes=N
         are parameters of hypergeometric (symbols same as in pmf from wikipedia). P value is used as distance metric.
         :param genes_dist: Must be distance (e.g. for cosine 1-genes_cosine). Index must match gene names in
@@ -2045,8 +2195,8 @@ class NeighbourhoodParser:
             neighbourhood_names = list(neighbourhoods.keys())
             neighbourhoods = list(neighbourhoods.values())
         hypergeom_test = None
-        min_p=None
-        max_sim=None
+        min_p = None
+        max_sim = None
         if measure == 'pval':
             hypergeom_test = Hypergeometric(all_genes)
             min_p = 10 ** -323.6
@@ -2179,3 +2329,4 @@ def point_histogram(data, bins, **plot_args):
     plt.scatter(bin_centers, n, **plot_args)
     # For non filled hist
     # plt.hist(x, bins=50, histtype = 'step', fill = None)
+

@@ -15,7 +15,7 @@ mpmath.mp.dps = 500
 
 from orangecontrib.bioinformatics.geneset.utils import (GeneSet, GeneSets)
 
-import deR.enrichment_library as el
+import stages_DE.enrichment_library as el
 
 MAX_RANDOM_PAIRS = 10000
 
@@ -992,7 +992,7 @@ class GeneSetComparator:
         """
 
         :param gene_set_data:
-        :param include_identical: If max_overlap is set the identical pairs will be remopuved due to too high overlap.
+        :param include_identical: If max_overlap is set the identical pairs will be remouved due to too high overlap.
         :param max_overlap:
         :return:
         """
