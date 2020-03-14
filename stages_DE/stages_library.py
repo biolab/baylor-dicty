@@ -13,15 +13,15 @@ from orangecontrib.bioinformatics.utils.statistics import Hypergeometric
 from Orange.clustering.louvain import jaccard
 from scipy.optimize import curve_fit
 
-GROUPS = {'amiB': 'Ag-', 'mybB': 'Ag-', 'acaA': 'Ag-', 'gtaC': 'Ag-',
-          'gbfA': 'LAD', 'tgrC1': 'LAD', 'tgrB1': 'TAD', 'tgrB1C1': 'TAD',
-          'tagB': 'TA', 'comH': 'TA',
-          'ecmARm': 'CD', 'gtaI': 'CD', 'cudA': 'CD', 'dgcA': 'CD', 'gtaG': 'CD',
+GROUPS = {'amiB': 'agg-', 'mybB': 'agg-', 'acaA': 'agg-', 'gtaC': 'agg-',
+          'gbfA': 'lag_dis', 'tgrC1': 'lag_dis', 'tgrB1': 'tag_dis', 'tgrB1C1': 'tag_dis',
+          'tagB': 'tag', 'comH': 'tag',
+          'ecmARm': 'cud', 'gtaI': 'cud', 'cudA': 'cud', 'dgcA': 'cud', 'gtaG': 'cud',
           'AX4': 'WT', 'MybBGFP': 'WT',
-          'acaAPkaCoe': 'SFB', 'ac3PkaCoe': 'SFB',
-          'pkaR': 'PD', 'PkaCoe': 'PD'}
+          'acaAPkaCoe': 'sFB', 'ac3PkaCoe': 'sFB',
+          'pkaR': 'Prec', 'PkaCoe': 'Prec'}
 
-GROUP_X = {'Ag-': 1, 'LAD': 2, 'TAD': 3, 'TA': 4, 'CD': 5, 'SFB': 6, 'WT': 7, 'PD': 8}
+GROUP_X = {'agg-': 1, 'lag_dis': 2, 'tag_dis': 3, 'tag': 4, 'cud': 5, 'sFB': 6, 'WT': 7, 'Prec': 8}
 
 GROUP_DF = []
 for strain, group in GROUPS.items():
@@ -31,7 +31,7 @@ GROUP_DF = pd.DataFrame(GROUP_DF)
 # GROUP_DF.to_csv('/home/karin/Documents/timeTrajectories/data/regulons/selected_genes/group_df.tsv',sep='\t',
 # index=False)
 
-PHENOTYPES = ['no_agg', 'stream', 'lag', 'tag', 'tip', 'slug', 'mhat', 'cul', 'FB', 'disappear']
+PHENOTYPES = ['no_agg', 'stream', 'lag', 'tag', 'tip', 'slug', 'mhat', 'cul', 'FB', 'disappear', 'tag_spore']
 
 
 def plot_genegroup_similarity(retained_genes_dict, splitby='Strain', jaccard_or_p=True, n_all_genes: int = None,
@@ -224,7 +224,7 @@ def quantile_normalise(similarity_means, return_ranks: bool = False):
 
 
 def compare_gene_scores(quantile_normalised: pd.DataFrame, test: str, alternative: str, group_splits: list = None,
-                        select_single_comparsion: list = None):
+                        select_single_comparsion: list = None, comparison_selection: str = 'gaussian_mixture'):
     """
     Compare gene scores across strain groups. For each gene there is a score (e.g. avg similarity to neighbours) in each
     strain that belongs to a strain group. Compare scores between groups to find genes that have lower/higher score in
@@ -243,6 +243,8 @@ def compare_gene_scores(quantile_normalised: pd.DataFrame, test: str, alternativ
          groups are not split.
     :param test: 'u' for mannwhitneyu or 't' for t-test.
     :param alternative: less (first group has lesser values than the second), greater, two-sided
+    :param comparison_selection: Used if comparisons are selected based onv select_single_comparsion. How to separate
+        strain groups into two groups.
     :return: DF with columns: Gene, Comparison (as named in group_splits), Statistic (test statistic), p (p value), FDR
         (across whole results DF), Mean1, Mean2 (mean of each of two groups from group_splits), Difference
         (mean2-mean1), Separation (How well does the comparison separate the two groups based on means of border
@@ -257,96 +259,105 @@ def compare_gene_scores(quantile_normalised: pd.DataFrame, test: str, alternativ
         unsplit2 = select_single_comparsion[2]
         select_single_comparsion = select_single_comparsion[0]
 
-
         groups = []
         g1 = []
         for group in select_single_comparsion:
             g1.append(group)
             g2 = [x for x in select_single_comparsion if x not in g1]
-            #print(g1,g2)
+            # print(g1,g2)
             if set(unsplit1).issubset(g1) and set(unsplit2).issubset(g2):
                 # print(high,low)
-                groups.append((g1.copy(), g2.copy()))
-                #print(groups)
+                groups.append([g1.copy(), g2.copy()])
+                # print(groups)
 
     for gene in quantile_normalised.index:
-        #print(gene)
+        # print(gene)
         if select_single_comparsion is not None:
+            group1=None
+            group2=None
             unsplit_m1 = group_statistic(groups=unsplit1, quantile_normalised=quantile_normalised, gene=gene)
             unsplit_m2 = group_statistic(groups=unsplit2, quantile_normalised=quantile_normalised, gene=gene)
             # TODO comments, documentation, test
             if unsplit_m1 > unsplit_m2:
                 order = 1
-                high_groups = unsplit1.copy()
+                # high_groups = unsplit1.copy()
             else:
                 order = -1
-                high_groups = unsplit2.copy()
+                # high_groups = unsplit2.copy()
             # This was used to select the best group split when first groups starts to deviate too much from the higher
             # (similarity) set of groups - either based on the difference to the mean of low/high or too many high's
             # standard deviations away from the high
-            # for group in [x for x in select_single_comparsion if x not in unsplit1 and x not in unsplit2][::order]:
-            #     m_high = group_statistic(groups=high_groups, quantile_normalised=quantile_normalised, gene=gene)
-            #     #std_high = group_statistic(groups=high_groups, quantile_normalised=quantile_normalised, gene=gene,
-            #                                mode='std')
-            #     low_groups = [x for x in select_single_comparsion if x not in high_groups and x != group]
-            #     m_low = group_statistic(groups=low_groups, quantile_normalised=quantile_normalised, gene=gene)
-            #     #print(high_groups, low_groups, group)
-            #     m = group_statistic(groups=[group], quantile_normalised=quantile_normalised, gene=gene)
-            #     diff_high = abs(m - m_high)
-            #     diff_low = abs(m - m_low)
-            #     #print(m_high,m_low,m)
-            #     if diff_high > diff_low:
-            #     ##print(m_high, std_high, m)
-            #     #if m < (m_high - 2 * std_high):
-            #         low_groups.append(group)
-            #         break
-            #     else:
-            #         high_groups.append(group)
+            if comparison_selection in ['closest', 'std']:
+                stop = False
+                for groups12 in groups[::order]:
+                    groups12_ordered = groups12[::order]
+                    high_groups = groups12_ordered[0]
+                    low_groups = groups12_ordered[1][::order*-1][:-1][::order*-1]
+                    group = groups12_ordered[1][::order*-1][-1]
+                    #print( low_groups, high_groups,group)
+                    if group in unsplit1 or group in unsplit2:
+                        stop=True
+                    else:
+                        m_high = group_statistic(groups=high_groups, quantile_normalised=quantile_normalised, gene=gene)
+                        m = group_statistic(groups=[group], quantile_normalised=quantile_normalised, gene=gene)
+                        if comparison_selection == 'closest':
+                            m_low = group_statistic(groups=low_groups, quantile_normalised=quantile_normalised, gene=gene)
+                            #print(m_high,m_low,m)
+                            diff_high = abs(m - m_high)
+                            diff_low = abs(m - m_low)
+                            stop = diff_high > diff_low
+                        elif comparison_selection == 'std':
+                            std_high = group_statistic(groups=high_groups, quantile_normalised=quantile_normalised,
+                                                       gene=gene,mode='std')
+                            #print(m_high, std_high, m)
+                            stop = m < (m_high - 2 * std_high)
 
+                    if stop:
+                        group1=groups12[0]
+                        group2=groups12[1]
+                        break
             # This was used to find best split based on separation that results in max differences between the
             # means of two groups
-            # diffs=list()
-            # for group_pair in groups:
-            #     if order==1:
-            #         low_groups=group_pair[1]
-            #         high_groups = group_pair[0]
-            #     else:
-            #         low_groups = group_pair[0]
-            #         high_groups = group_pair[1]
-            #     m_high = group_statistic(groups=high_groups, quantile_normalised=quantile_normalised, gene=gene)
-            #     m_low = group_statistic(groups=low_groups, quantile_normalised=quantile_normalised, gene=gene)
-            #     print(high_groups, low_groups,m_high-m_low)
-            #     diffs.append((m_high-m_low,low_groups,high_groups))
-            #     #print(diffs,m_high,m_low)
-            # best_sep=max(diffs,key=lambda item:item[0])
-            # low_groups=best_sep[1]
-            # high_groups=best_sep[2]
+            elif comparison_selection == 'max_diff':
+                diffs = list()
+                for group_pair in groups:
+                    high_groups = group_pair[::order][0]
+                    low_groups = group_pair[::order][1]
+
+                    m_high = group_statistic(groups=high_groups, quantile_normalised=quantile_normalised, gene=gene)
+                    m_low = group_statistic(groups=low_groups, quantile_normalised=quantile_normalised, gene=gene)
+                    #print( low_groups,high_groups, m_high - m_low)
+                    diffs.append((m_high - m_low, low_groups, high_groups))
+                best_sep = max(diffs, key=lambda item: item[0])
+                group1 = best_sep[1]
+                group2 = best_sep[2]
 
             # This splits groups so that they match the most Gaussian mixture clustering into two groups
-            clusters=GaussianMixture(n_components=2).fit_predict(quantile_normalised.loc[gene,:].values.reshape(-1,1))
-            scores=[]
-            for group_pair in groups:
-                strains1 = GROUP_DF[GROUP_DF['X'].isin(group_pair[0])]['Strain']
-                comparison_clusters=[]
-                for strain in quantile_normalised.columns:
-                    if strain in strains1.values:
-                        comparison_clusters.append(0)
-                    else:
-                        comparison_clusters.append(1)
-                #print((adjusted_rand_score(clusters,comparison_clusters),group_pair))
-                scores.append((adjusted_rand_score(clusters,comparison_clusters),group_pair))
-            best_sep = max(scores, key=lambda item: item[0])
-            group1=best_sep[1][0]
-            group2 = best_sep[1][1]
-            # if order == -1:
-            #     group1 = low_groups.copy()
-            #     group2 = high_groups.copy()
-            # else:
-            #     group1 = high_groups.copy()
-            #     group2 = low_groups.copy()
+            elif comparison_selection =='gaussian_mixture':
+                std_m1 = group_statistic(groups=unsplit1, quantile_normalised=quantile_normalised, gene=gene,mode='std')
+                std_m2 = group_statistic(groups=unsplit2, quantile_normalised=quantile_normalised, gene=gene,mode='std')
+                clusters = GaussianMixture(n_components=2,
+                                           #means_init=np.array([[unsplit_m1],[unsplit_m2]]),
+                                           #precisions_init=np.array([[[std_m1**(-2)]],[[std_m2**(-2)]]])
+                                           ).fit_predict(
+                    quantile_normalised.loc[gene, :].values.reshape(-1, 1))
+                scores = []
+                for group_pair in groups:
+                    strains1 = GROUP_DF[GROUP_DF['X'].isin(group_pair[0])]['Strain']
+                    comparison_clusters = []
+                    for strain in quantile_normalised.columns:
+                        if strain in strains1.values:
+                            comparison_clusters.append(0)
+                        else:
+                            comparison_clusters.append(1)
+                    #print((adjusted_rand_score(clusters,comparison_clusters),group_pair))
+                    scores.append((adjusted_rand_score(clusters, comparison_clusters), group_pair))
+                best_sep = max(scores, key=lambda item: item[0])
+                group1 = best_sep[1][0]
+                group2 = best_sep[1][1]
 
-            group1.sort()
             compariosn_name = group1[-1]
+            compariosn_name=GROUP_DF.query('X == '+str(compariosn_name)).Group.unique()[0]
             group_splits = [(group1, group2, compariosn_name)]
             #print(group_splits)
         for comparison in group_splits:

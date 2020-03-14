@@ -6,8 +6,14 @@ from sklearn.preprocessing import minmax_scale
 import matplotlib.patches as mpatches
 from scipy.stats import rankdata, mannwhitneyu
 from statsmodels.stats.multitest import multipletests
+from skmultilearn.problem_transform import ClassifierChain
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import precision_recall_fscore_support,roc_auc_score
+from sklearn.model_selection import LeaveOneOut
+from skmultilearn.model_selection import iterative_train_test_split, IterativeStratification
+import sklearn.preprocessing as pp
 
-import DBA as dba
+# import DBA as dba
 
 from networks.library_regulons import ClusterAnalyser, NeighbourCalculator, make_tsne
 from networks.functionsDENet import loadPickle, savePickle
@@ -20,6 +26,7 @@ if lab:
     dataPath = '/home/karin/Documents/timeTrajectories/data/RPKUM/combined/'
     pathSelGenes = '/home/karin/Documents/timeTrajectories/data/regulons/selected_genes/'
     peakPath = '/home/karin/Documents/timeTrajectories/data/stages/'
+    pathClassification = '/home/karin/Documents/timeTrajectories/data/stages/classification'
 
 else:
     dataPath = '/home/karin/Documents/DDiscoideum/data/RPKUM/'
@@ -343,7 +350,7 @@ quantile_normalised_WT = quantile_normalise(similarity_means=similarity_means_WT
 #    sep='\t')
 # Pre select genes that are above a relative threshold in WT and PD strains (that develop)
 genes_filtered = set(similarity_means_WT.index)
-for strain in GROUP_DF[GROUP_DF['Group'].isin(['PD', 'WT'])]['Strain']:
+for strain in GROUP_DF[GROUP_DF['Group'].isin(['Prec', 'WT'])]['Strain']:
     threshold = np.quantile(similarity_means_WT[strain], 0.3)
     genes_filtered = genes_filtered & set(similarity_means_WT[similarity_means_WT[strain] >= threshold].index)
 test = 'u'
@@ -359,9 +366,10 @@ results_WT.to_csv(
 # OR Test for single separation point
 results_WT = compare_gene_scores(quantile_normalised=quantile_normalised_WT.loc[genes_filtered, :],
                                  group_splits=None, test=test,
-                                 alternative=alternative, select_single_comparsion=[[1, 2, 3, 4, 5, 7, 8], [1], [7, 8]])
+                                 alternative=alternative, select_single_comparsion=[[1, 2, 3, 4, 5, 7, 8], [1], [7, 8]],
+                                 comparison_selection='gaussian_mixture')
 results_WT.to_csv(
-    pathSelGenes + 'comparisonsAvgSimsSingle_AX4basedNeigh_' + test + '-' + alternative + '_newGenes_noAll-removeZeroRep_simsDict_scalemean0std1_logTrue_kN11_splitStrain.tsv',
+    pathSelGenes + 'comparisonsAvgSimsSingleGM_AX4basedNeigh_' + test + '-' + alternative + '_newGenes_noAll-removeZeroRep_simsDict_scalemean0std1_logTrue_kN11_splitStrain.tsv',
     sep='\t', index=False)
 
 # ****** For each strain/gene compare similarities to neighbours from AX4 and closest neighbours in the strain
@@ -422,7 +430,7 @@ for f in files:
                 val = val.replace(' ', '')
                 val = val.replace('elongating', '')
                 val = val.replace('shrinking', '')
-                val = val.replace('Spore', '')
+                val = val.replace('Spore', '_spore')
                 val = val.replace('streaming', 'stream')
                 val = val.split('/')
                 val = list(filter(lambda a: a != '', val))
@@ -562,3 +570,66 @@ for replicate, data in peak_counts.items():
 
 # For WT and all strains the differences in distn are so big that it is not relevant (e.g. threshold could be at
 # 0.5/0.6) (tested on tag)
+
+# *******************************************
+# ********** Find genes that best predict phenotype (classification based)
+
+# Uses all data that has something annotated (either from images or as it was 0 time -noagg)
+# Removes tag_spore - uses even samples that now have all 0 stage annotations if they had previously only tag_spore
+Y = conditions[(conditions[PHENOTYPES] != 0).any(axis=1)]
+X = genes[Y.Measurment].T.values
+# PHENOTYPES here also ensures correct order
+order=PHENOTYPES.copy()
+order.remove('tag_spore')
+Y = Y[order].values
+
+# Make train/test split for multilabel classification
+# X_train, Y_train, X_test, Y_test = iterative_train_test_split(X, Y, test_size = 0.1)
+# Split
+# for col in range(Y.shape[1]):
+#   print(Y_train[:,col].sum(),Y_test[:,col].sum())
+# print(Y_train.shape[0],Y_test.shape[0])
+# savePickle(pathClassification+'train_test.pkl',(X_train, Y_train, X_test, Y_test))
+X_train, Y_train, X_test, Y_test = loadPickle(pathClassification + 'train_test.pkl')
+
+# split = LeaveOneOut()
+prfs_all=pd.DataFrame()
+rac_all=pd.DataFrame()
+feats_all=pd.DataFrame()
+split = IterativeStratification(n_splits=5, order=1)
+fold=0
+for train_index, test_index in split.split(X_train, Y_train):
+    fold += 1
+    print(fold)
+    X_train_fold, X_test_fold = pp.minmax_scale(X_train[train_index]), pp.minmax_scale(X_train[test_index])
+    Y_train_fold, Y_test_fold = pp.minmax_scale(Y_train[train_index]), pp.minmax_scale(Y_train[test_index])
+    for c in [0.9,0.7,0.5,0.3,0.2,0.1]:
+        print(c)
+        # Order already ensured when selecting Y columns
+        classifier = ClassifierChain(
+            classifier=LogisticRegression(penalty='l1', n_jobs=3, C=c, solver='saga', max_iter=200)).fit(X_train_fold,
+                                                                                                         Y_train_fold)
+
+        Y_predict_fold = classifier.predict(X_test_fold)
+        Y_p_fold = classifier.predict_proba(X_test_fold)
+        prfs=pd.DataFrame(precision_recall_fscore_support(Y_test_fold, Y_predict_fold),index=['precision','recall','F_score','support']).T
+        prfs['Stage']=order
+        prfs['C']=[c]*prfs.shape[0]
+        prfs_all=prfs_all.append(prfs)
+        prfs=list(precision_recall_fscore_support(Y_test_fold, Y_predict_fold, average='micro'))
+        prfs.extend(['all',c])
+        prfs=dict(zip(['precision','recall','F_score','support','Stage',"C"],prfs))
+        prfs_all = prfs_all.append( prfs,ignore_index=True)
+        rac=dict(zip(['roc_auc','C'],[ roc_auc_score(Y_test_fold, Y_p_fold.toarray(), average='micro'),c]))
+        rac_all=rac_all.append(rac,ignore_index=True)
+
+        feats_combined = set()
+        for i in range(Y.shape[1]):
+            cl = classifier.classifiers_[i]
+            feats_stage = set(pd.Series(range(X.shape[1]))[(cl.coef_ != 0).flatten()[:X.shape[1]]].index)
+            feats_combined = feats_combined | feats_stage
+            #print(len(feats_stage), len(feats_combined))
+            feats=dict(zip(['N_features','C','Stage'],[len(feats_stage),c,order[i]]))
+            feats_all=feats_all.append(feats,ignore_index=True)
+        feats= dict(zip(['N_features', 'C', 'Stage'],[len(feats_combined), c, 'all']))
+        feats_all = feats_all.append(feats,ignore_index=True)
