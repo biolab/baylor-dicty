@@ -602,7 +602,7 @@ for train_index, test_index in split.split(X_train, Y_train):
     fold += 1
     print(fold)
     X_train_fold, X_test_fold = pp.minmax_scale(X_train[train_index]), pp.minmax_scale(X_train[test_index])
-    Y_train_fold, Y_test_fold = pp.minmax_scale(Y_train[train_index]), pp.minmax_scale(Y_train[test_index])
+    Y_train_fold, Y_test_fold = Y_train[train_index], Y_train[test_index]
     for c in [0.9,0.7,0.5,0.3,0.2,0.1]:
         print(c)
         # Order already ensured when selecting Y columns
