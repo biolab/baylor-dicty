@@ -26,7 +26,7 @@ if lab:
     dataPath = '/home/karin/Documents/timeTrajectories/data/RPKUM/combined/'
     pathSelGenes = '/home/karin/Documents/timeTrajectories/data/regulons/selected_genes/'
     peakPath = '/home/karin/Documents/timeTrajectories/data/stages/'
-    pathClassification = '/home/karin/Documents/timeTrajectories/data/stages/classification/'
+    pathClassification = '/home/karin/Documents/timeTrajectories/data/stages/classification'
 
 else:
     dataPath = '/home/karin/Documents/DDiscoideum/data/RPKUM/'
@@ -584,9 +584,52 @@ order.remove('tag_spore')
 Y = Y[order].values
 
 # Make train/test split for multilabel classification
-X_train, Y_train, X_test, Y_test = iterative_train_test_split(X, Y, test_size = 0.1)
+# X_train, Y_train, X_test, Y_test = iterative_train_test_split(X, Y, test_size = 0.1)
 # Split
-for col in range(Y.shape[1]):
-  print(Y_train[:,col].sum(),Y_test[:,col].sum())
-print(Y_train.shape[0],Y_test.shape[0])
-savePickle(pathClassification+'train_test.pkl',(X_train, Y_train, X_test, Y_test))
+# for col in range(Y.shape[1]):
+#   print(Y_train[:,col].sum(),Y_test[:,col].sum())
+# print(Y_train.shape[0],Y_test.shape[0])
+# savePickle(pathClassification+'train_test.pkl',(X_train, Y_train, X_test, Y_test))
+X_train, Y_train, X_test, Y_test = loadPickle(pathClassification + 'train_test.pkl')
+
+# split = LeaveOneOut()
+prfs_all=pd.DataFrame()
+rac_all=pd.DataFrame()
+feats_all=pd.DataFrame()
+split = IterativeStratification(n_splits=5, order=1)
+fold=0
+for train_index, test_index in split.split(X_train, Y_train):
+    fold += 1
+    print(fold)
+    X_train_fold, X_test_fold = pp.minmax_scale(X_train[train_index]), pp.minmax_scale(X_train[test_index])
+    Y_train_fold, Y_test_fold = Y_train[train_index], Y_train[test_index]
+    for c in [0.9,0.7,0.5,0.3,0.2,0.1]:
+        print(c)
+        # Order already ensured when selecting Y columns
+        classifier = ClassifierChain(
+            classifier=LogisticRegression(penalty='l1', n_jobs=3, C=c, solver='saga', max_iter=200)).fit(X_train_fold,
+                                                                                                         Y_train_fold)
+
+        Y_predict_fold = classifier.predict(X_test_fold)
+        Y_p_fold = classifier.predict_proba(X_test_fold)
+        prfs=pd.DataFrame(precision_recall_fscore_support(Y_test_fold, Y_predict_fold),index=['precision','recall','F_score','support']).T
+        prfs['Stage']=order
+        prfs['C']=[c]*prfs.shape[0]
+        prfs_all=prfs_all.append(prfs)
+        prfs=list(precision_recall_fscore_support(Y_test_fold, Y_predict_fold, average='micro'))
+        prfs.extend(['all',c])
+        prfs=dict(zip(['precision','recall','F_score','support','Stage',"C"],prfs))
+        prfs_all = prfs_all.append( prfs,ignore_index=True)
+        rac=dict(zip(['roc_auc','C'],[ roc_auc_score(Y_test_fold, Y_p_fold.toarray(), average='micro'),c]))
+        rac_all=rac_all.append(rac,ignore_index=True)
+
+        feats_combined = set()
+        for i in range(Y.shape[1]):
+            cl = classifier.classifiers_[i]
+            feats_stage = set(pd.Series(range(X.shape[1]))[(cl.coef_ != 0).flatten()[:X.shape[1]]].index)
+            feats_combined = feats_combined | feats_stage
+            #print(len(feats_stage), len(feats_combined))
+            feats=dict(zip(['N_features','C','Stage'],[len(feats_stage),c,order[i]]))
+            feats_all=feats_all.append(feats,ignore_index=True)
+        feats= dict(zip(['N_features', 'C', 'Stage'],[len(feats_combined), c, 'all']))
+        feats_all = feats_all.append(feats,ignore_index=True)
