@@ -8,6 +8,7 @@ from statsmodels.stats.multitest import multipletests
 
 from sklearn.mixture import GaussianMixture
 from sklearn.metrics import adjusted_rand_score
+import altair as alt
 
 from orangecontrib.bioinformatics.utils.statistics import Hypergeometric
 from Orange.clustering.louvain import jaccard
@@ -422,3 +423,54 @@ def group_statistic(groups, quantile_normalised, gene, mode: str = 'mean'):
         return values.mean()
     elif mode == 'std':
         return values.std()
+
+    
+def summary_classification(df:pd.DataFrame,statistic, split,macro_list:list=None):
+    """
+    Calculate mean and standard error (SE) of scores from cross validation.
+    :param df: Data Frame with cross validation results in rows and quality metrics and metric descriptions
+    in columns.
+    :param statistic: Coloumn of df for which mean and SE are calculated.
+    :param split: Column of df used for wsplitting cross validation results into categories within
+    which mean and SE are calculate separately.
+    :param macro_list: If not None calculate macro mean and SE using the rows whose split column value 
+    is within macro_list. This calculates the mean and SE over the df subseted with macro_list in split column.
+    """
+    print(statistic,'mean and standard error for each group')
+    groups=df[[statistic,split]].groupby(split)
+    for group_name in groups.groups.keys():
+        data=groups.get_group(group_name)
+        print('%-12s%-6.3f%-3s%-3.3f' % (group_name, data.mean()[0],'+-',data.sem()[0]))
+    if macro_list is not None:
+        data=df[df[split].isin(macro_list)][statistic]
+        print('%-12s%-6.3f%-3s%-3.3f' % ('macro', data.mean(),'+-',data.sem()))
+        
+# From https://datavizpyr.com/stripplot-with-altair-in-python/
+def scatter_catgory(df:pd.DataFrame, Y, categories=None,colour=None,shape=None,title:str=''):
+    """
+    Make scatter plot with categories on X axis and X jittering to reduce the overlap between 
+    data points of the same category.
+    :param df: Data Frame with points in rows and data for plotting in columns.
+    :param categories: Column from df used for splitting the data on  X axis categories.
+    :param Y: Column of df whose values are ploted on Y axis. 
+    :param colour: Optional, column of df based on which the points are coloured.
+    :param shape: Optional, column of df based on which the points are shaped.
+    :param title: Optional, a title for the plot.
+    """
+    params_dict={}
+    if colour is not None:
+        params_dict['color']=alt.Color(colour)
+    if shape is not None:
+        params_dict['shape']=alt.Shape(shape)
+    if categories is not None:
+        params_dict['column']=alt.Column(categories, header=alt.Header(
+            labelAngle=0,titleOrient='bottom',labelOrient='bottom',labelAlign='center',labelPadding=10))
+    return alt.Chart(df, width=120,title=title).mark_point(size=20).encode(
+        x=alt.X('jitter:Q',title=None,axis=alt.Axis(values=[0], ticks=True, grid=False, labels=False),
+            scale=alt.Scale(),),
+        y=alt.Y(Y,axis=alt.Axis( grid=False)),
+        **params_dict
+    ).transform_calculate(jitter='sqrt(-2*log(random()))*cos(2*PI*random())'
+    ).configure_facet(spacing=0
+    #).configure_view( stroke=None
+    )
