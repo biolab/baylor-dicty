@@ -425,7 +425,7 @@ def group_statistic(groups, quantile_normalised, gene, mode: str = 'mean'):
         return values.std()
 
     
-def summary_classification(df:pd.DataFrame,statistic, split,macro_list:list=None):
+def summary_classification(df:pd.DataFrame,statistic, split,macro_list:list=None,print_df=True):
     """
     Calculate mean and standard error (SE) of scores from cross validation.
     :param df: Data Frame with cross validation results in rows and quality metrics and metric descriptions
@@ -435,15 +435,36 @@ def summary_classification(df:pd.DataFrame,statistic, split,macro_list:list=None
     which mean and SE are calculate separately.
     :param macro_list: If not None calculate macro mean and SE using the rows whose split column value 
     is within macro_list. This calculates the mean and SE over the df subseted with macro_list in split column.
+    :param print_df: If True prints the result, else returns df with results.
     """
-    print(statistic,'mean and standard error for each group')
+    if print_df: 
+        print(statistic,'mean and standard error for each group')
     groups=df[[statistic,split]].groupby(split)
+    summary_df=[]
     for group_name in groups.groups.keys():
         data=groups.get_group(group_name)
-        print('%-12s%-6.3f%-3s%-3.3f' % (group_name, data.mean()[0],'+-',data.sem()[0]))
+        summary_df.append({'Group':group_name,'Mean':data.mean()[0],'SE':data.sem()[0]})
+        if print_df: 
+            print('%-12s%-6.2f%-3s%-3.2f' % (group_name, data.mean()[0],'+-',data.sem()[0]))
     if macro_list is not None:
         data=df[df[split].isin(macro_list)][statistic]
-        print('%-12s%-6.3f%-3s%-3.3f' % ('macro', data.mean(),'+-',data.sem()))
+        summary_df.append({'Group':'macro','Mean':data.mean(),'SE':data.sem()})
+        if print_df:
+            print('%-12s%-6.2f%-3s%-3.2f' % ('macro', data.mean(),'+-',data.sem()))
+    if not print_df:
+        return pd.DataFrame(summary_df)
+    
+def summary_classification_print_sort(summary,statistic,averages,groups):
+    print('Mean cross validation '+statistic+' averaged across all phenotypes and standard error')
+    averages_summary=summary[summary.Group.isin(averages)]
+    averages_summary['Group']=pd.Categorical(averages_summary['Group'], averages)
+    for row in averages_summary.sort_values('Group').iterrows():
+        row=row[1]
+        print('%-12s%-6.2f%-3s%-3.2f' % (row['Group'], row['Mean'],'+-',row['SE']))
+    print('Mean cross validation '+statistic+' of individual phenotypes and standard error')
+    for row in summary[summary.Group.isin(groups)].sort_values('Mean',ascending=False).iterrows():
+        row=row[1]
+        print('%-12s%-6.2f%-3s%-3.2f' % (row['Group'], row['Mean'],'+-',row['SE']))
         
 # From https://datavizpyr.com/stripplot-with-altair-in-python/
 def scatter_catgory(df:pd.DataFrame, Y, categories=None,colour=None,shape=None,title:str=''):
