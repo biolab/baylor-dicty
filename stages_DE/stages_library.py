@@ -33,7 +33,7 @@ GROUP_DF = pd.DataFrame(GROUP_DF)
 # index=False)
 
 PHENOTYPES = ['no_agg', 'stream', 'lag', 'tag', 'tip', 'slug', 'mhat', 'cul', 'FB', 'disappear', 'tag_spore']
-
+PHENOTYPES_X={'no_agg':0,'disappear':1, 'stream':2, 'lag':3, 'tag':4, 'tip':5, 'slug':6, 'mhat':7, 'cul':8, 'FB':9}
 
 def plot_genegroup_similarity(retained_genes_dict, splitby='Strain', jaccard_or_p=True, n_all_genes: int = None,
                               group_colours=None, add_title=''):
