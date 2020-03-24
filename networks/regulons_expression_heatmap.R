@@ -8,12 +8,13 @@ library(ComplexHeatmap)
 library(circlize)
 library(viridis)
 
-#**! Paths where expression data (average expression, expression patterns, expression height),strain order,
-#** and regulons clusters are saved
+#**! Paths where expression data (average expression, expression patterns, expression height), strain order,
+#** regulons clusters, and phenotipic data are saved
 path_clusters='/home/karin/Documents/timeTrajectories/data/regulons/by_strain/kN300_mean0std1_log/'
 path_expression='/home/karin/Documents/timeTrajectories/data/regulons/'
 path_expression_height='/home/karin/Documents/timeTrajectories/data/regulons/by_strain/'
 path_strain_order='/home/karin/Documents/timeTrajectories/data/'
+path_phenotypes = '/home/karin/Documents/timeTrajectories/data/stages/'
 
 #**! Specify file names for regulons and expression
 #** Expression tab file: Genes in columns (already scaled), averaged strain data in rows, 
@@ -26,6 +27,18 @@ avg_expression=read.table(paste(path_expression,"genes_averaged_orange_scale99pe
 #** used as specified below in cluster sorting
 expression_patterns=read.table(paste(path_expression,"gene_patterns_orange.tsv",sep=''),
                                header=TRUE,row.names=1, sep="\t")
+#**! Specify file names for phenotipic data
+#** Phenotypes tab file: Short averaged sample names in rows (as in avg_expression) and columns with phenotypes.
+#** Phenotypes should have values: yes, no, no data
+avg_phenotype=read.table(paste(path_phenotypes,"averageStages_anyUnknown.tsv",sep=''),
+                          header=TRUE,row.names=1, sep="\t", stringsAsFactors=FALSE)
+#Change avg_phenotypes data so that each phenotype can be coloured differently
+avg_phenotype[avg_phenotype=='no']=NA
+for(col in colnames(avg_phenotype)){
+  new_col=avg_phenotype[col]
+  new_col[new_col=='yes']=col
+  avg_phenotype[col]=new_col
+}
 
 #**! Data about gene having low/high expression in AX4. 
 #** First coulmn gene names, another coulumn named AX4 with True/False denoting if gene has high expression in AX4 relative to other strains.
@@ -40,7 +53,7 @@ strain_order<-as.vector(read.table(paste(path_strain_order,"strain_order.tsv",se
 
 #** Regulon groups tab file: First column lists genes and 
 #** a column named Cluster specifying cluster/regulon of each gene
-regulons=read.table(paste(path_clusters,"clusters/mergedGenes_minExpressed0.990.5Strains1Min1Max18_clustersLouvain0.4minmaxNologPCA30kN30.tab",sep=''),
+regulons=read.table(paste(path_clusters,"clusters/mergedGenes_minExpressed0.990.1Strains1Min1Max18_clustersAX4Louvain0.4m0s1log.tab",sep=''),
                     header=TRUE, sep="\t")
 #Name the first column (should contain genes
 colnames(regulons)[1]<-'Gene'
@@ -53,14 +66,16 @@ clusters=clusters[order(vals)]
     
 #** Some plotting parameters
 legend_font=12
+phenotypes_font=10
 legened_height=1.5
 legend_width=0.7
 top_annotation_height=0.6
+phenotype_annotation_height=3
 
 #Strain groups annotation
 #** Colours of strain groups
-group_cols=c('1Ag-'= '#d40808', '2LAg'= '#e68209', '3TA'='#d1b30a', '4CD'= '#4eb314', '5WT'= '#0fa3ab',
-                        '6SFB'= '#525252', '7PD'='#7010b0' )
+group_cols=c('agg-'= '#d40808', 'lag_dis'= '#e67009','tag_dis'='#e69509', 'tag'='#d1b30a', 'cud'= '#4eb314', 'WT'= '#0fa3ab',
+                        'sFB'= '#525252', 'Prec'='#7010b0' )
 ht_list=Heatmap(t(avg_expression['Group']),show_column_names = FALSE, height = unit(top_annotation_height, "cm"),
                 column_split=factor(avg_expression$Strain,
                                     #** Ordering of the strains in the heatmap (a vector of strain names)
@@ -69,7 +84,7 @@ ht_list=Heatmap(t(avg_expression['Group']),show_column_names = FALSE, height = u
                 ),
                 cluster_columns=FALSE,name='Group',
                 #** Strain name font size
-                column_title_gp=gpar(fontsize=12),
+                column_title_gp=gpar(fontsize=legend_font),
                 col=group_cols, heatmap_legend_param = list( 
                 grid_width= unit(legend_width, "cm"),grid_height= unit(legened_height, "cm") ,
                 labels_gp = gpar(fontsize = legend_font),title_gp = gpar(fontsize = legend_font)))
@@ -84,6 +99,21 @@ ht_time=Heatmap(t(avg_expression['Time']), height = unit(top_annotation_height, 
                 grid_width= unit(legend_width, "cm"),grid_height= unit(legened_height, "cm") ,
                 labels_gp = gpar(fontsize = legend_font),title_gp = gpar(fontsize = legend_font)))
 ht_list=ht_list %v% ht_time
+
+#Phenotype annotation
+#** Colours of phenotype annotations
+phenotype_cols=c('unknown'= '#d9d9d9', 'no_agg'= '#750000', 'stream'= '#ff4a4a', 'lag'= '#c27013', 'tag'= '#c2b113', 'tip'= '#46b019',
+  'slug'= '#018501', 'mhat'= '#19b0a6', 'cul'= '#1962b0', 'FB'= '#7919b0', 'disappear'= '#000000',
+  'tag_spore'='#6e6e6e')
+#phenotype_cols=c('no data'= '#d9d9d9', 'yes'= '#74cf19', 'no'='#b54c4c')
+ht_phenotype=Heatmap(t(avg_phenotype)[,rownames(avg_expression)], height = unit(phenotype_annotation_height, "cm"),
+                cluster_columns=FALSE,cluster_rows=FALSE, show_column_names = FALSE,name='Phenotype',col=phenotype_cols,
+                row_names_gp = gpar(fontsize = phenotypes_font), na_col = "white",
+                row_title ='Phenotype',row_title_side ='right',row_title_gp=gpar(fontsize = legend_font),
+                heatmap_legend_param = list( grid_width= unit(legend_width, "cm"),grid_height= unit(legened_height, "cm") ,
+                                             labels_gp = gpar(fontsize = legend_font),title_gp = gpar(fontsize = legend_font)))
+ht_list=ht_list %v% ht_phenotype
+
 
 #Expression heatmap
 

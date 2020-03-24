@@ -35,6 +35,10 @@ rownames(conditions)<-make.names(rownames(conditions))
 #Load data normalised
 genesNorm<-read.table(paste(dataPathNormalised,"mergedGenes_RPKUM.tsv",sep=''), header=TRUE,row.names=1, sep="\t")
 
+STAGES<-c('no_agg','stream','lag','tag','tip','slug','mhat','cul','FB','disappear','tag_spore')
+PHENOTYPES_ORDERED=c('no_agg','disappear', 'stream', 'lag', 'tag', 'tip', 'slug', 'mhat', 'cul', 'FB','tag_spore')
+PHENOTYPES_X=data.frame(Phenotype=PHENOTYPES_ORDERED,X=c(1:length(PHENOTYPES_ORDERED)))
+
 #For testing - add developmental column to conditions, use AX4,comH,tagB replicates and subset genes to 500:'
 repsTest<-c('AX4_FD_r1','AX4_FD_r2','AX4_PE_r3','comH_r1','comH_r2','tagB_r1','tagB_r2','tgrC1_r1','tgrC1_r2')
 genesTest<-genes[1:200,(conditions$Replicate %in% repsTest)]
@@ -194,26 +198,31 @@ for (i in (1:(length(stages)-1))){
 }
 
 
-STAGES<-c('no_agg','stream','lag','tag','tip','slug','mhat','cul','FB','disappear')
-#*** Find stage specific genes 1 vs all adjusting for replicates
+#*** Find stage specific genes 1 vs all adjusting for replicates (Do in WT or all)
+#Uses only replicates present in both stage and rest group
 # For stage A use timepoints with phenotypes A and A/B for test and everything without A as control (B, B/C)
+#conditions_test=conditions
+conditions_test=conditions[conditions$Group=='WT',]
+conditions_test=conditions_test[rowSums(conditions_test[, PHENOTYPES_ORDERED])>0, ]
 for (stage in STAGES){
   print(stage)
-  test<-conditions[conditions[stage]==1,]
-  #Select only measurments where 'stage' is the only phenotype e.g. test only A (not A/B)
-  #single_stage1<-rowSums(test[,STAGES])==1
-  #test<-test[single_stage1,]
-  control<-conditions[conditions[stage]!=1,]
-  replicates<-intersect(control$Replicate,test$Replicate)
-  test<-test[test$Replicate %in% replicates,]
-  control<-control[control$Replicate %in% replicates,]
-  test$Comparison<-rep(stage,dim(test)[1])
-  control$Comparison<-rep('other',dim(control)[1])
-  conditions_sub<-rbind(test,control)
-  genes_sub<-genes[,rownames(conditions_sub)]
-  res<-runDeSeq2(conditions_sub,genes_sub,case=stage,control='other',design=~Replicate+Comparison,main_lvl='Comparison',padj=0.05,logFC=1,
-                 path='/home/karin/Documents/timeTrajectories/data/deTime/stage_vs_other/')
-}  
+  if (sum(conditions_test[stage])>0){
+    test<-conditions_test[conditions_test[stage]==1,]
+    #Select only measurments where 'stage' is the only phenotype e.g. test only A (not A/B)
+    #single_stage1<-rowSums(test[,STAGES])==1
+    #test<-test[single_stage1,]
+    control<-conditions_test[conditions_test[stage]!=1,]
+    replicates<-intersect(control$Replicate,test$Replicate)
+    test<-test[test$Replicate %in% replicates,]
+    control<-control[control$Replicate %in% replicates,]
+    test$Comparison<-rep(stage,dim(test)[1])
+    control$Comparison<-rep('other',dim(control)[1])
+    conditions_sub<-rbind(test,control)
+    genes_sub<-genes[,rownames(conditions_sub)]
+    res<-runDeSeq2(conditions_sub,genes_sub,case=stage,control='other',design=~Replicate+Comparison,main_lvl='Comparison',padj=0.05,logFC=1,
+                   path='/home/karin/Documents/timeTrajectories/data/deTime/stage_vs_other/WT/')
+  } 
+} 
 
 
 #*** Find stage specific genes 1 vs 1 stage NOT adjusting for replicates
@@ -292,7 +301,6 @@ for (stage in stage_order$Stage[2:9]){
 }  
 
 
-
 # **********************************************  
 # **** DE genes in time in each strain
 padj=1
@@ -305,5 +313,82 @@ for (strain in unique(conditions$Strain)){
   de_filter<-de$dfImpulseDE2Results[de$dfImpulseDE2Results$padj<=padj & ! is.na(de$dfImpulseDE2Results$padj),]
   write.table(de_filter,file=paste(pathDETime,'DE_',strain, '_padj',padj,'.tsv',sep=''), sep='\t',row.names = FALSE)
 }
+
+# **********************************************
+# ********* Genes DE across stages - use impulse to find DE genes while using ordered stages as time
+
+#Prepare data - add sample to each stage it has annotated
+conditions_annotated=conditions[rowSums(conditions[, PHENOTYPES_ORDERED])>0, ]
+X=data.frame(row.names=rownames(genes))
+Y=data.frame()
+for (row_idx in 1:dim(conditions_annotated)[1]){
+  y=conditions_annotated[row_idx,]
+  x=genes[,rownames(y)]
+  repeated_sample=0
+  for (phenotype in PHENOTYPES_ORDERED){
+    if (y[phenotype]==1){
+      sample_name=paste(rownames(y),repeated_sample,sep='_')
+      X[,sample_name]=x
+      Y[sample_name,c('Sample','Condition','Batch','Time')]=c(sample_name,'case',y['Replicate'],PHENOTYPES_X[PHENOTYPES_X['Phenotype']==phenotype,'X'])
+      repeated_sample=repeated_sample+1
+    }
+  }
+}
+Y<-Y[order(Y$Time),]
+#Run ImpulseDE2
+objectImpulseDE2 <- runImpulseDE2(matCountData = as.matrix(X), dfAnnotation = Y,boolCaseCtrl = FALSE,vecConfounders = c("Batch"),scaNProc = 4 )
+saveRDS(object=objectImpulseDE2,file=paste(pathSaveStagesImpulse,'DEacrossStages.rds',sep=''))
+saveRDS(object=PHENOTYPES_X,file=paste(pathSave,'DEacrossStages_phenotypesOrder.rds',sep=''))
+fdr=0.05
+result<-objectImpulseDE2$dfImpulseDE2Results
+result<-result[result$padj<=fdr & ! is.na(result$padj),]
+result<-result[order(result$padj),]
+write.table(result,file=paste(pathSaveStagesImpulse,'DEacrossStages_padj',fdr,'.tsv',sep='') ,sep='\t',row.names = FALSE)
+
+#**** Find DE genes across stages in individual strains
+for (strain in unique(conditions$Strain)){
+  conditions_annotated=conditions[rowSums(conditions[, PHENOTYPES_ORDERED])>0 &conditions$Strain==strain, ]
+  #Drop phenotypes not annoated in this strain
+  phenotypes_count<-colSums(conditions_annotated[, PHENOTYPES_ORDERED])
+  if (length(phenotypes_present)>1){
+    phenotypes_present<-names(phenotypes_count[phenotypes_count>0])
+    phenotypes_x=data.frame(Phenotype=phenotypes_present,X=c(1:length(phenotypes_present)))
+    drop<-names(phenotypes_count[phenotypes_count==0])
+    drop<-which(colnames(conditions_annotated) %in% drop)
+    conditions_annotated=conditions_annotated[,-drop]
+    X=data.frame(row.names=rownames(genes))
+    Y=data.frame()
+    for (row_idx in 1:dim(conditions_annotated)[1]){
+      y=conditions_annotated[row_idx,]
+      x=genes[,rownames(y)]
+      repeated_sample=0
+      for (phenotype in phenotypes_present){
+        if (y[phenotype]==1){
+          sample_name=paste(rownames(y),repeated_sample,sep='_')
+          X[,sample_name]=x
+          Y[sample_name,c('Sample','Condition','Batch','Time')]=c(sample_name,'case',y['Replicate'],phenotypes_x[phenotypes_x['Phenotype']==phenotype,'X'])
+          repeated_sample=repeated_sample+1
+        }
+      }
+    } 
+    Y<-Y[order(Y$Time),]
+    objectImpulseDE2 <- runImpulseDE2(matCountData = as.matrix(X), dfAnnotation = Y,boolCaseCtrl = FALSE,vecConfounders = c("Batch"),
+                                      boolIdentifyTransients = TRUE,scaNProc = 4 )
+    saveRDS(object=objectImpulseDE2,file=paste(pathSaveStagesImpulse,strain,'_DEacrossStages.rds',sep=''))
+    saveRDS(object=phenotypes_x,file=paste(pathSave,strain,'_DEacrossStages_phenotypesOrder.rds',sep=''))
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
 
 

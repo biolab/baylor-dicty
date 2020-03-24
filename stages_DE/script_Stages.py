@@ -8,12 +8,14 @@ from scipy.stats import rankdata, mannwhitneyu
 from statsmodels.stats.multitest import multipletests
 from skmultilearn.problem_transform import ClassifierChain
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import precision_recall_fscore_support,roc_auc_score
+from sklearn.metrics import precision_recall_fscore_support, roc_auc_score
 from sklearn.model_selection import LeaveOneOut
 from skmultilearn.model_selection import iterative_train_test_split, IterativeStratification
 import sklearn.preprocessing as pp
+import itertools
 
 # import DBA as dba
+import arff
 
 from networks.library_regulons import ClusterAnalyser, NeighbourCalculator, make_tsne
 from networks.functionsDENet import loadPickle, savePickle
@@ -25,8 +27,8 @@ lab = True
 if lab:
     dataPath = '/home/karin/Documents/timeTrajectories/data/RPKUM/combined/'
     pathSelGenes = '/home/karin/Documents/timeTrajectories/data/regulons/selected_genes/'
-    peakPath = '/home/karin/Documents/timeTrajectories/data/stages/'
-    pathClassification = '/home/karin/Documents/timeTrajectories/data/stages/classification'
+    pathStages = '/home/karin/Documents/timeTrajectories/data/stages/'
+    pathClassification = '/home/karin/Documents/timeTrajectories/data/stages/classification/'
 
 else:
     dataPath = '/home/karin/Documents/DDiscoideum/data/RPKUM/'
@@ -71,9 +73,9 @@ plot_data['sizes'] = minmax_scale(plot_data['Time'], (3, 30))
 # Plot tSNE with temporal info
 colours = {'Ag-': '#d40808', 'LAD': '#e68209', 'TAD': '#ffb13d', 'TA': '#d1b30a', 'CD': '#4eb314', 'WT': '#0fa3ab',
            'SFB': '#525252', 'PD': '#7010b0'}
-colours_stage = {'no_agg': '#c41414', 'stream': '#c24813', 'lag': '#c27013', 'tag': '#c29313', 'tip': '#c2b113',
-                 'slug': '#46b019', 'mhat': '#19b0a6', 'cul': '#1962b0', 'FB': '#7919b0', 'disappear': '#000000',
-                 'NA': '#949494'}
+colours_stage = {'no_agg': '#750000', 'stream': '#ff4a4a', 'lag': '#c27013', 'tag': '#c2b113', 'tip': '#46b019',
+                 'slug': '#018501', 'mhat': '#19b0a6', 'cul': '#1962b0', 'FB': '#7919b0', 'disappear': '#000000',
+                 'tag_spore':'#6e6e6e','NA': '#d9d9d9'}
 
 fig, ax = plt.subplots()
 
@@ -409,9 +411,12 @@ diffs_df.to_csv(pathSelGenes + 'diffs_AX4Strain.tsv', sep='\t', index=False)
 
 # *******************************
 # ***** Add phenotype info to conditions
+conditions = conditions.drop(PHENOTYPES, axis=1)
 conditions = pd.concat([conditions, pd.DataFrame(np.zeros((conditions.shape[0], len(PHENOTYPES))), columns=PHENOTYPES)],
                        axis=1)
-
+no_seq = 0
+no_image = 0
+annotated = 0
 files = [f for f in glob.glob('/home/karin/Documents/timeTrajectories/data/from_huston/phenotypes/' + "*.tab")]
 for f in files:
     phenotypes = pd.read_table(f, index_col=0)
@@ -419,41 +424,60 @@ for f in files:
     for time in phenotypes.index:
         for replicate in phenotypes.columns:
             val = phenotypes.loc[time, replicate]
-            if type(val) == str:
-                val = val.replace('rippling', 'stream')
-                val = val.replace('strem', 'stream')
-                val = val.replace('no agg', 'no_agg')
-                val = val.replace('noAgg', 'no_agg')
-                val = val.replace('small', '')
-                val = val.replace(')', '')
-                val = val.replace('(', '')
-                val = val.replace(' ', '')
-                val = val.replace('elongating', '')
-                val = val.replace('shrinking', '')
-                val = val.replace('Spore', '_spore')
-                val = val.replace('streaming', 'stream')
-                val = val.split('/')
-                val = list(filter(lambda a: a != '', val))
-                conditions_row = conditions[(conditions['Replicate'] == replicate) & (conditions['Time'] == time)]
-                if conditions_row.shape[0] > 0:
-                    idx = conditions[(conditions['Replicate'] == replicate) & (conditions['Time'] == time)].index[0]
+
+            # Find conditions row of replicate+time
+            conditions_row = conditions[(conditions['Replicate'] == replicate) & (conditions['Time'] == time)]
+            if conditions_row.shape[0] > 0:
+                idx_name_conditions = \
+                conditions[(conditions['Replicate'] == replicate) & (conditions['Time'] == time)].index[0]
+
+                # Check if there is a phenotype (str) or no phenotype annotation
+                if type(val) == str:
+                    val = val.replace('rippling', 'stream')
+                    val = val.replace('strem', 'stream')
+                    val = val.replace('no agg', 'no_agg')
+                    val = val.replace('noAgg', 'no_agg')
+                    val = val.replace('small', '')
+                    val = val.replace(')', '')
+                    val = val.replace('(', '')
+                    val = val.replace(' ', '')
+                    val = val.replace('elongating', '')
+                    val = val.replace('shrinking', '')
+                    val = val.replace('Spore', '_spore')
+                    val = val.replace('streaming', 'stream')
+                    val = val.split('/')
+                    val = list(filter(lambda a: a != '', val))
+                    annotated += 1
                     for pheno in val:
                         if pheno not in PHENOTYPES:
                             print(f, pheno, time, replicate)
                         else:
-                            conditions.at[idx, pheno] = 1
+                            conditions.at[idx_name_conditions, pheno] = 1
+                # Add -1 (or 0) to all phenotypes if there is no image for that time
                 else:
-                    print('No sample for', replicate, time)
+                    no_image += 1
+                    conditions.loc[idx_name_conditions, PHENOTYPES] = [-1] * len(PHENOTYPES)
+                # conditions.loc[idx_name_conditions, PHENOTYPES] = [0] * len(PHENOTYPES)
+
+            else:
+                # print('No sample for', replicate, time)
+                no_seq += 1
 
 # Make all 0 times no_agg if not already filled
+phenotypes_notnoag = PHENOTYPES.copy()
+phenotypes_notnoag.remove('no_agg')
 for idx, sample in conditions.iterrows():
-    if sample['Time'] == 0:
-        if not sample[PHENOTYPES].any():
+    if sample['Time'] < 1:
+        if not (sample[PHENOTYPES] > 0).any():
             conditions.at[idx, 'no_agg'] = 1
+            conditions.loc[idx, phenotypes_notnoag] = [0] * len(phenotypes_notnoag)
+            annotated += 1
+            no_image -= 1
         # else:
         #    print(sample)
-
-conditions.to_csv(dataPath + 'conditions_mergedGenes.tsv', sep='\t', index=False)
+# Save as conditions or conditions_noImage
+# conditions.to_csv(dataPath + 'conditions_mergedGenes.tsv', sep='\t', index=False)
+conditions.to_csv(dataPath + 'conditions_noImage_mergedGenes.tsv', sep='\t', index=False)
 
 # *********************
 # ******** Find genes overexpressed in a stage (data from R deSeq2 1 vs 1 stage)
@@ -509,10 +533,10 @@ for rep, data in splitted.items():
             peak_data[genes_dict[gene]][reps_dict[rep]] = ClusterAnalyser.peak(expression)
 
 peak_data = pd.DataFrame(peak_data, index=genes.index, columns=replicates)
-peak_data.to_csv(peakPath + 'peaks.tsv', sep='\t')
+peak_data.to_csv(pathStages + 'peaks.tsv', sep='\t')
 
 # Determine for each replicate in which stage(s) had each gene a peak
-peak_data = pd.read_table(peakPath + 'peaks.tsv', index_col=0)
+peak_data = pd.read_table(pathStages + 'peaks.tsv', index_col=0)
 
 genes_dict = dict(zip(genes.index, range(genes.shape[0])))
 phenotypes_dict = dict(zip(PHENOTYPES, range(len(PHENOTYPES))))
@@ -541,7 +565,7 @@ combined_proportion = pd.DataFrame()
 for phenotype in combined_counts.columns:
     n = conditions[conditions[phenotype] == 1]['Replicate'].unique().shape[0]
     combined_proportion[phenotype] = combined_counts[phenotype] / n
-combined_proportion.to_csv(peakPath + 'stage_peak_proportion.tsv', sep='\t')
+combined_proportion.to_csv(pathStages + 'stage_peak_proportion.tsv', sep='\t')
 # Problem as misses genes that have a peak in stage without image
 
 # Only Wt data
@@ -554,7 +578,7 @@ combined_proportion_WT = pd.DataFrame()
 for phenotype in combined_counts_WT.columns:
     n = conditions.query(phenotype + ' == 1 & Group =="WT"')['Replicate'].unique().shape[0]
     combined_proportion_WT[phenotype] = combined_counts_WT[phenotype] / n
-combined_proportion_WT.to_csv(peakPath + 'stage_peak_proportion_WT.tsv', sep='\t')
+combined_proportion_WT.to_csv(pathStages + 'stage_peak_proportion_WT.tsv', sep='\t')
 
 # Compute random null distribution for N (or % in each stage) by shuffling counts within stages for each replicate
 # (stage gets same number of genes that peak in it, but they are distributed randomly)
@@ -574,62 +598,130 @@ for replicate, data in peak_counts.items():
 # *******************************************
 # ********** Find genes that best predict phenotype (classification based)
 
+# ********* Prepare train test split
+
 # Uses all data that has something annotated (either from images or as it was 0 time -noagg)
 # Removes tag_spore - uses even samples that now have all 0 stage annotations if they had previously only tag_spore
 Y = conditions[(conditions[PHENOTYPES] != 0).any(axis=1)]
 X = genes[Y.Measurment].T.values
 # PHENOTYPES here also ensures correct order
-order=PHENOTYPES.copy()
+order = PHENOTYPES.copy()
 order.remove('tag_spore')
 Y = Y[order].values
 
+# Save order of genes and phenotypes for classification
+savePickle(pathClassification + 'feature_order.pkl', list(genes.index))
+savePickle(pathClassification + 'target_order.pkl', order)
+
 # Make train/test split for multilabel classification
-# X_train, Y_train, X_test, Y_test = iterative_train_test_split(X, Y, test_size = 0.1)
+X_train, Y_train, X_test, Y_test = iterative_train_test_split(X, Y, test_size=0.1)
 # Split
-# for col in range(Y.shape[1]):
-#   print(Y_train[:,col].sum(),Y_test[:,col].sum())
-# print(Y_train.shape[0],Y_test.shape[0])
-# savePickle(pathClassification+'train_test.pkl',(X_train, Y_train, X_test, Y_test))
+for col in range(Y.shape[1]):
+    print(Y_train[:, col].sum(), Y_test[:, col].sum())
+print(Y_train.shape[0], Y_test.shape[0])
+savePickle(pathClassification + 'train_test.pkl', (X_train, Y_train, X_test, Y_test))
+
+# ********* Prepare data for Clus
+
+# Save data in arff format for Clus
+# Load data
 X_train, Y_train, X_test, Y_test = loadPickle(pathClassification + 'train_test.pkl')
+features_order = loadPickle(pathClassification + 'feature_order.pkl')
+X_train = pd.DataFrame(X_train, columns=features_order)
+target_order = loadPickle(pathClassification + 'target_order.pkl')
+Y_train = pd.DataFrame(Y_train, columns=target_order)
+Y_train = Y_train.astype('str')
+data = pd.concat([Y_train, X_train], axis=1)
 
-# split = LeaveOneOut()
-prfs_all=pd.DataFrame()
-rac_all=pd.DataFrame()
-feats_all=pd.DataFrame()
-split = IterativeStratification(n_splits=5, order=1)
-fold=0
-for train_index, test_index in split.split(X_train, Y_train):
-    fold += 1
-    print(fold)
-    X_train_fold, X_test_fold = pp.minmax_scale(X_train[train_index]), pp.minmax_scale(X_train[test_index])
-    Y_train_fold, Y_test_fold = Y_train[train_index], Y_train[test_index]
-    for c in [0.9,0.7,0.5,0.3,0.2,0.1]:
-        print(c)
-        # Order already ensured when selecting Y columns
-        classifier = ClassifierChain(
-            classifier=LogisticRegression(penalty='l1', n_jobs=3, C=c, solver='saga', max_iter=200)).fit(X_train_fold,
-                                                                                                         Y_train_fold)
+# Format data
+arff_data = {}
+arff_data['relation'] = 'stages'
+attributes = []
+for col in data.columns:
+    type = None
+    if col in target_order:
+        type = list(data[col].unique())
+    elif col in features_order:
+        type = 'NUMERIC'
+    else:
+        raise ValueError('Unknown feature')
+    attributes.append((col, type))
+arff_data['attributes'] = attributes
+arff_data['data'] = data.values.tolist()
 
-        Y_predict_fold = classifier.predict(X_test_fold)
-        Y_p_fold = classifier.predict_proba(X_test_fold)
-        prfs=pd.DataFrame(precision_recall_fscore_support(Y_test_fold, Y_predict_fold),index=['precision','recall','F_score','support']).T
-        prfs['Stage']=order
-        prfs['C']=[c]*prfs.shape[0]
-        prfs_all=prfs_all.append(prfs)
-        prfs=list(precision_recall_fscore_support(Y_test_fold, Y_predict_fold, average='micro'))
-        prfs.extend(['all',c])
-        prfs=dict(zip(['precision','recall','F_score','support','Stage',"C"],prfs))
-        prfs_all = prfs_all.append( prfs,ignore_index=True)
-        rac=dict(zip(['roc_auc','C'],[ roc_auc_score(Y_test_fold, Y_p_fold.toarray(), average='micro'),c]))
-        rac_all=rac_all.append(rac,ignore_index=True)
+# Save data
+with open(pathClassification + 'train.arff', 'w') as f:
+    arff.dump(arff_data, f)
 
-        feats_combined = set()
-        for i in range(Y.shape[1]):
-            cl = classifier.classifiers_[i]
-            feats_stage = set(pd.Series(range(X.shape[1]))[(cl.coef_ != 0).flatten()[:X.shape[1]]].index)
-            feats_combined = feats_combined | feats_stage
-            #print(len(feats_stage), len(feats_combined))
-            feats=dict(zip(['N_features','C','Stage'],[len(feats_stage),c,order[i]]))
-            feats_all=feats_all.append(feats,ignore_index=True)
-        feats= dict(zip(['N_features', 'C', 'Stage'],[len(feats_combined), c, 'all']))
-        feats_all = feats_all.append(feats,ignore_index=True)
+
+# Prepare settings file for clus
+def write_line(file, line):
+    file.write(line + '\n')
+
+
+minimalWeight_list = [3, 10]
+iterations_list = [10, 50, 100]
+selectRandomSubspaces_list = [1000, 4000, 10000]
+params_grid = list(itertools.product(*[minimalWeight_list, iterations_list, selectRandomSubspaces_list]))
+for params in params_grid:
+    minimalWeight = params[0]
+    iterations = params[1]
+    selectRandomSubspaces = params[2]
+    with open(pathClassification + 'clus/stages.s', 'w') as f:
+        write_line(f, '[Data]')
+        write_line(f, 'File = ' + pathClassification + 'train.arff')
+        write_line(f, 'XVal = 5')
+        write_line(f, '')
+        write_line(f, '[Attributes]')
+        write_line(f, 'Target = 1-' + str(len(target_order)))
+        write_line(f, '')
+        write_line(f, '[Model]')
+        write_line(f, 'MinimalWeight = ' + str(minimalWeight))
+        write_line(f, '')
+        write_line(f, '[Ensemble]')
+        write_line(f, 'Iterations = ' + str(iterations))
+        write_line(f, 'EnsembleMethod = RForest')
+        write_line(f, 'SelectRandomSubspaces = ' + str(selectRandomSubspaces))
+        write_line(f, 'PrintAllModels = Yes')
+        # write_line(f, 'OOBestimate = Yes')
+        # write_line(f, 'FeatureRanking = Yes')
+        write_line(f, '')
+        write_line(f, '[Output]')
+        write_line(f, 'ValidErrors = Yes')
+        write_line(f, 'WriteErrorFile = Yes')
+        write_line(f, 'WritePredictions = {Test,Train}')
+
+# Run clus
+# java -jar /home/karin/Documents/Clus/Clus.jar -xval -forest /home/karin/Documents/timeTrajectories/data/stages/classification/clus/stages.s  > stages_out.txt  2>stages_error.txt
+
+# ***********************************************
+# ****** Averaged stages - for a timepoint add all stages present in each replicate
+conditions_noimg = conditions = pd.read_csv(dataPath + 'conditions_noImage_mergedGenes.tsv', sep='\t', index_col=None)
+phenotypes = ['no_agg', 'disappear', 'stream', 'lag', 'tag', 'tip', 'slug', 'mhat', 'cul', 'tag_spore', 'FB']
+averaged_stages = pd.DataFrame(columns=phenotypes)
+grouped = conditions_noimg.groupby(['Strain', 'Time'])
+for group, data in grouped:
+    name = group[0] + '_' + str(group[1])
+    averaged = {}
+    #max_rep=conditions.query('Strain == "'+group[0]+'"')['Replicate'].unique().shape[0]
+    for col in phenotypes:
+        pheno_data = data[col]
+        if (pheno_data == 1).any():
+            averaged[col] = 'yes'
+        # Decide if combination of 0 an -1 is unknown or known - there could be this phenotype in the sample without image
+        # Use this instead of the below to put unknown only if all are unknown (so not if some are 'no')
+        #elif (pheno_data == -1).all():
+        #    averaged[col] = 'unknown'
+        #else:
+        #    averaged[col] = 'no'
+
+        # If any unknown or less than all replicates put unknown - NOT as we do not have expression for them either
+        #elif (pheno_data == 0).all() and pheno_data.shape[0]==max_rep:
+        elif (pheno_data == 0).all():
+            averaged[col] = 'no'
+        else:
+            averaged[col] = 'unknown'
+    averaged_stages = averaged_stages.append(pd.DataFrame(averaged,index=[name]),sort=True)
+averaged_stages.index.name = 'Name'
+averaged_stages = averaged_stages.reindex(phenotypes, axis=1)
+averaged_stages.to_csv(pathStages + 'averageStages_anyUnknown.tsv', sep='\t')
