@@ -456,7 +456,7 @@ def summary_classification(df:pd.DataFrame,statistic, split,macro_list:list=None
     
 def summary_classification_print_sort(summary,statistic,averages,groups):
     print('Mean cross validation '+statistic+' averaged across all phenotypes and standard error')
-    averages_summary=summary[summary.Group.isin(averages)]
+    averages_summary=summary[summary.Group.isin(averages)].copy()
     averages_summary['Group']=pd.Categorical(averages_summary['Group'], averages)
     for row in averages_summary.sort_values('Group').iterrows():
         row=row[1]
