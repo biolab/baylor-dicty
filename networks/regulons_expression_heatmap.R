@@ -52,12 +52,19 @@ expression_height<-expression_height=='True'
 strain_order<-as.vector(read.table(paste(path_strain_order,"strain_order.tsv",sep=''))[,1])
 
 #** Regulon groups tab file: First column lists genes and 
-#** a column named Cluster specifying cluster/regulon of each gene
-regulons=read.table(paste(path_clusters,"clusters/mergedGenes_minExpressed0.990.1Strains1Min1Max18_clustersAX4Louvain0.4m0s1log.tab",sep=''),
+#** a column named Cluster specifying cluster/regulon of each gene 
+regulons=read.table(paste(path_clusters,"clusters/mergedGenes_minExpressed0.990.1Strains1Min1Max18_clustersLouvain0.4minmaxNologPCA30kN30.tab",sep=''),
                     header=TRUE, sep="\t")
 #Name the first column (should contain genes
 colnames(regulons)[1]<-'Gene'
 
+#** Regulon2 groups tab file (used for side annotation): First column lists genes and 
+#** a column named Cluster specifying cluster/regulon of each gene
+regulons2=read.table(paste(path_clusters,"clusters/mergedGenes_minExpressed0.990.1Strains1Min1Max18_clustersAX4Louvain0.4m0s1log.tab",sep=''),
+                    header=TRUE, sep="\t")
+#Name the first column (should contain genes)
+rownames(regulons2)<-regulons2[,1]
+regulons2<-regulons2[,'Cluster', drop=F]
   
 # Get clusters - list unique and sort
 clusters=unique(regulons$Cluster)
@@ -71,6 +78,7 @@ legened_height=1.5
 legend_width=0.7
 top_annotation_height=0.6
 phenotype_annotation_height=3
+cluster_font=15
 
 #Strain groups annotation
 #** Colours of strain groups
@@ -144,9 +152,19 @@ max_expression<-max(expressions[,regulons$Gene])
 
 #Expression heatmaps
 first=TRUE
+colours_regulons2=c('#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#fabebe',
+                    '#008080', '#e6beff', '#9a6324', '#fffac8', '#800000', '#aaffc3', '#808000',  '#000075', '#808080', '#ffffff',
+                    '#80a2ff','#5c3c00')
+
+colours_regulons2_map=colours_regulons2[1:length(unique(regulons2$Cluster))]
+names(colours_regulons2_map)<-unique(regulons2$Cluster)
 for (cluster in cluster_order$Cluster){
   print(cluster)
   genes=as.character(regulons[regulons$Cluster==cluster,'Gene'])
+
+  regulons2_annotation=rowAnnotation(AX4_clusters = regulons2[genes,],col = list(AX4_clusters = colours_regulons2_map),
+                     show_legend = FALSE,annotation_name_side = "top",show_annotation_name = first)
+  
   heatmap=Heatmap(t(avg_expression[,genes]),cluster_columns = FALSE,show_column_names = FALSE,
                   show_row_names = FALSE, col=viridis(256),column_title=NULL, 
                   #The as.character ensures that the code works with numeric clusters
@@ -157,7 +175,8 @@ for (cluster in cluster_order$Cluster){
                   grid_width= unit(legend_width, "cm"),grid_height= unit(legened_height, "cm") ,
                   labels_gp = gpar(fontsize = legend_font),title_gp = gpar(fontsize = legend_font)),
                   #** Cluster name fontsize
-                  row_title_gp=gpar(fontsize=8))
+                  row_title_gp=gpar(fontsize=cluster_font),
+                  left_annotation = regulons2_annotation)
   first=FALSE
   ht_list=ht_list %v% heatmap
 }
