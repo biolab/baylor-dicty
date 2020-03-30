@@ -9,6 +9,8 @@ from statsmodels.stats.multitest import multipletests
 from sklearn.mixture import GaussianMixture
 from sklearn.metrics import adjusted_rand_score
 import altair as alt
+from sklearn import preprocessing as pp
+import matplotlib.patches as mpatches
 
 from orangecontrib.bioinformatics.utils.statistics import Hypergeometric
 from Orange.clustering.louvain import jaccard
@@ -33,7 +35,15 @@ GROUP_DF = pd.DataFrame(GROUP_DF)
 # index=False)
 
 PHENOTYPES = ['no_agg', 'stream', 'lag', 'tag', 'tip', 'slug', 'mhat', 'cul', 'FB', 'disappear', 'tag_spore']
-PHENOTYPES_X={'no_agg':0,'disappear':1, 'stream':2, 'lag':3, 'tag':4, 'tip':5, 'slug':6, 'mhat':7, 'cul':8, 'FB':9}
+PHENOTYPES_X = {'no_agg': 0, 'disappear': 1, 'stream': 2, 'lag': 3, 'tag': 4, 'tip': 5, 'slug': 6, 'mhat': 7, 'cul': 8,
+                'FB': 9}
+
+COLOURS_GROUP = {'agg-': '#d40808', 'lag_dis': '#e68209', 'tag_dis': '#ffb13d', 'tag': '#d1b30a', 'cud': '#4eb314',
+                 'WT': '#0fa3ab', 'sFB': '#525252', 'Prec': '#7010b0'}
+COLOURS_STAGE = {'no_agg': '#750000', 'stream': '#ff4a4a', 'lag': '#c27013', 'tag': '#c2b113', 'tip': '#46b019',
+                 'slug': '#018501', 'mhat': '#19b0a6', 'cul': '#1962b0', 'FB': '#7919b0', 'disappear': '#000000',
+                 'tag_spore': '#6e6e6e', 'NA': '#d9d9d9'}
+
 
 def plot_genegroup_similarity(retained_genes_dict, splitby='Strain', jaccard_or_p=True, n_all_genes: int = None,
                               group_colours=None, add_title=''):
@@ -274,8 +284,8 @@ def compare_gene_scores(quantile_normalised: pd.DataFrame, test: str, alternativ
     for gene in quantile_normalised.index:
         # print(gene)
         if select_single_comparsion is not None:
-            group1=None
-            group2=None
+            group1 = None
+            group2 = None
             unsplit_m1 = group_statistic(groups=unsplit1, quantile_normalised=quantile_normalised, gene=gene)
             unsplit_m2 = group_statistic(groups=unsplit2, quantile_normalised=quantile_normalised, gene=gene)
             # TODO comments, documentation, test
@@ -293,29 +303,30 @@ def compare_gene_scores(quantile_normalised: pd.DataFrame, test: str, alternativ
                 for groups12 in groups[::order]:
                     groups12_ordered = groups12[::order]
                     high_groups = groups12_ordered[0]
-                    low_groups = groups12_ordered[1][::order*-1][:-1][::order*-1]
-                    group = groups12_ordered[1][::order*-1][-1]
-                    #print( low_groups, high_groups,group)
+                    low_groups = groups12_ordered[1][::order * -1][:-1][::order * -1]
+                    group = groups12_ordered[1][::order * -1][-1]
+                    # print( low_groups, high_groups,group)
                     if group in unsplit1 or group in unsplit2:
-                        stop=True
+                        stop = True
                     else:
                         m_high = group_statistic(groups=high_groups, quantile_normalised=quantile_normalised, gene=gene)
                         m = group_statistic(groups=[group], quantile_normalised=quantile_normalised, gene=gene)
                         if comparison_selection == 'closest':
-                            m_low = group_statistic(groups=low_groups, quantile_normalised=quantile_normalised, gene=gene)
-                            #print(m_high,m_low,m)
+                            m_low = group_statistic(groups=low_groups, quantile_normalised=quantile_normalised,
+                                                    gene=gene)
+                            # print(m_high,m_low,m)
                             diff_high = abs(m - m_high)
                             diff_low = abs(m - m_low)
                             stop = diff_high > diff_low
                         elif comparison_selection == 'std':
                             std_high = group_statistic(groups=high_groups, quantile_normalised=quantile_normalised,
-                                                       gene=gene,mode='std')
-                            #print(m_high, std_high, m)
+                                                       gene=gene, mode='std')
+                            # print(m_high, std_high, m)
                             stop = m < (m_high - 2 * std_high)
 
                     if stop:
-                        group1=groups12[0]
-                        group2=groups12[1]
+                        group1 = groups12[0]
+                        group2 = groups12[1]
                         break
             # This was used to find best split based on separation that results in max differences between the
             # means of two groups
@@ -327,19 +338,21 @@ def compare_gene_scores(quantile_normalised: pd.DataFrame, test: str, alternativ
 
                     m_high = group_statistic(groups=high_groups, quantile_normalised=quantile_normalised, gene=gene)
                     m_low = group_statistic(groups=low_groups, quantile_normalised=quantile_normalised, gene=gene)
-                    #print( low_groups,high_groups, m_high - m_low)
+                    # print( low_groups,high_groups, m_high - m_low)
                     diffs.append((m_high - m_low, low_groups, high_groups))
                 best_sep = max(diffs, key=lambda item: item[0])
                 group1 = best_sep[1]
                 group2 = best_sep[2]
 
             # This splits groups so that they match the most Gaussian mixture clustering into two groups
-            elif comparison_selection =='gaussian_mixture':
-                std_m1 = group_statistic(groups=unsplit1, quantile_normalised=quantile_normalised, gene=gene,mode='std')
-                std_m2 = group_statistic(groups=unsplit2, quantile_normalised=quantile_normalised, gene=gene,mode='std')
+            elif comparison_selection == 'gaussian_mixture':
+                std_m1 = group_statistic(groups=unsplit1, quantile_normalised=quantile_normalised, gene=gene,
+                                         mode='std')
+                std_m2 = group_statistic(groups=unsplit2, quantile_normalised=quantile_normalised, gene=gene,
+                                         mode='std')
                 clusters = GaussianMixture(n_components=2,
-                                           #means_init=np.array([[unsplit_m1],[unsplit_m2]]),
-                                           #precisions_init=np.array([[[std_m1**(-2)]],[[std_m2**(-2)]]])
+                                           # means_init=np.array([[unsplit_m1],[unsplit_m2]]),
+                                           # precisions_init=np.array([[[std_m1**(-2)]],[[std_m2**(-2)]]])
                                            ).fit_predict(
                     quantile_normalised.loc[gene, :].values.reshape(-1, 1))
                 scores = []
@@ -351,16 +364,16 @@ def compare_gene_scores(quantile_normalised: pd.DataFrame, test: str, alternativ
                             comparison_clusters.append(0)
                         else:
                             comparison_clusters.append(1)
-                    #print((adjusted_rand_score(clusters,comparison_clusters),group_pair))
+                    # print((adjusted_rand_score(clusters,comparison_clusters),group_pair))
                     scores.append((adjusted_rand_score(clusters, comparison_clusters), group_pair))
                 best_sep = max(scores, key=lambda item: item[0])
                 group1 = best_sep[1][0]
                 group2 = best_sep[1][1]
 
             compariosn_name = group1[-1]
-            compariosn_name=GROUP_DF.query('X == '+str(compariosn_name)).Group.unique()[0]
+            compariosn_name = GROUP_DF.query('X == ' + str(compariosn_name)).Group.unique()[0]
             group_splits = [(group1, group2, compariosn_name)]
-            #print(group_splits)
+            # print(group_splits)
         for comparison in group_splits:
             strains1 = GROUP_DF[GROUP_DF['X'].isin(comparison[0])]['Strain']
             strains2 = GROUP_DF[GROUP_DF['X'].isin(comparison[1])]['Strain']
@@ -424,8 +437,8 @@ def group_statistic(groups, quantile_normalised, gene, mode: str = 'mean'):
     elif mode == 'std':
         return values.std()
 
-    
-def summary_classification(df:pd.DataFrame,statistic, split,macro_list:list=None,print_df=True):
+
+def summary_classification(df: pd.DataFrame, statistic, split, macro_list: list = None, print_df=True):
     """
     Calculate mean and standard error (SE) of scores from cross validation.
     :param df: Data Frame with cross validation results in rows and quality metrics and metric descriptions
@@ -437,37 +450,39 @@ def summary_classification(df:pd.DataFrame,statistic, split,macro_list:list=None
     is within macro_list. This calculates the mean and SE over the df subseted with macro_list in split column.
     :param print_df: If True prints the result, else returns df with results.
     """
-    if print_df: 
-        print(statistic,'mean and standard error for each group')
-    groups=df[[statistic,split]].groupby(split)
-    summary_df=[]
+    if print_df:
+        print(statistic, 'mean and standard error for each group')
+    groups = df[[statistic, split]].groupby(split)
+    summary_df = []
     for group_name in groups.groups.keys():
-        data=groups.get_group(group_name)
-        summary_df.append({'Group':group_name,'Mean':data.mean()[0],'SE':data.sem()[0]})
-        if print_df: 
-            print('%-12s%-6.2f%-3s%-3.2f' % (group_name, data.mean()[0],'+-',data.sem()[0]))
-    if macro_list is not None:
-        data=df[df[split].isin(macro_list)][statistic]
-        summary_df.append({'Group':'macro','Mean':data.mean(),'SE':data.sem()})
+        data = groups.get_group(group_name)
+        summary_df.append({'Group': group_name, 'Mean': data.mean()[0], 'SE': data.sem()[0]})
         if print_df:
-            print('%-12s%-6.2f%-3s%-3.2f' % ('macro', data.mean(),'+-',data.sem()))
+            print('%-12s%-6.2f%-3s%-3.2f' % (group_name, data.mean()[0], '+-', data.sem()[0]))
+    if macro_list is not None:
+        data = df[df[split].isin(macro_list)][statistic]
+        summary_df.append({'Group': 'macro', 'Mean': data.mean(), 'SE': data.sem()})
+        if print_df:
+            print('%-12s%-6.2f%-3s%-3.2f' % ('macro', data.mean(), '+-', data.sem()))
     if not print_df:
         return pd.DataFrame(summary_df)
-    
-def summary_classification_print_sort(summary,statistic,averages,groups):
-    print('Mean cross validation '+statistic+' averaged across all phenotypes and standard error')
-    averages_summary=summary[summary.Group.isin(averages)].copy()
-    averages_summary['Group']=pd.Categorical(averages_summary['Group'], averages)
+
+
+def summary_classification_print_sort(summary, statistic, averages, groups):
+    print('Mean cross validation ' + statistic + ' averaged across all phenotypes and standard error')
+    averages_summary = summary[summary.Group.isin(averages)].copy()
+    averages_summary['Group'] = pd.Categorical(averages_summary['Group'], averages)
     for row in averages_summary.sort_values('Group').iterrows():
-        row=row[1]
-        print('%-12s%-6.2f%-3s%-3.2f' % (row['Group'], row['Mean'],'+-',row['SE']))
-    print('Mean cross validation '+statistic+' of individual phenotypes and standard error')
-    for row in summary[summary.Group.isin(groups)].sort_values('Mean',ascending=False).iterrows():
-        row=row[1]
-        print('%-12s%-6.2f%-3s%-3.2f' % (row['Group'], row['Mean'],'+-',row['SE']))
-        
+        row = row[1]
+        print('%-12s%-6.2f%-3s%-3.2f' % (row['Group'], row['Mean'], '+-', row['SE']))
+    print('Mean cross validation ' + statistic + ' of individual phenotypes and standard error')
+    for row in summary[summary.Group.isin(groups)].sort_values('Mean', ascending=False).iterrows():
+        row = row[1]
+        print('%-12s%-6.2f%-3s%-3.2f' % (row['Group'], row['Mean'], '+-', row['SE']))
+
+
 # From https://datavizpyr.com/stripplot-with-altair-in-python/
-def scatter_catgory(df:pd.DataFrame, Y, categories=None,colour=None,shape=None,title:str=''):
+def scatter_catgory(df: pd.DataFrame, Y, categories=None, colour=None, shape=None, title: str = ''):
     """
     Make scatter plot with categories on X axis and X jittering to reduce the overlap between 
     data points of the same category.
@@ -478,20 +493,204 @@ def scatter_catgory(df:pd.DataFrame, Y, categories=None,colour=None,shape=None,t
     :param shape: Optional, column of df based on which the points are shaped.
     :param title: Optional, a title for the plot.
     """
-    params_dict={}
+    params_dict = {}
     if colour is not None:
-        params_dict['color']=alt.Color(colour)
+        params_dict['color'] = alt.Color(colour)
     if shape is not None:
-        params_dict['shape']=alt.Shape(shape)
+        params_dict['shape'] = alt.Shape(shape)
     if categories is not None:
-        params_dict['column']=alt.Column(categories, header=alt.Header(
-            labelAngle=0,titleOrient='bottom',labelOrient='bottom',labelAlign='center',labelPadding=10))
-    return alt.Chart(df, width=120,title=title).mark_point(size=20).encode(
-        x=alt.X('jitter:Q',title=None,axis=alt.Axis(values=[0], ticks=True, grid=False, labels=False),
-            scale=alt.Scale(),),
-        y=alt.Y(Y,axis=alt.Axis( grid=False)),
+        params_dict['column'] = alt.Column(categories, header=alt.Header(
+            labelAngle=0, titleOrient='bottom', labelOrient='bottom', labelAlign='center', labelPadding=10))
+    return alt.Chart(df, width=120, title=title).mark_point(size=20).encode(
+        x=alt.X('jitter:Q', title=None, axis=alt.Axis(values=[0], ticks=True, grid=False, labels=False),
+                scale=alt.Scale(), ),
+        y=alt.Y(Y, axis=alt.Axis(grid=False)),
         **params_dict
     ).transform_calculate(jitter='sqrt(-2*log(random()))*cos(2*PI*random())'
-    ).configure_facet(spacing=0
-    #).configure_view( stroke=None
-    )
+                          ).configure_facet(spacing=0
+                                            # ).configure_view( stroke=None
+                                            )
+
+
+def get_dimredplot_param(data, col, default, to_mode=False):
+    if isinstance(data, pd.DataFrame):
+        if col in data.columns:
+            result = data[col]
+            if to_mode:
+                result = result.mode()[0]
+            return result
+        else:
+            return default
+    elif isinstance(data, pd.Series):
+        if col in data.index:
+            return data[col]
+        else:
+            return default
+    else:
+        return default
+
+
+# Jitter function
+def rand_jitter(n, min, max):
+    dev = (max - min) / 200
+    return n + np.random.randn(1) * dev
+
+
+def dim_reduction_plot(plot_data: pd.DataFrame(), plot_by: str, fig_ax: tuple, order_column, colour_by_phenotype=False,
+                       add_name=True, colours: dict = COLOURS_GROUP, colours_stage: dict = COLOURS_STAGE,
+                       legend_groups='lower left', legend_phenotypes='upper right', fontsize=6,
+                       plot_order: list = None):
+    """
+    For line width and alpha uses mode when plotting lines and legend
+    Adds all colours to legend
+    :param plot_data:
+    :param plot_by:
+    :param fig_ax:
+    :param colour_by_phenotype:
+    :param add_name:
+    :param colours:
+    :param colours_stage:
+    :param legend_group: position, if None do not plot
+    :return:
+    """
+    if plot_order is not None:
+        plot_data = plot_data.loc[
+            plot_data[plot_by].map(dict(zip(plot_order, range(len(plot_order))))).sort_values().index]
+    else:
+        plot_order = plot_data[plot_by].unique()
+
+    # Either add one point per measurment (coloured by group) or multiple jitter points coloured by phenotypes
+    fig, ax = fig_ax
+    if not colour_by_phenotype:
+        for row_name, point in plot_data.iterrows():
+            ax.scatter(point['x'], point['y'], s=get_dimredplot_param(point, 'size', 5),
+                       c=colours[point['Group']], alpha=get_dimredplot_param(point, 'alpha', 0.5, True))
+    # By phenotypes
+    else:
+        min_x = plot_data['x'].min()
+        min_y = plot_data['y'].min()
+        max_x = plot_data['x'].max()
+        max_y = plot_data['x'].max()
+        for point in plot_data.iterrows():
+            point = point[1]
+            phenotypes = point[PHENOTYPES]
+            if phenotypes.sum() < 1:
+                ax.scatter(point['x'], point['y'], s=get_dimredplot_param(point, 'size', 5),
+                           c=colours_stage['NA'], alpha=get_dimredplot_param(point, 'alpha', 0.5, True))
+            elif phenotypes.sum() == 1:
+                phenotype = phenotypes[phenotypes > 0].index[0]
+                ax.scatter(point['x'], point['y'], s=get_dimredplot_param(point, 'size', 5),
+                           c=colours_stage[phenotype], alpha=get_dimredplot_param(point, 'alpha', 0.5, True))
+            else:
+                first = True
+                for phenotype in PHENOTYPES:
+                    if phenotypes[phenotype] == 1:
+                        x = point['x']
+                        y = point['y']
+                        if not first:
+                            x = rand_jitter(n=x, min=min_x, max=max_x)
+                            y = rand_jitter(n=y, min=min_y, max=max_y)
+                        ax.scatter(x, y, s=get_dimredplot_param(point, 'size', 5), c=colours_stage[phenotype],
+                                   alpha=get_dimredplot_param(point, 'alpha', 0.5, True))
+                        first = False
+
+    # Add line between replicates' measurments
+    groupped = plot_data.groupby(plot_by)
+    for name in plot_order:
+        data_rep = groupped.get_group(name).sort_values(order_column)
+        group = data_rep['Group'].values[0]
+        ax.plot(data_rep['x'], data_rep['y'], color=colours[group],
+                alpha=get_dimredplot_param(data_rep, 'alpha', 0.5, True),
+                linewidth=get_dimredplot_param(data_rep, 'width', 0.5, True),
+                linestyle=get_dimredplot_param(data_rep, 'linestyle', 'solid', True))
+
+    # Add replicate name
+    if add_name:
+        used_text_positions = pd.DataFrame(columns=['x', 'y'])
+        x_span = plot_data['x'].max() - plot_data['x'].min()
+        y_span = plot_data['y'].max() - plot_data['y'].min()
+        for name in plot_order:
+            data_rep = groupped.get_group(name).sort_values(order_column)
+            group = data_rep['Group'].values[0]
+            idx = -1
+            x = float(data_rep['x'][idx]) + x_span / 500
+            y = float(data_rep['y'][idx]) + y_span / 500
+            while ((abs(used_text_positions['x'] - x) < (x_span / 30)).values &
+                   (abs(used_text_positions['y'] - y) < (y_span / 30)).values).any():
+                idx -= 1
+                x = float(data_rep['x'][idx]) + x_span / 500
+                y = float(data_rep['y'][idx]) + y_span / 500
+            used_text_positions = used_text_positions.append({'x': x, 'y': y}, ignore_index=True)
+            ax.text(x, y, data_rep[plot_by][0], fontsize=fontsize, color=colours[group])
+
+    # Legends for groups and phenotypes
+    alpha_legend = get_dimredplot_param(plot_data, 'alpha', 0.5)
+    if isinstance(alpha_legend, pd.Series):
+        alpha_legend = alpha_legend.median()
+    if legend_groups is not None:
+        patchList = []
+        for name, colour in colours.items():
+            # if name in plot_data['Group'].values:
+            data_key = mpatches.Patch(color=colour, label=name, alpha=alpha_legend)
+            patchList.append(data_key)
+        title = 'Group'
+        if colour_by_phenotype:
+            title = title + ' (line)'
+        legend_groups = ax.legend(handles=patchList, title=title, loc=legend_groups)
+
+    if colour_by_phenotype and legend_phenotypes is not None:
+        patchList = []
+        for name, colour in colours_stage.items():
+            # if name in plot_data.columns:
+            data_key = mpatches.Patch(color=colour, label=name, alpha=alpha_legend)
+            patchList.append(data_key)
+        legend_stages = ax.legend(handles=patchList, title="Phenotype (point)", loc=legend_phenotypes)
+
+    if legend_groups is not None:
+        ax.add_artist(legend_groups)
+
+
+class CustomScaler:
+
+    def __init__(self, reference):
+        """
+        :param reference:
+        """
+
+        self.reference = reference
+        self.scalers = {}
+
+    def transform(self, data, log, scale: str):
+        """
+
+        :param data:
+        :param log: log2(data+1)
+        :param scale: 'minmax','m0s1','divide_mean'
+        :return:
+        """
+        if not (log, scale) in self.scalers.keys():
+            scaler = None
+            ref = self.reference.copy()
+            if log:
+                ref = np.log2(ref + 1)
+            if scale == 'minmax':
+                scaler = pp.MinMaxScaler()
+                scaler.fit(ref)
+            elif scale == 'm0s1':
+                scaler = pp.StandardScaler()
+                scaler.fit(ref)
+            elif scale == 'divide_mean':
+                scaler = ref.mean()
+            self.scalers[(log, scale)]=scaler
+            #print(id(scaler))
+
+        scaler=self.scalers[(log, scale)]
+        #print(id(scaler))
+        scaled = None
+        if log:
+            data = np.log2(data + 1)
+        if scale in ['minmax','m0s1']:
+            scaled = scaler.transform(data)
+        elif scale == 'divide_mean':
+            scaled = data / scaler
+        return scaled

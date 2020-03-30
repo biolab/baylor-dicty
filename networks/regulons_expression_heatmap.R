@@ -53,7 +53,7 @@ strain_order<-as.vector(read.table(paste(path_strain_order,"strain_order.tsv",se
 
 #** Regulon groups tab file: First column lists genes and 
 #** a column named Cluster specifying cluster/regulon of each gene 
-regulons=read.table(paste(path_clusters,"clusters/mergedGenes_minExpressed0.990.1Strains1Min1Max18_clustersLouvain0.4minmaxNologPCA30kN30.tab",sep=''),
+regulons=read.table(paste(path_clusters,"clusters/mergedGenes_minExpressed0.990.1Strains1Min1Max18_clustersAX4Louvain0.4m0s1log.tab",sep=''),
                     header=TRUE, sep="\t")
 #Name the first column (should contain genes
 colnames(regulons)[1]<-'Gene'
@@ -84,28 +84,33 @@ cluster_font=15
 #** Colours of strain groups
 group_cols=c('agg-'= '#d40808', 'lag_dis'= '#e67009','tag_dis'='#e69509', 'tag'='#d1b30a', 'cud'= '#4eb314', 'WT'= '#0fa3ab',
                         'sFB'= '#525252', 'Prec'='#7010b0' )
-ht_list=Heatmap(t(avg_expression['Group']),show_column_names = FALSE, height = unit(top_annotation_height, "cm"),
+group_data=t(avg_expression['Group'])
+rownames(group_data)<-c('Phenotypic group')            
+ht_list=Heatmap(group_data,show_column_names = FALSE, 
+                height = unit(top_annotation_height, "cm"),
                 column_split=factor(avg_expression$Strain,
                                     #** Ordering of the strains in the heatmap (a vector of strain names)
                                     #levels=unique(avg_expression$Strain)
                                     levels=strain_order
                 ),
-                cluster_columns=FALSE,name='Group',
+                cluster_columns=FALSE,name='\nPhenotypic \ngroup\n',
                 #** Strain name font size
                 column_title_gp=gpar(fontsize=legend_font),
                 col=group_cols, heatmap_legend_param = list( 
                 grid_width= unit(legend_width, "cm"),grid_height= unit(legened_height, "cm") ,
-                labels_gp = gpar(fontsize = legend_font),title_gp = gpar(fontsize = legend_font)))
+                labels_gp = gpar(fontsize = cluster_font),title_gp = gpar(fontsize = cluster_font)),
+                row_names_gp = gpar(fontsize = cluster_font))
 
 #Time annotation
 times=unique(avg_expression$Time)
 #** Time colours
 col_time = colorRamp2( c(min(times),max(times)),c( "white", "#440154FF"))
 ht_time=Heatmap(t(avg_expression['Time']), height = unit(top_annotation_height, "cm"),
-                cluster_columns=FALSE, show_column_names = FALSE,name='Time',col=col_time,
+                cluster_columns=FALSE, show_column_names = FALSE,name='\nTime\n',col=col_time,
                 heatmap_legend_param = list( at = c(min(times),as.integer(mean(c(min(times),max(times)))),max(times)),
                 grid_width= unit(legend_width, "cm"),grid_height= unit(legened_height, "cm") ,
-                labels_gp = gpar(fontsize = legend_font),title_gp = gpar(fontsize = legend_font)))
+                labels_gp = gpar(fontsize = cluster_font),title_gp = gpar(fontsize = cluster_font)),
+                row_names_gp = gpar(fontsize = cluster_font))
 ht_list=ht_list %v% ht_time
 
 #Phenotype annotation
@@ -115,11 +120,11 @@ phenotype_cols=c('unknown'= '#d9d9d9', 'no_agg'= '#750000', 'stream'= '#ff4a4a',
   'tag_spore'='#6e6e6e')
 #phenotype_cols=c('no data'= '#d9d9d9', 'yes'= '#74cf19', 'no'='#b54c4c')
 ht_phenotype=Heatmap(t(avg_phenotype)[,rownames(avg_expression)], height = unit(phenotype_annotation_height, "cm"),
-                cluster_columns=FALSE,cluster_rows=FALSE, show_column_names = FALSE,name='Phenotype',col=phenotype_cols,
+                cluster_columns=FALSE,cluster_rows=FALSE, show_column_names = FALSE,name='\nMorphological \nstage\n',col=phenotype_cols,
                 row_names_gp = gpar(fontsize = phenotypes_font), na_col = "white",
-                row_title ='Phenotype',row_title_side ='right',row_title_gp=gpar(fontsize = legend_font),
+                row_title ='Morphological stage',row_title_side ='right',row_title_gp=gpar(fontsize = cluster_font),
                 heatmap_legend_param = list( grid_width= unit(legend_width, "cm"),grid_height= unit(legened_height, "cm") ,
-                                             labels_gp = gpar(fontsize = legend_font),title_gp = gpar(fontsize = legend_font)))
+                                             labels_gp = gpar(fontsize = cluster_font),title_gp = gpar(fontsize = cluster_font)))
 ht_list=ht_list %v% ht_phenotype
 
 
@@ -163,17 +168,18 @@ for (cluster in cluster_order$Cluster){
   genes=as.character(regulons[regulons$Cluster==cluster,'Gene'])
 
   regulons2_annotation=rowAnnotation(AX4_clusters = regulons2[genes,],col = list(AX4_clusters = colours_regulons2_map),
-                     show_legend = FALSE,annotation_name_side = "top",show_annotation_name = first)
+                     show_legend = FALSE,annotation_name_side = "top",show_annotation_name = first,
+                     annotation_name_gp=gpar(fontsize = cluster_font))
   
   heatmap=Heatmap(t(avg_expression[,genes]),cluster_columns = FALSE,show_column_names = FALSE,
                   show_row_names = FALSE, col=viridis(256),column_title=NULL, 
                   #The as.character ensures that the code works with numeric clusters
                   row_title=gsub('C','',as.character(cluster)),
                   show_heatmap_legend = first,heatmap_legend_param = list(
-                  title = "Relative expression",
+                  title = "\nRelative \nexpression\n",
                   at = c(min_expression, round(mean(c(min_expression,max_expression)),1),max_expression),
                   grid_width= unit(legend_width, "cm"),grid_height= unit(legened_height, "cm") ,
-                  labels_gp = gpar(fontsize = legend_font),title_gp = gpar(fontsize = legend_font)),
+                  labels_gp = gpar(fontsize = cluster_font),title_gp = gpar(fontsize = cluster_font)),
                   #** Cluster name fontsize
                   row_title_gp=gpar(fontsize=cluster_font),
                   left_annotation = regulons2_annotation)

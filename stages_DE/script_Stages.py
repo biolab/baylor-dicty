@@ -13,11 +13,12 @@ from sklearn.model_selection import LeaveOneOut
 from skmultilearn.model_selection import iterative_train_test_split, IterativeStratification
 import sklearn.preprocessing as pp
 import itertools
+from sklearn.decomposition import PCA
 
 # import DBA as dba
 import arff
 
-from networks.library_regulons import ClusterAnalyser, NeighbourCalculator, make_tsne
+from networks.library_regulons import ClusterAnalyser, NeighbourCalculator, make_tsne, add_tsne
 from networks.functionsDENet import loadPickle, savePickle
 from stages_DE.stages_library import *
 from correlation_enrichment.library_correlation_enrichment import SimilarityCalculator
@@ -29,6 +30,8 @@ if lab:
     pathSelGenes = '/home/karin/Documents/timeTrajectories/data/regulons/selected_genes/'
     pathStages = '/home/karin/Documents/timeTrajectories/data/stages/'
     pathClassification = '/home/karin/Documents/timeTrajectories/data/stages/classification/'
+    pathRegulons = '/home/karin/Documents/timeTrajectories/data/regulons/'
+    pathReplicateImg = '/home/karin/Documents/timeTrajectories/data/replicate_image/'
 
 else:
     dataPath = '/home/karin/Documents/DDiscoideum/data/RPKUM/'
@@ -49,106 +52,131 @@ for group in groups:
 plt.boxplot(list(variation.values()))
 plt.gca().set_xticklabels(list(variation.keys()), rotation=90)
 
-# ******** tSNE of measurments
-# Remove all 0 genes
-data = genes[(genes != 0).any(axis=1)]
+# *******************
+# **** Dim reduction plot of samples
+
+# ******** tSNE of measurements
+
+averaged_data = pd.read_table(pathRegulons + 'genes_averaged_orange.tsv', index_col=0)
+
+# Averaged or unaveraged data or averaged_AX4 data
+#data=averaged_data[genes.index].T
+#data=averaged_data.query('Strain =="AX4"')[genes.index]
+data=genes[conditions.query('Strain =="AX4"')['Measurment']].copy().T
+
+# Select genes - variable across stages in AX4 or not 0 - works better with non null genes
+# Works better with all non null genes
+selected_genes=data.T[(data != 0).any(axis=0)].index
+#top_impulse = pd.read_table(pathReplicateImg + 'AX4_bestImpulse2000.tsv')
+#selected_genes=top_impulse.Gene.values
+data = data[selected_genes]
+
 # Normalise data
-names = data.columns
-gene_names = data.index
-data = pd.DataFrame(NeighbourCalculator.get_index_query(genes=data, inverse=False, scale='mean0std1', log=True
-                                                        )[0].T, index=names, columns=gene_names)
+names = data.index
+gene_names = data.columns
+# Works better with log2+m0s1 than minmax scaling
+scaler=pp.StandardScaler()
+data = pd.DataFrame(scaler.fit_transform(np.log2(data+1)), index=names, columns=gene_names)
 # tSNE
-tsne = make_tsne(data=data, perplexities_range=[50, 160], exaggerations=[1, 1],
-                 momentums=[0.6, 0.9], random_state=0)
+#tsne = make_tsne(data=data, perplexities_range=[50, 160], exaggerations=[1, 1], momentums=[0.6, 0.9], random_state=0)
+tsne = make_tsne(data=data, perplexities_range=[8, 30], exaggerations=[1, 1], momentums=[0.6, 0.9], random_state=0)
 # Data for plotting
-plot_data = pd.DataFrame(tsne, index=data.index, columns=['x', 'y'])
+#plot_data = pd.DataFrame(tsne, index=data.index, columns=['x', 'y'])
+
+plot_data = pd.DataFrame()
+#For embedding other strains onto AX4
+mutants=list(conditions['Strain'].unique())
+#mutants.remove('AX4')
+for mutant in mutants:
+    data = averaged_data.query('Strain =="'+mutant+'"')[selected_genes]
+    print(mutant,data.shape)
+    names = data.index
+    gene_names = data.columns
+    # Works better with log2+m0s1 than minmax scaling
+    data = pd.DataFrame(scaler.transform(np.log2(data + 1)), index=names, columns=gene_names)
+    # tSNE
+    tsne2 = add_tsne(tsne1=tsne, data2=data)
+    # Data for plotting
+    plot_data = plot_data.append(pd.DataFrame(tsne2, index=data.index, columns=['x', 'y']))
+
 # conditions_plot = conditions[['Replicate', 'Time', 'Group']]
 # conditions_plot.index = conditions['Measurment']
 # plot_data = pd.concat([plot_data, conditions_plot], axis=1)
+
+# For unaveraged data
 plot_data = pd.concat([plot_data,
                        pd.DataFrame(conditions.values, index=conditions['Measurment'].values,
                                     columns=conditions.columns.values)], axis=1, sort=True)
-plot_data['sizes'] = minmax_scale(plot_data['Time'], (3, 30))
+plot_by='Replicate'
+#For averaged data
+plot_data = pd.concat([plot_data,averaged_data[['Time','Strain']]], axis=1, sort=True)
+plot_data['Group']=[GROUPS[strain] for strain in plot_data['Strain']]
+plot_by='Strain'
 
-# Plot tSNE with temporal info
-colours = {'Ag-': '#d40808', 'LAD': '#e68209', 'TAD': '#ffb13d', 'TA': '#d1b30a', 'CD': '#4eb314', 'WT': '#0fa3ab',
-           'SFB': '#525252', 'PD': '#7010b0'}
-colours_stage = {'no_agg': '#750000', 'stream': '#ff4a4a', 'lag': '#c27013', 'tag': '#c2b113', 'tip': '#46b019',
-                 'slug': '#018501', 'mhat': '#19b0a6', 'cul': '#1962b0', 'FB': '#7919b0', 'disappear': '#000000',
-                 'tag_spore':'#6e6e6e','NA': '#d9d9d9'}
+
+plot_data['size'] = minmax_scale(plot_data['Time'], (3, 30))
 
 fig, ax = plt.subplots()
-
-# Either add one point per measurment (coloured by group) or multiple jitter points coloured by phenotypes
-# By group
-colour_by_phenotype = False
-if not colour_by_phenotype:
-    ax.scatter(plot_data['x'], plot_data['y'], s=minmax_scale(plot_data['Time'], (3, 30)),
-               c=[colours[name] for name in plot_data['Group']], alpha=0.5)
-# By phenotypes
-else:
-    # Jitter function
-    def rand_jitter(n, min, max):
-        dev = (max - min) / 200
-        return n + np.random.randn(1) * dev
-
-
-    min_x = plot_data['x'].min()
-    min_y = plot_data['y'].min()
-    max_x = plot_data['x'].max()
-    max_y = plot_data['x'].max()
-    for point in plot_data.iterrows():
-        point = point[1]
-        phenotypes = point[PHENOTYPES]
-        if phenotypes.sum() < 1:
-            ax.scatter(point['x'], point['y'], s=point['sizes'],
-                       c=colours_stage['NA'], alpha=0.5)
-        elif phenotypes.sum() == 1:
-            phenotype = phenotypes[phenotypes > 0].index[0]
-            ax.scatter(point['x'], point['y'], s=point['sizes'],
-                       c=colours_stage[phenotype], alpha=0.5)
-        else:
-            first = True
-            for phenotype in PHENOTYPES:
-                if phenotypes[phenotype] == 1:
-                    x = point['x']
-                    y = point['y']
-                    if not first:
-                        x = rand_jitter(n=x, min=min_x, max=max_x)
-                        y = rand_jitter(n=y, min=min_y, max=max_y)
-                    ax.scatter(x, y, s=point['sizes'], c=colours_stage[phenotype], alpha=0.5)
-                    first = False
-
-# Add line between replicates' measurments
-for name, data_rep in plot_data.groupby('Replicate'):
-    data_rep = data_rep.sort_values('Time')
-    group = data_rep['Group'].values[0]
-    ax.plot(data_rep['x'], data_rep['y'], color=colours[group], alpha=0.5, linewidth=0.5)
-    # Add replicate name
-    ax.text(data_rep['x'][-1], data_rep['y'][-1], data_rep['Replicate'][0], fontsize=6)
-
+dim_reduction_plot(plot_data, plot_by=plot_by, fig_ax=(fig, ax), order_column='Time', colour_by_phenotype=False,
+                   add_name=True)
 ax.axis('off')
+fig.suptitle("t-SNE of measurements. Size denotes time; replicate's progression is marked with a line.")
 
-# Legends for groups and phenotypes
-patchList = []
-for name, colour in colours.items():
-    data_key = mpatches.Patch(color=colour, label=name, alpha=0.5)
-    patchList.append(data_key)
-title = 'Group'
-if colour_by_phenotype:
-    title = title + ' (line)'
-legend_groups = ax.legend(handles=patchList, title=title, loc='lower left')
+# ************************ PC 1 vs time of measurements on AX4 data
+top_impulse = pd.read_table(pathReplicateImg + 'AX4_bestImpulse2000.tsv')
 
-if colour_by_phenotype:
-    patchList = []
-    for name, colour in colours_stage.items():
-        data_key = mpatches.Patch(color=colour, label=name, alpha=0.5)
-        patchList.append(data_key)
-    legend_stages = ax.legend(handles=patchList, title="Phenotype (point)", loc='upper right')
-    ax.add_artist(legend_groups)
+averaged_data = pd.read_table(pathRegulons + 'genes_averaged_orange.tsv', index_col=0)
+X_avg_df_AX4 = averaged_data.query('Strain =="AX4"')[list(genes.index) + ['Time']]
 
-fig.suptitle("t-SNE of measurements. Size denotes time; replicate's progression is market with a line.")
+# selected_genes=list(top_impulse.Gene.values)
+selected_genes = X_avg_df_AX4.T[(X_avg_df_AX4 != 0).any(axis=0)].index
+selected_genes = list(selected_genes.drop('Time'))
 
+X_avg_df_AX4 = averaged_data.query('Strain =="AX4"')[selected_genes + ['Time']]
+
+# Scale the data (sklearn's PCA does the centering itself)
+# Scale data - log2 -y/n (also needs to be changed below in mutants) & m0s1 or minmax
+# May work better with minmax no log?
+scaler = pp.MinMaxScaler()
+# X_avg_AX4 = scaler.fit_transform(np.log2(X_avg_df_AX4.drop('Time', axis=1)+1))
+X_avg_AX4 = scaler.fit_transform(X_avg_df_AX4.drop('Time', axis=1))
+
+pca = PCA(n_components=1, random_state=0)
+pca_AX4 = pca.fit_transform(X_avg_AX4).ravel()
+
+mutants = averaged_data['Strain'].unique().tolist()
+mutants.remove('AX4')
+
+plot_data = pd.DataFrame()
+for strain in mutants:
+    print(strain)
+    X_avg_df = averaged_data.query('Strain =="' + strain + '"')[selected_genes + ['Time']]
+    # X_avg = scaler.transform(np.log2(X_avg_df.drop('Time', axis=1)+1))
+    X_avg = scaler.transform(X_avg_df.drop('Time', axis=1))
+    pca_transformed = pca.transform(X_avg).ravel()
+    plot_data = plot_data.append(
+        pd.DataFrame({'x': X_avg_df['Time'], 'y': pca_transformed, 'size': [10] * X_avg_df.shape[0],
+                      'Group': [GROUPS[strain]] * X_avg_df.shape[0], 'Strain': [strain] * X_avg_df.shape[0],
+                      'width': [1.5] * X_avg_df.shape[0],
+                      'alpha': [0.5] * X_avg_df.shape[0]}))
+
+plot_data = plot_data.append(
+    pd.DataFrame({'x': X_avg_df_AX4['Time'], 'y': pca_AX4, 'size': [30] * X_avg_df_AX4.shape[0],
+                  'Group': ['WT'] * X_avg_df_AX4.shape[0], 'Strain': ['AX4'] * X_avg_df_AX4.shape[0],
+                  'width': [4] * X_avg_df_AX4.shape[0],
+                  'alpha': [1.0] * X_avg_df_AX4.shape[0]}))
+plot_order = mutants + ['AX4']
+
+fig, ax = plt.subplots()
+dim_reduction_plot(plot_data, plot_by='Strain', fig_ax=(fig, ax), order_column='x', colour_by_phenotype=False,
+                   add_name=True, legend_groups='upper left', fontsize=10, plot_order=plot_order)
+
+ax.spines['right'].set_visible(False)
+ax.spines['left'].set_visible(False)
+ax.spines['top'].set_visible(False)
+ax.set_xlabel('Time')
+ax.set_ylabel('PC1')
+ax.tick_params(axis='y', which='both', left=False, labelleft=False)
 # ************************************************************************
 # ***** Count in how many replicates per strain the gene is consistently 0
 genes_rep = ClusterAnalyser.merge_genes_conditions(genes=genes, conditions=conditions[['Replicate', 'Measurment']],
@@ -429,7 +457,7 @@ for f in files:
             conditions_row = conditions[(conditions['Replicate'] == replicate) & (conditions['Time'] == time)]
             if conditions_row.shape[0] > 0:
                 idx_name_conditions = \
-                conditions[(conditions['Replicate'] == replicate) & (conditions['Time'] == time)].index[0]
+                    conditions[(conditions['Replicate'] == replicate) & (conditions['Time'] == time)].index[0]
 
                 # Check if there is a phenotype (str) or no phenotype annotation
                 if type(val) == str:
@@ -703,25 +731,25 @@ grouped = conditions_noimg.groupby(['Strain', 'Time'])
 for group, data in grouped:
     name = group[0] + '_' + str(group[1])
     averaged = {}
-    #max_rep=conditions.query('Strain == "'+group[0]+'"')['Replicate'].unique().shape[0]
+    # max_rep=conditions.query('Strain == "'+group[0]+'"')['Replicate'].unique().shape[0]
     for col in phenotypes:
         pheno_data = data[col]
         if (pheno_data == 1).any():
             averaged[col] = 'yes'
         # Decide if combination of 0 an -1 is unknown or known - there could be this phenotype in the sample without image
         # Use this instead of the below to put unknown only if all are unknown (so not if some are 'no')
-        #elif (pheno_data == -1).all():
+        # elif (pheno_data == -1).all():
         #    averaged[col] = 'unknown'
-        #else:
+        # else:
         #    averaged[col] = 'no'
 
         # If any unknown or less than all replicates put unknown - NOT as we do not have expression for them either
-        #elif (pheno_data == 0).all() and pheno_data.shape[0]==max_rep:
+        # elif (pheno_data == 0).all() and pheno_data.shape[0]==max_rep:
         elif (pheno_data == 0).all():
             averaged[col] = 'no'
         else:
             averaged[col] = 'unknown'
-    averaged_stages = averaged_stages.append(pd.DataFrame(averaged,index=[name]),sort=True)
+    averaged_stages = averaged_stages.append(pd.DataFrame(averaged, index=[name]), sort=True)
 averaged_stages.index.name = 'Name'
 averaged_stages = averaged_stages.reindex(phenotypes, axis=1)
 averaged_stages.to_csv(pathStages + 'averageStages_anyUnknown.tsv', sep='\t')

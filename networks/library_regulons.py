@@ -35,7 +35,8 @@ SCALING = 'mean0std1'
 LOG = True
 
 # For preparing Orange data
-STRAIN_ORDER = ['AX4','AX4_FD','AX4_PE','AX4_SE', 'MybBGFP', 'ecmARm', 'gtaI', 'cudA', 'dgcA', 'gtaG', 'tagB', 'comH', 'gbfA', 'tgrC1', 'tgrB1',
+STRAIN_ORDER = ['AX4', 'AX4_FD', 'AX4_PE', 'AX4_SE', 'MybBGFP', 'ecmARm', 'gtaI', 'cudA', 'dgcA', 'gtaG', 'tagB',
+                'comH', 'gbfA', 'tgrC1', 'tgrB1',
                 'tgrB1C1', 'gtaC', 'mybB', 'amiB', 'acaA', 'acaAPkaCoe', 'ac3PkaCoe', 'PkaCoe', 'pkaR']
 
 
@@ -1838,6 +1839,23 @@ def make_tsne(data: pd.DataFrame, perplexities_range: list = [5, 100], exaggerat
     return embedding
 
 
+def add_tsne(tsne1, data2: pd.DataFrame,
+             exaggerations: list = [2, None], momentums: list = [0.5, 0.8], n_iters_optimize: int = [5, 100]):
+    """
+    Adds data2 in tsne1 space.
+    :param tsne1: tSNE on which to embed
+    :param data2: Data to embed. Should have same features as data used for tsne1
+    :param exaggerations: List of exaggeration parameters for sequential optimizations
+    :param momentums: List of momentum parameters for sequential optimizations
+    :param n_iters_optimize: List of n_iter parameters for sequential optimizations
+    """
+    tsne2 = tsne1.prepare_partial(data2, initialization="median", k=30)
+    for exaggeration, momentum, n_iter in zip(exaggerations, momentums, n_iters_optimize):
+        tsne2 = tsne2.optimize(n_iter=n_iter, exaggeration=exaggeration, momentum=momentum,
+                               max_grad_norm=0.25, learning_rate=0.1)
+    return tsne2
+
+
 def plot_tsne(tsne: ot.TSNEEmbedding, classes: dict = None, names: list = None, legend: bool = False,
               plotting_params: dict = {'s': 1}):
     """
@@ -1898,9 +1916,10 @@ def plot_tsne(tsne: ot.TSNEEmbedding, classes: dict = None, names: list = None, 
                 handle._sizes = [10]
                 handle.set_alpha(1)
 
+
 def plot_tsne_colours(tsnes: list, classes: list = None, names: list = None, legend: bool = False,
-              plotting_params: dict = {'s': 0.2,'alpha':0.2},title=None,colour_dict=None,fig_data=None,
-              order_legend:list=None):
+                      plotting_params: dict = {'s': 0.2, 'alpha': 0.2}, title=None, colour_dict=None, fig_data=None,
+                      order_legend: list = None):
     """
     Plot tsne embedding
     :param tsne: List of embeddings, as returned by make_tsne
@@ -1916,7 +1935,7 @@ def plot_tsne_colours(tsnes: list, classes: list = None, names: list = None, leg
     if fig_data is None:
         fig, ax = plt.subplots()
     else:
-        fig,ax=fig_data
+        fig, ax = fig_data
     ax.get_xaxis().set_visible(False)
     ax.get_yaxis().set_visible(False)
     if title is not None:
@@ -1924,33 +1943,33 @@ def plot_tsne_colours(tsnes: list, classes: list = None, names: list = None, leg
     if classes is None:
         data = pd.DataFrame()
         for tsne in tsnes:
-            if not isinstance(tsne,np.ndarray):
-                tsne=np.array(tsne)
+            if not isinstance(tsne, np.ndarray):
+                tsne = np.array(tsne)
             x = [x[0] for x in tsne]
             y = [x[1] for x in tsne]
             data = data.append(pd.DataFrame({'x': x, 'y': y}))
-        ax.scatter(data['x'],data['y'] , alpha=0.5, **plotting_params)
+        ax.scatter(data['x'], data['y'], alpha=0.5, **plotting_params)
     else:
         if len(tsnes) != len(names):
             raise ValueError('N of tSNEs must match N of their name lists')
         data = pd.DataFrame()
         for tsne, name, group in zip(tsnes, names, range(len(tsnes))):
-            if not isinstance(tsne,np.ndarray):
-                tsne=np.array(tsne)
+            if not isinstance(tsne, np.ndarray):
+                tsne = np.array(tsne)
             x = [x[0] for x in tsne]
             y = [x[1] for x in tsne]
             data = data.append(pd.DataFrame({'x': x, 'y': y, 'name': name, 'group': [group] * len(x)}))
         if names is not None and classes is not None:
             classes_extended = []
             for row in data.iterrows():
-                row=row[1]
-                group_classes=classes[int(row['group'])]
-                name=row['name']
+                row = row[1]
+                group_classes = classes[int(row['group'])]
+                name = row['name']
                 if name in group_classes.keys():
                     classes_extended.append(group_classes[name])
                 else:
                     classes_extended.append('NaN')
-            data['class']=classes_extended
+            data['class'] = classes_extended
         class_names = set(data['class'])
         all_colours = ['#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#46f0f0', '#f032e6',
                        '#bcf60c',
@@ -1963,12 +1982,12 @@ def plot_tsne_colours(tsnes: list, classes: list = None, names: list = None, leg
             # colour_idx = range(len(class_names))
             colour_dict = dict(zip(class_names, selected_colours))
 
-        for group_name,group_data in data.groupby('group'):
-            for class_name,class_data in group_data.groupby('class'):
-                plotting_params_point=[]
-                if isinstance(plotting_params,list):
-                    plotting_params_group=plotting_params[int(group_name)]
-                    plotting_params_class=plotting_params_group
+        for group_name, group_data in data.groupby('group'):
+            for class_name, class_data in group_data.groupby('class'):
+                plotting_params_point = []
+                if isinstance(plotting_params, list):
+                    plotting_params_group = plotting_params[int(group_name)]
+                    plotting_params_class = plotting_params_group
                 else:
                     plotting_params_class = plotting_params
                 if isinstance(list(plotting_params_class.values())[0], dict):
@@ -1976,29 +1995,27 @@ def plot_tsne_colours(tsnes: list, classes: list = None, names: list = None, leg
                 else:
                     plotting_params_class = plotting_params_class
                 if 'marker' not in plotting_params_class.keys():
-                    plotting_params_class['marker']='o'
-                ax.scatter(class_data['x'],class_data['y'],
-                       c=[colour_dict[class_name] for class_name in class_data['class']],
-                       label=class_name, **plotting_params_class)
+                    plotting_params_class['marker'] = 'o'
+                ax.scatter(class_data['x'], class_data['y'],
+                           c=[colour_dict[class_name] for class_name in class_data['class']],
+                           label=class_name, **plotting_params_class)
         if legend:
             handles, labels = fig.gca().get_legend_handles_labels()
             if order_legend is not None:
-                labels=[str(label) for label in labels]
-                order_legend=[str(label) for label in order_legend]
-                legend_order_dict=dict(zip(order_legend,range(len(order_legend))))
-                legend_dict=dict(zip(labels,handles))
-                legend_with_order={legend_order_dict[label]:label for label in labels}
-                labels=[label for idx, label in sorted(legend_with_order.items(), key=lambda item: item[0])]
-                handles=[legend_dict[label] for label in labels]
-
+                labels = [str(label) for label in labels]
+                order_legend = [str(label) for label in order_legend]
+                legend_order_dict = dict(zip(order_legend, range(len(order_legend))))
+                legend_dict = dict(zip(labels, handles))
+                legend_with_order = {legend_order_dict[label]: label for label in labels}
+                labels = [label for idx, label in sorted(legend_with_order.items(), key=lambda item: item[0])]
+                handles = [legend_dict[label] for label in labels]
 
             box = ax.get_position()
             ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
-            legend = ax.legend( handles,labels,loc='center left', bbox_to_anchor=(1, 0.5))
+            legend = ax.legend(handles, labels, loc='center left', bbox_to_anchor=(1, 0.5))
             for handle in legend.legendHandles:
                 handle._sizes = [10]
                 handle.set_alpha(1)
-
 
 
 def make_tsne_data(tsne, names):
@@ -2100,15 +2117,15 @@ def get_orange_pattern(genes_averaged: pd.DataFrame, group: str) -> pd.DataFrame
     return ClusterAnalyser.pattern_characteristics(data=genes_strain)
 
 
-def sort_strain_data(data:pd.DataFrame):
+def sort_strain_data(data: pd.DataFrame):
     """
     Sorts a copy of data by strain (as specified in STRAIN_ORDER), Replicate (if present) and then by time.
     :param data: Data frame with columns Strain, Time and optionally Replicate.
     """
-    data=data.copy()
-    sort=['Strain','Time']
+    data = data.copy()
+    sort = ['Strain', 'Time']
     if 'Replicate' in data.columns:
-        sort=['Strain','Replicate','Time']
+        sort = ['Strain', 'Replicate', 'Time']
     data['Strain'] = pd.Categorical(data['Strain'], categories=STRAIN_ORDER)
     return data.sort_values(sort)
 
@@ -2329,4 +2346,3 @@ def point_histogram(data, bins, **plot_args):
     plt.scatter(bin_centers, n, **plot_args)
     # For non filled hist
     # plt.hist(x, bins=50, histtype = 'step', fill = None)
-
