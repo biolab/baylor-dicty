@@ -656,7 +656,8 @@ class CustomScaler:
         """
         :param reference:
         """
-
+        if isinstance(reference,pd.DataFrame):
+            reference=reference.values
         self.reference = reference
         self.scalers = {}
 
@@ -680,13 +681,16 @@ class CustomScaler:
                 scaler = pp.StandardScaler()
                 scaler.fit(ref)
             elif scale == 'divide_mean':
-                scaler = ref.mean()
+                scaler = ref.mean(axis=0)
             self.scalers[(log, scale)]=scaler
             #print(id(scaler))
 
         scaler=self.scalers[(log, scale)]
         #print(id(scaler))
         scaled = None
+        if isinstance(data, pd.DataFrame):
+            data = data.values
+
         if log:
             data = np.log2(data + 1)
         if scale in ['minmax','m0s1']:
