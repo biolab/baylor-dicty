@@ -544,7 +544,7 @@ for group, data in grouped:
         # Decide if combination of 0 an -1 is unknown or known - there could be this phenotype in the sample without image
         # Use this instead of the below to put unknown only if all are unknown (so not if some are 'no')
         elif (pheno_data == -1).all():
-           averaged[col] = 'unknown'
+           averaged[col] = 'no image'
         else:
            averaged[col] = 'no'
 
