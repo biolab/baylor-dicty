@@ -22,9 +22,9 @@ GROUPS = {'amiB': 'agg-', 'mybB': 'agg-', 'acaA': 'agg-', 'gtaC': 'agg-',
           'ecmARm': 'cud', 'gtaI': 'cud', 'cudA': 'cud', 'dgcA': 'cud', 'gtaG': 'cud',
           'AX4': 'WT', 'MybBGFP': 'WT',
           'acaAPkaCoe': 'sFB', 'ac3PkaCoe': 'sFB',
-          'pkaR': 'Prec', 'PkaCoe': 'Prec'}
+          'pkaR': 'prec', 'PkaCoe': 'prec'}
 
-GROUP_X = {'agg-': 1, 'lag_dis': 2, 'tag_dis': 3, 'tag': 4, 'cud': 5, 'sFB': 6, 'WT': 7, 'Prec': 8}
+GROUP_X = {'agg-': 1, 'lag_dis': 2, 'tag_dis': 3, 'tag': 4, 'cud': 5, 'sFB': 6, 'WT': 7, 'prec': 8}
 
 GROUP_DF = []
 for strain, group in GROUPS.items():
@@ -34,12 +34,12 @@ GROUP_DF = pd.DataFrame(GROUP_DF)
 # GROUP_DF.to_csv('/home/karin/Documents/timeTrajectories/data/regulons/selected_genes/group_df.tsv',sep='\t',
 # index=False)
 
-PHENOTYPES = ['no_agg', 'stream', 'lag', 'tag', 'tip', 'slug', 'mhat', 'cul', 'FB', 'disappear', 'tag_spore']
-PHENOTYPES_X = {'no_agg': 0, 'disappear': 1, 'stream': 2, 'lag': 3, 'tag': 4, 'tip': 5, 'slug': 6, 'mhat': 7, 'cul': 8,
+PHENOTYPES = ['no_agg', 'stream', 'lag', 'tag', 'tip', 'slug', 'mhat', 'cul', 'yem', 'FB']
+PHENOTYPES_X = {'no_agg': 0, 'stream': 1, 'lag': 2, 'tag': 3, 'tip': 4, 'slug': 5, 'mhat': 6, 'cul': 7, 'yem': 8,
                 'FB': 9}
 
 COLOURS_GROUP = {'agg-': '#d40808', 'lag_dis': '#e68209', 'tag_dis': '#ffb13d', 'tag': '#d1b30a', 'cud': '#4eb314',
-                 'WT': '#0fa3ab', 'sFB': '#525252', 'Prec': '#7010b0'}
+                 'WT': '#0fa3ab', 'sFB': '#525252', 'prec': '#7010b0'}
 COLOURS_STAGE = {'no_agg': '#750000', 'stream': '#ff4a4a', 'lag': '#c27013', 'tag': '#c2b113', 'tip': '#46b019',
                  'slug': '#018501', 'mhat': '#19b0a6', 'cul': '#1962b0', 'FB': '#7919b0', 'disappear': '#000000',
                  'tag_spore': '#6e6e6e', 'NA': '#d9d9d9'}
@@ -656,8 +656,8 @@ class CustomScaler:
         """
         :param reference:
         """
-        if isinstance(reference,pd.DataFrame):
-            reference=reference.values
+        if isinstance(reference, pd.DataFrame):
+            reference = reference.values
         self.reference = reference
         self.scalers = {}
 
@@ -682,18 +682,18 @@ class CustomScaler:
                 scaler.fit(ref)
             elif scale == 'divide_mean':
                 scaler = ref.mean(axis=0)
-            self.scalers[(log, scale)]=scaler
-            #print(id(scaler))
+            self.scalers[(log, scale)] = scaler
+            # print(id(scaler))
 
-        scaler=self.scalers[(log, scale)]
-        #print(id(scaler))
+        scaler = self.scalers[(log, scale)]
+        # print(id(scaler))
         scaled = None
         if isinstance(data, pd.DataFrame):
             data = data.values
 
         if log:
             data = np.log2(data + 1)
-        if scale in ['minmax','m0s1']:
+        if scale in ['minmax', 'm0s1']:
             scaled = scaler.transform(data)
         elif scale == 'divide_mean':
             scaled = data / scaler

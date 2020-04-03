@@ -14,6 +14,7 @@ from skmultilearn.model_selection import iterative_train_test_split, IterativeSt
 import sklearn.preprocessing as pp
 import itertools
 from sklearn.decomposition import PCA
+from openpyxl import load_workbook
 
 # import DBA as dba
 import arff
@@ -442,70 +443,122 @@ diffs_df.to_csv(pathSelGenes + 'diffs_AX4Strain.tsv', sep='\t', index=False)
 conditions = conditions.drop(PHENOTYPES, axis=1)
 conditions = pd.concat([conditions, pd.DataFrame(np.zeros((conditions.shape[0], len(PHENOTYPES))), columns=PHENOTYPES)],
                        axis=1)
+# How to fill cells with no image (0 or -1 (for plotting/avg summary)):
+no_image_fill=0
+
 no_seq = 0
 no_image = 0
 annotated = 0
-files = [f for f in glob.glob('/home/karin/Documents/timeTrajectories/data/from_huston/phenotypes/' + "*.tab")]
-for f in files:
-    phenotypes = pd.read_table(f, index_col=0)
-    phenotypes = phenotypes.replace('no image', np.nan)
-    for time in phenotypes.index:
-        for replicate in phenotypes.columns:
-            val = phenotypes.loc[time, replicate]
+file='/home/karin/Documents/timeTrajectories/data/from_huston/phenotypes/Phenotype_milestone_strains.xlsx'
+wb = load_workbook(file, read_only=True)
 
-            # Find conditions row of replicate+time
-            conditions_row = conditions[(conditions['Replicate'] == replicate) & (conditions['Time'] == time)]
-            if conditions_row.shape[0] > 0:
-                idx_name_conditions = \
-                    conditions[(conditions['Replicate'] == replicate) & (conditions['Time'] == time)].index[0]
+#files = [f for f in glob.glob('/home/karin/Documents/timeTrajectories/data/from_huston/phenotypes/' + "*.tab")]
+#for f in files:
+    #phenotypes = pd.read_table(f, index_col=0)
+for strain in conditions['Strain'].unique():
+    if strain in wb.sheetnames:
+        phenotypes=pd.read_excel(file,sheet_name=strain,index_col=0)
+        phenotypes = phenotypes.replace('no image', np.nan)
+        for time in phenotypes.index:
+            for replicate in phenotypes.columns:
+                val = phenotypes.loc[time, replicate]
 
-                # Check if there is a phenotype (str) or no phenotype annotation
-                if type(val) == str:
-                    val = val.replace('rippling', 'stream')
-                    val = val.replace('strem', 'stream')
-                    val = val.replace('no agg', 'no_agg')
-                    val = val.replace('noAgg', 'no_agg')
-                    val = val.replace('small', '')
-                    val = val.replace(')', '')
-                    val = val.replace('(', '')
-                    val = val.replace(' ', '')
-                    val = val.replace('elongating', '')
-                    val = val.replace('shrinking', '')
-                    val = val.replace('Spore', '_spore')
-                    val = val.replace('streaming', 'stream')
-                    val = val.split('/')
-                    val = list(filter(lambda a: a != '', val))
-                    annotated += 1
-                    for pheno in val:
-                        if pheno not in PHENOTYPES:
-                            print(f, pheno, time, replicate)
-                        else:
-                            conditions.at[idx_name_conditions, pheno] = 1
-                # Add -1 (or 0) to all phenotypes if there is no image for that time
+                # Find conditions row of replicate+time
+                conditions_row = conditions[(conditions['Replicate'] == replicate) & (conditions['Time'] == time)]
+                if conditions_row.shape[0] > 0:
+                    idx_name_conditions = \
+                        conditions[(conditions['Replicate'] == replicate) & (conditions['Time'] == time)].index[0]
+
+                    # Check if there is a phenotype (str) or no phenotype annotation
+                    if type(val) == str:
+                        val = val.replace('rippling', 'stream')
+                        val = val.replace('strem', 'stream')
+                        val = val.replace('no agg', 'no_agg')
+                        val = val.replace('noAgg', 'no_agg')
+                        val = val.replace('small', '')
+                        val = val.replace(')', '')
+                        val = val.replace('(', '')
+                        val = val.replace(' ', '')
+                        val = val.replace('elongating', '')
+                        val = val.replace('shrinking', '')
+                        val = val.replace('Spore', '_spore')
+                        val = val.replace('streaming', 'stream')
+                        val = val.split('/')
+                        val = list(filter(lambda a: a != '', val))
+                        annotated += 1
+                        for pheno in val:
+                            if pheno not in PHENOTYPES:
+                                #print(f, pheno, time, replicate)
+                                print(strain, pheno, time, replicate)
+                            else:
+                                conditions.at[idx_name_conditions, pheno] = 1
+                    # Add -1 (or 0) to all phenotypes if there is no image for that time
+                    else:
+                        no_image += 1
+                        conditions.loc[idx_name_conditions, PHENOTYPES] = [no_image_fill] * len(PHENOTYPES)
+                        #print(val, replicate, time)
+
                 else:
-                    no_image += 1
-                    conditions.loc[idx_name_conditions, PHENOTYPES] = [-1] * len(PHENOTYPES)
-                # conditions.loc[idx_name_conditions, PHENOTYPES] = [0] * len(PHENOTYPES)
+                    if type(val) == str:
+                        print('No sample for', replicate, time)
+                        no_seq += 1
+    else:
+        print('Strain not in file:',strain)
+        for idx_name_conditions in conditions.query('Strain =="'+strain+'"').index:
+            no_image += 1
+            conditions.loc[idx_name_conditions, PHENOTYPES] = [no_image_fill] * len(PHENOTYPES)
 
-            else:
-                # print('No sample for', replicate, time)
-                no_seq += 1
 
+if no_image_fill ==-1:
+    conditions.to_csv(dataPath + 'conditions_noImage_mergedGenes.tsv', sep='\t', index=False)
+elif no_image_fill ==0:
 # Make all 0 times no_agg if not already filled
-phenotypes_notnoag = PHENOTYPES.copy()
-phenotypes_notnoag.remove('no_agg')
-for idx, sample in conditions.iterrows():
-    if sample['Time'] < 1:
-        if not (sample[PHENOTYPES] > 0).any():
-            conditions.at[idx, 'no_agg'] = 1
-            conditions.loc[idx, phenotypes_notnoag] = [0] * len(phenotypes_notnoag)
-            annotated += 1
-            no_image -= 1
+    phenotypes_notnoag = PHENOTYPES.copy()
+    phenotypes_notnoag.remove('no_agg')
+    for idx, sample in conditions.iterrows():
+        if sample['Time'] < 1:
+            if not (sample[PHENOTYPES] > 0).any():
+                conditions.at[idx, 'no_agg'] = 1
+                conditions.loc[idx, phenotypes_notnoag] = [0] * len(phenotypes_notnoag)
+                annotated += 1
+                no_image -= 1
+            # else:
+            #    print(sample)
+
+    conditions.to_csv(dataPath + 'conditions_mergedGenes.tsv', sep='\t', index=False)
+
+# ***********************************************
+# ****** Averaged stages - for a timepoint add all stages present in each replicate
+conditions_noimg = conditions = pd.read_csv(dataPath + 'conditions_noImage_mergedGenes.tsv', sep='\t', index_col=None)
+phenotypes = ['no_agg', 'stream', 'lag', 'tag', 'tip', 'slug', 'mhat', 'cul',  'FB','yem']
+averaged_stages = pd.DataFrame(columns=phenotypes)
+grouped = conditions_noimg.groupby(['Strain', 'Time'])
+for group, data in grouped:
+    name = group[0] + '_' + str(group[1])
+    averaged = {}
+    # max_rep=conditions.query('Strain == "'+group[0]+'"')['Replicate'].unique().shape[0]
+    for col in phenotypes:
+        pheno_data = data[col]
+        if (pheno_data == 1).any():
+            averaged[col] = 'yes'
+        # Decide if combination of 0 an -1 is unknown or known - there could be this phenotype in the sample without image
+        # Use this instead of the below to put unknown only if all are unknown (so not if some are 'no')
+        elif (pheno_data == -1).all():
+           averaged[col] = 'no image'
+        else:
+           averaged[col] = 'no'
+
+        # If any unknown or less than all replicates put unknown - NOT as we do not have expression for them either
+        # elif (pheno_data == 0).all() and pheno_data.shape[0]==max_rep:
+        # elif (pheno_data == 0).all():
+        #     averaged[col] = 'no'
         # else:
-        #    print(sample)
-# Save as conditions or conditions_noImage
-# conditions.to_csv(dataPath + 'conditions_mergedGenes.tsv', sep='\t', index=False)
-conditions.to_csv(dataPath + 'conditions_noImage_mergedGenes.tsv', sep='\t', index=False)
+        #     averaged[col] = 'unknown'
+
+    averaged_stages = averaged_stages.append(pd.DataFrame(averaged, index=[name]), sort=True)
+averaged_stages.index.name = 'Name'
+averaged_stages = averaged_stages.reindex(phenotypes, axis=1)
+averaged_stages.to_csv(pathStages + 'averageStages.tsv', sep='\t')
 
 # *********************
 # ******** Find genes overexpressed in a stage (data from R deSeq2 1 vs 1 stage)
@@ -722,34 +775,3 @@ for params in params_grid:
 # Run clus
 # java -jar /home/karin/Documents/Clus/Clus.jar -xval -forest /home/karin/Documents/timeTrajectories/data/stages/classification/clus/stages.s  > stages_out.txt  2>stages_error.txt
 
-# ***********************************************
-# ****** Averaged stages - for a timepoint add all stages present in each replicate
-conditions_noimg = conditions = pd.read_csv(dataPath + 'conditions_noImage_mergedGenes.tsv', sep='\t', index_col=None)
-phenotypes = ['no_agg', 'disappear', 'stream', 'lag', 'tag', 'tip', 'slug', 'mhat', 'cul', 'tag_spore', 'FB']
-averaged_stages = pd.DataFrame(columns=phenotypes)
-grouped = conditions_noimg.groupby(['Strain', 'Time'])
-for group, data in grouped:
-    name = group[0] + '_' + str(group[1])
-    averaged = {}
-    # max_rep=conditions.query('Strain == "'+group[0]+'"')['Replicate'].unique().shape[0]
-    for col in phenotypes:
-        pheno_data = data[col]
-        if (pheno_data == 1).any():
-            averaged[col] = 'yes'
-        # Decide if combination of 0 an -1 is unknown or known - there could be this phenotype in the sample without image
-        # Use this instead of the below to put unknown only if all are unknown (so not if some are 'no')
-        # elif (pheno_data == -1).all():
-        #    averaged[col] = 'unknown'
-        # else:
-        #    averaged[col] = 'no'
-
-        # If any unknown or less than all replicates put unknown - NOT as we do not have expression for them either
-        # elif (pheno_data == 0).all() and pheno_data.shape[0]==max_rep:
-        elif (pheno_data == 0).all():
-            averaged[col] = 'no'
-        else:
-            averaged[col] = 'unknown'
-    averaged_stages = averaged_stages.append(pd.DataFrame(averaged, index=[name]), sort=True)
-averaged_stages.index.name = 'Name'
-averaged_stages = averaged_stages.reindex(phenotypes, axis=1)
-averaged_stages.to_csv(pathStages + 'averageStages_anyUnknown.tsv', sep='\t')
