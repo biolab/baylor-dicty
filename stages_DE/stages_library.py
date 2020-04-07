@@ -468,7 +468,10 @@ def summary_classification(df: pd.DataFrame, statistic, split, macro_list: list 
         return pd.DataFrame(summary_df)
 
 
-def summary_classification_print_sort(summary, statistic, averages, groups):
+def summary_classification_print_sort(summary, statistic, averages, groups,sort:bool='score'):
+    """
+    :param sort: Sort classes by 'score' or by 'groups' order
+    """
     print('Mean cross validation ' + statistic + ' averaged across all phenotypes and standard error')
     averages_summary = summary[summary.Group.isin(averages)].copy()
     averages_summary['Group'] = pd.Categorical(averages_summary['Group'], averages)
@@ -476,13 +479,19 @@ def summary_classification_print_sort(summary, statistic, averages, groups):
         row = row[1]
         print('%-12s%-6.2f%-3s%-3.2f' % (row['Group'], row['Mean'], '+-', row['SE']))
     print('Mean cross validation ' + statistic + ' of individual phenotypes and standard error')
-    for row in summary[summary.Group.isin(groups)].sort_values('Mean', ascending=False).iterrows():
+    if sort=='score':
+        sorted_summary=summary[summary.Group.isin(groups)].sort_values('Mean', ascending=False)
+    elif sort=='groups':
+        summary_groups=summary[summary.Group.isin(groups)].copy()
+        summary_groups.Group = pd.Categorical(summary_groups.Group, categories=groups,ordered=True)
+        sorted_summary=summary_groups.sort_values('Group')
+    for row in sorted_summary.iterrows():
         row = row[1]
         print('%-12s%-6.2f%-3s%-3.2f' % (row['Group'], row['Mean'], '+-', row['SE']))
 
 
 # From https://datavizpyr.com/stripplot-with-altair-in-python/
-def scatter_catgory(df: pd.DataFrame, Y, categories=None, colour=None, shape=None, title: str = ''):
+def scatter_catgory(df: pd.DataFrame, Y, categories=None, colour=None, shape=None, title: str = '',width=120):
     """
     Make scatter plot with categories on X axis and X jittering to reduce the overlap between 
     data points of the same category.
@@ -499,9 +508,9 @@ def scatter_catgory(df: pd.DataFrame, Y, categories=None, colour=None, shape=Non
     if shape is not None:
         params_dict['shape'] = alt.Shape(shape)
     if categories is not None:
-        params_dict['column'] = alt.Column(categories, header=alt.Header(
+        params_dict['column'] = alt.Column(str(categories)+':O',sort=list(df[categories].unique()), header=alt.Header(
             labelAngle=0, titleOrient='bottom', labelOrient='bottom', labelAlign='center', labelPadding=10))
-    return alt.Chart(df, width=120, title=title).mark_point(size=20).encode(
+    return alt.Chart(df, width=width, title=title).mark_point(size=20).encode(
         x=alt.X('jitter:Q', title=None, axis=alt.Axis(values=[0], ticks=True, grid=False, labels=False),
                 scale=alt.Scale(), ),
         y=alt.Y(Y, axis=alt.Axis(grid=False)),
@@ -510,6 +519,37 @@ def scatter_catgory(df: pd.DataFrame, Y, categories=None, colour=None, shape=Non
                           ).configure_facet(spacing=0
                                             # ).configure_view( stroke=None
                                             )
+
+def FPR(y_true,y_pred,average):
+    """
+    False positive rate for true and predicted labels
+    :param average: None,'micro','macro' (as in sklearn)
+    """
+    if average=='micro':
+        y_true=y_true.ravel()
+        y_pred=y_pred.ravel()
+    predicted_positive=y_pred==1
+    true_negative=y_true==0
+    false_positive_n=(predicted_positive & true_negative).sum(axis=0)
+    true_negative_n=true_negative.sum(axis=0)
+    fpr=false_positive_n/true_negative_n
+    if average=='macro':
+        fpr=fpr.mean()
+    return fpr
+
+def accuracy(y_true,y_pred,average):
+    """
+    Accuracy for  true and predicted labels
+    :param average: None,'micro','macro' (as in sklearn)
+    """
+    if average=='micro':
+        y_true=y_true.ravel()
+        y_pred=y_pred.ravel()
+    correct=(y_true==y_pred).sum(axis=0)
+    acc=correct/y_true.shape[0]
+    if average=='macro':
+        acc=acc.mean()
+    return acc
 
 
 def get_dimredplot_param(data, col, default, to_mode=False):
