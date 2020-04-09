@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import scipy.cluster.hierarchy as hc
 import pandas as pd
+import random
 from statistics import mean
 from scipy.stats import mannwhitneyu, ttest_ind
 from statsmodels.stats.multitest import multipletests
@@ -35,14 +36,14 @@ GROUP_DF = pd.DataFrame(GROUP_DF)
 # index=False)
 
 PHENOTYPES = ['no_agg', 'stream', 'lag', 'tag', 'tip', 'slug', 'mhat', 'cul', 'yem', 'FB']
-PHENOTYPES_X = {'no_agg': 0, 'stream': 1, 'lag': 2, 'tag': 3, 'tip': 4, 'slug': 5, 'mhat': 6, 'cul': 7, 'yem': 8,
-                'FB': 9}
+PHENOTYPES_X = {'no_agg': 0, 'stream': 1, 'lag': 2, 'tag': 3, 'tip': 4, 'slug': 5, 'mhat': 6, 'cul': 7, 'yem': 9,
+                'FB': 8}
 
 COLOURS_GROUP = {'agg-': '#d40808', 'lag_dis': '#e68209', 'tag_dis': '#ffb13d', 'tag': '#d1b30a', 'cud': '#4eb314',
                  'WT': '#0fa3ab', 'sFB': '#525252', 'prec': '#7010b0'}
-COLOURS_STAGE = {'no_agg': '#750000', 'stream': '#ff4a4a', 'lag': '#c27013', 'tag': '#c2b113', 'tip': '#46b019',
-                 'slug': '#018501', 'mhat': '#19b0a6', 'cul': '#1962b0', 'FB': '#7919b0', 'disappear': '#000000',
-                 'tag_spore': '#6e6e6e', 'NA': '#d9d9d9'}
+COLOURS_STAGE = {'NA': '#d9d9d9', 'no_agg': '#ed1c24', 'stream': '#985006',
+                 'lag': '#f97402', 'tag': '#d9d800', 'tip': '#66cf00', 'slug': '#008629', 'mhat': '#00c58f',
+                 'cul': '#0ff2ff', 'FB': '#00b2ff', 'yem': '#666666'}
 
 
 def plot_genegroup_similarity(retained_genes_dict, splitby='Strain', jaccard_or_p=True, n_all_genes: int = None,
@@ -468,7 +469,7 @@ def summary_classification(df: pd.DataFrame, statistic, split, macro_list: list 
         return pd.DataFrame(summary_df)
 
 
-def summary_classification_print_sort(summary, statistic, averages, groups,sort:bool='score'):
+def summary_classification_print_sort(summary, statistic, averages, groups, sort: bool = 'score'):
     """
     :param sort: Sort classes by 'score' or by 'groups' order
     """
@@ -479,19 +480,19 @@ def summary_classification_print_sort(summary, statistic, averages, groups,sort:
         row = row[1]
         print('%-12s%-6.2f%-3s%-3.2f' % (row['Group'], row['Mean'], '+-', row['SE']))
     print('Mean cross validation ' + statistic + ' of individual phenotypes and standard error')
-    if sort=='score':
-        sorted_summary=summary[summary.Group.isin(groups)].sort_values('Mean', ascending=False)
-    elif sort=='groups':
-        summary_groups=summary[summary.Group.isin(groups)].copy()
-        summary_groups.Group = pd.Categorical(summary_groups.Group, categories=groups,ordered=True)
-        sorted_summary=summary_groups.sort_values('Group')
+    if sort == 'score':
+        sorted_summary = summary[summary.Group.isin(groups)].sort_values('Mean', ascending=False)
+    elif sort == 'groups':
+        summary_groups = summary[summary.Group.isin(groups)].copy()
+        summary_groups.Group = pd.Categorical(summary_groups.Group, categories=groups, ordered=True)
+        sorted_summary = summary_groups.sort_values('Group')
     for row in sorted_summary.iterrows():
         row = row[1]
         print('%-12s%-6.2f%-3s%-3.2f' % (row['Group'], row['Mean'], '+-', row['SE']))
 
 
 # From https://datavizpyr.com/stripplot-with-altair-in-python/
-def scatter_catgory(df: pd.DataFrame, Y, categories=None, colour=None, shape=None, title: str = '',width=120):
+def scatter_catgory(df: pd.DataFrame, Y, categories=None, colour=None, shape=None, title: str = '', width=120):
     """
     Make scatter plot with categories on X axis and X jittering to reduce the overlap between 
     data points of the same category.
@@ -508,8 +509,10 @@ def scatter_catgory(df: pd.DataFrame, Y, categories=None, colour=None, shape=Non
     if shape is not None:
         params_dict['shape'] = alt.Shape(shape)
     if categories is not None:
-        params_dict['column'] = alt.Column(str(categories)+':O',sort=list(df[categories].unique()), header=alt.Header(
-            labelAngle=0, titleOrient='bottom', labelOrient='bottom', labelAlign='center', labelPadding=10))
+        params_dict['column'] = alt.Column(str(categories) + ':O', sort=list(df[categories].unique()),
+                                           header=alt.Header(
+                                               labelAngle=0, titleOrient='bottom', labelOrient='bottom',
+                                               labelAlign='center', labelPadding=10))
     return alt.Chart(df, width=width, title=title).mark_point(size=20).encode(
         x=alt.X('jitter:Q', title=None, axis=alt.Axis(values=[0], ticks=True, grid=False, labels=False),
                 scale=alt.Scale(), ),
@@ -520,35 +523,37 @@ def scatter_catgory(df: pd.DataFrame, Y, categories=None, colour=None, shape=Non
                                             # ).configure_view( stroke=None
                                             )
 
-def FPR(y_true,y_pred,average):
+
+def FPR(y_true, y_pred, average):
     """
     False positive rate for true and predicted labels
     :param average: None,'micro','macro' (as in sklearn)
     """
-    if average=='micro':
-        y_true=y_true.ravel()
-        y_pred=y_pred.ravel()
-    predicted_positive=y_pred==1
-    true_negative=y_true==0
-    false_positive_n=(predicted_positive & true_negative).sum(axis=0)
-    true_negative_n=true_negative.sum(axis=0)
-    fpr=false_positive_n/true_negative_n
-    if average=='macro':
-        fpr=fpr.mean()
+    if average == 'micro':
+        y_true = y_true.ravel()
+        y_pred = y_pred.ravel()
+    predicted_positive = y_pred == 1
+    true_negative = y_true == 0
+    false_positive_n = (predicted_positive & true_negative).sum(axis=0)
+    true_negative_n = true_negative.sum(axis=0)
+    fpr = false_positive_n / true_negative_n
+    if average == 'macro':
+        fpr = fpr.mean()
     return fpr
 
-def accuracy(y_true,y_pred,average):
+
+def accuracy(y_true, y_pred, average):
     """
     Accuracy for  true and predicted labels
     :param average: None,'micro','macro' (as in sklearn)
     """
-    if average=='micro':
-        y_true=y_true.ravel()
-        y_pred=y_pred.ravel()
-    correct=(y_true==y_pred).sum(axis=0)
-    acc=correct/y_true.shape[0]
-    if average=='macro':
-        acc=acc.mean()
+    if average == 'micro':
+        y_true = y_true.ravel()
+        y_pred = y_pred.ravel()
+    correct = (y_true == y_pred).sum(axis=0)
+    acc = correct / y_true.shape[0]
+    if average == 'macro':
+        acc = acc.mean()
     return acc
 
 
@@ -571,15 +576,27 @@ def get_dimredplot_param(data, col, default, to_mode=False):
 
 
 # Jitter function
-def rand_jitter(n, min, max):
-    dev = (max - min) / 200
-    return n + np.random.randn(1) * dev
+def rand_jitter(n, min, max, strength=0.005):
+    """
+
+    :param n:
+    :param min:
+    :param max:
+    :param strength: Larger strength leads to stronger jitter. Makes sense to be below 1 (adds random number scaled by
+    max-min and strength.
+    :return:
+    """
+    dev = (max - min) * strength
+    return n + random.uniform(-1, 1) * dev
 
 
 def dim_reduction_plot(plot_data: pd.DataFrame(), plot_by: str, fig_ax: tuple, order_column, colour_by_phenotype=False,
                        add_name=True, colours: dict = COLOURS_GROUP, colours_stage: dict = COLOURS_STAGE,
                        legend_groups='lower left', legend_phenotypes='upper right', fontsize=6,
-                       plot_order: list = None):
+                       plot_order: list = None, plot_points: bool = True, add_avg: bool = False, add_sem: bool = False,
+                       sem_alpha: float = 0.1, alternative_lines: dict = None, sep_text: tuple = (30, 30),
+                       phenotypes_list: list = PHENOTYPES, plot_lines: bool = True, jitter_all: bool = False,
+                       point_alpha=0.5, point_size=5, jitter_strength: tuple = (0.005, 0.005)):
     """
     For line width and alpha uses mode when plotting lines and legend
     Adds all colours to legend
@@ -591,6 +608,11 @@ def dim_reduction_plot(plot_data: pd.DataFrame(), plot_by: str, fig_ax: tuple, o
     :param colours:
     :param colours_stage:
     :param legend_group: position, if None do not plot
+    :param alternative_lines: Plot different lines than based on data points from plot_data.
+        Dict with keys being groups obtained by plot_by and values tuple of lists: ([xs],[ys]). Use this also for
+        text annotation.
+    :param sep_text: Smaller number increases the separation of text annotations. Tuple with (x,y), where x,y
+        denote values for x and y axis
     :return:
     """
     if plot_order is not None:
@@ -599,50 +621,90 @@ def dim_reduction_plot(plot_data: pd.DataFrame(), plot_by: str, fig_ax: tuple, o
     else:
         plot_order = plot_data[plot_by].unique()
 
-    # Either add one point per measurment (coloured by group) or multiple jitter points coloured by phenotypes
     fig, ax = fig_ax
-    if not colour_by_phenotype:
-        for row_name, point in plot_data.iterrows():
-            ax.scatter(point['x'], point['y'], s=get_dimredplot_param(point, 'size', 5),
-                       c=colours[point['Group']], alpha=get_dimredplot_param(point, 'alpha', 0.5, True))
-    # By phenotypes
-    else:
-        min_x = plot_data['x'].min()
-        min_y = plot_data['y'].min()
-        max_x = plot_data['x'].max()
-        max_y = plot_data['x'].max()
-        for point in plot_data.iterrows():
-            point = point[1]
-            phenotypes = point[PHENOTYPES]
-            if phenotypes.sum() < 1:
-                ax.scatter(point['x'], point['y'], s=get_dimredplot_param(point, 'size', 5),
-                           c=colours_stage['NA'], alpha=get_dimredplot_param(point, 'alpha', 0.5, True))
-            elif phenotypes.sum() == 1:
-                phenotype = phenotypes[phenotypes > 0].index[0]
-                ax.scatter(point['x'], point['y'], s=get_dimredplot_param(point, 'size', 5),
-                           c=colours_stage[phenotype], alpha=get_dimredplot_param(point, 'alpha', 0.5, True))
-            else:
-                first = True
-                for phenotype in PHENOTYPES:
-                    if phenotypes[phenotype] == 1:
-                        x = point['x']
-                        y = point['y']
-                        if not first:
-                            x = rand_jitter(n=x, min=min_x, max=max_x)
-                            y = rand_jitter(n=y, min=min_y, max=max_y)
-                        ax.scatter(x, y, s=get_dimredplot_param(point, 'size', 5), c=colours_stage[phenotype],
-                                   alpha=get_dimredplot_param(point, 'alpha', 0.5, True))
-                        first = False
+
+    if plot_points:
+        # Either add one point per measurment (coloured by group) or multiple jitter points coloured by phenotypes
+        if not colour_by_phenotype:
+            for row_name, point in plot_data.iterrows():
+                ax.scatter(point['x'], point['y'], s=get_dimredplot_param(point, 'size', point_size),
+                           c=colours[point['Group']], alpha=get_dimredplot_param(point, 'alpha', point_alpha, True),
+                           marker=get_dimredplot_param(point, 'shape', 'o', True))
+        # By phenotypes
+        else:
+            min_x = plot_data['x'].min()
+            min_y = plot_data['y'].min()
+            max_x = plot_data['x'].max()
+            max_y = plot_data['x'].max()
+            for point in plot_data.iterrows():
+                point = point[1]
+                phenotypes = point[phenotypes_list]
+
+                x = point['x']
+                y = point['y']
+                if jitter_all:
+                    x = rand_jitter(n=x, min=min_x, max=max_x, strength=jitter_strength[0])
+                    y = rand_jitter(n=y, min=min_y, max=max_y, strength=jitter_strength[1])
+
+                if phenotypes.sum() < 1:
+                    ax.scatter(x, y, s=get_dimredplot_param(point, 'size', point_size),
+                               c=colours_stage['NA'],
+                               alpha=get_dimredplot_param(point, 'alpha', point_alpha, True),
+                               marker=get_dimredplot_param(point, 'shape', 'o', True))
+                elif phenotypes.sum() == 1:
+                    phenotype = phenotypes[phenotypes > 0].index[0]
+                    ax.scatter(x, y, s=get_dimredplot_param(point, 'size', point_size),
+                               c=colours_stage[phenotype],
+                               alpha=get_dimredplot_param(point, 'alpha', point_alpha, True),
+                               marker=get_dimredplot_param(point, 'shape', 'o', True))
+                else:
+                    first = True
+                    for phenotype in phenotypes_list:
+                        if phenotypes[phenotype] == 1:
+                            if not first:
+                                x = rand_jitter(n=x, min=min_x, max=max_x, strength=jitter_strength[0])
+                                y = rand_jitter(n=y, min=min_y, max=max_y, strength=jitter_strength[1])
+                            ax.scatter(x, y, s=get_dimredplot_param(point, 'size', point_size),
+                                       c=colours_stage[phenotype],
+                                       alpha=get_dimredplot_param(point, 'alpha', point_alpha, True),
+                                       marker=get_dimredplot_param(point, 'shape', 'o', True))
+                            first = False
+
+    # Group for lines/names
+    grouped = plot_data.groupby(plot_by)
+
+    # Add SEM zones
+    if add_sem:
+        for name in plot_order:
+            data_rep = grouped.get_group(name).sort_values(order_column)
+            group = data_rep['Group'].values[0]
+            grouped_x = data_rep.groupby(['x'])
+            x_line = grouped_x.mean().index
+            y_line = grouped_x.mean()['y']
+            sem = grouped_x.sem()['y']
+            ax.fill_between(x_line, y_line - sem, y_line + sem, alpha=sem_alpha, color=colours[group])
 
     # Add line between replicates' measurments
-    groupped = plot_data.groupby(plot_by)
-    for name in plot_order:
-        data_rep = groupped.get_group(name).sort_values(order_column)
-        group = data_rep['Group'].values[0]
-        ax.plot(data_rep['x'], data_rep['y'], color=colours[group],
-                alpha=get_dimredplot_param(data_rep, 'alpha', 0.5, True),
-                linewidth=get_dimredplot_param(data_rep, 'width', 0.5, True),
-                linestyle=get_dimredplot_param(data_rep, 'linestyle', 'solid', True))
+    if plot_lines:
+        for name in plot_order:
+            data_rep = grouped.get_group(name).sort_values(order_column)
+            group = data_rep['Group'].values[0]
+
+            if alternative_lines is None:
+                if not add_avg:
+                    x_line = data_rep['x']
+                    y_line = data_rep['y']
+                else:
+                    grouped_x = data_rep.groupby(['x'])
+                    x_line = grouped_x.mean().index
+                    y_line = grouped_x.mean()['y']
+            else:
+                x_line, y_line = alternative_lines[data_rep[plot_by].values[0]]
+
+            ax.plot(x_line, y_line, color=colours[group],
+                    alpha=get_dimredplot_param(data_rep, 'alpha', 0.5, True),
+                    linewidth=get_dimredplot_param(data_rep, 'width', 0.5, True),
+                    linestyle=get_dimredplot_param(data_rep, 'linestyle', 'solid', True))
 
     # Add replicate name
     if add_name:
@@ -650,18 +712,28 @@ def dim_reduction_plot(plot_data: pd.DataFrame(), plot_by: str, fig_ax: tuple, o
         x_span = plot_data['x'].max() - plot_data['x'].min()
         y_span = plot_data['y'].max() - plot_data['y'].min()
         for name in plot_order:
-            data_rep = groupped.get_group(name).sort_values(order_column)
+            data_rep = grouped.get_group(name).sort_values(order_column)
             group = data_rep['Group'].values[0]
             idx = -1
-            x = float(data_rep['x'][idx]) + x_span / 500
-            y = float(data_rep['y'][idx]) + y_span / 500
-            while ((abs(used_text_positions['x'] - x) < (x_span / 30)).values &
-                   (abs(used_text_positions['y'] - y) < (y_span / 30)).values).any():
+            if alternative_lines is None:
+                if not add_avg:
+                    x_values = data_rep['x'].values
+                    y_values = data_rep['y'].values
+                else:
+                    grouped_x = data_rep.groupby(['x'])
+                    x_values = grouped_x.mean().index.values
+                    y_values = grouped_x.mean()['y'].values
+            else:
+                x_values, y_values = alternative_lines[data_rep[plot_by].values[0]]
+            x = float(x_values[idx]) + x_span / 500
+            y = float(y_values[idx]) + y_span / 500
+            while ((abs(used_text_positions['x'] - x) < (x_span / sep_text[0])).values &
+                   (abs(used_text_positions['y'] - y) < (y_span / sep_text[1])).values).any():
                 idx -= 1
-                x = float(data_rep['x'][idx]) + x_span / 500
-                y = float(data_rep['y'][idx]) + y_span / 500
+                x = float(x_values[idx]) + x_span / 500
+                y = float(y_values[idx]) + y_span / 500
             used_text_positions = used_text_positions.append({'x': x, 'y': y}, ignore_index=True)
-            ax.text(x, y, data_rep[plot_by][0], fontsize=fontsize, color=colours[group])
+            ax.text(x, y, data_rep[plot_by].values[0], fontsize=fontsize, color=colours[group])
 
     # Legends for groups and phenotypes
     alpha_legend = get_dimredplot_param(plot_data, 'alpha', 0.5)
@@ -673,7 +745,7 @@ def dim_reduction_plot(plot_data: pd.DataFrame(), plot_by: str, fig_ax: tuple, o
             # if name in plot_data['Group'].values:
             data_key = mpatches.Patch(color=colour, label=name, alpha=alpha_legend)
             patchList.append(data_key)
-        title = 'Group'
+        title = 'Phenotype'
         if colour_by_phenotype:
             title = title + ' (line)'
         legend_groups = ax.legend(handles=patchList, title=title, loc=legend_groups)
@@ -684,7 +756,7 @@ def dim_reduction_plot(plot_data: pd.DataFrame(), plot_by: str, fig_ax: tuple, o
             # if name in plot_data.columns:
             data_key = mpatches.Patch(color=colour, label=name, alpha=alpha_legend)
             patchList.append(data_key)
-        legend_stages = ax.legend(handles=patchList, title="Phenotype (point)", loc=legend_phenotypes)
+        legend_stages = ax.legend(handles=patchList, title="Stage (point)", loc=legend_phenotypes)
 
     if legend_groups is not None:
         ax.add_artist(legend_groups)
