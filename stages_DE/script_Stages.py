@@ -61,36 +61,36 @@ plt.gca().set_xticklabels(list(variation.keys()), rotation=90)
 averaged_data = pd.read_table(pathRegulons + 'genes_averaged_orange.tsv', index_col=0)
 
 # Averaged or unaveraged data or averaged_AX4 data
-#data=averaged_data[genes.index].T
-#data=averaged_data.query('Strain =="AX4"')[genes.index]
-data=genes[conditions.query('Strain =="AX4"')['Measurment']].copy().T
+# data=averaged_data[genes.index].T
+# data=averaged_data.query('Strain =="AX4"')[genes.index]
+data = genes[conditions.query('Strain =="AX4"')['Measurment']].copy().T
 
 # Select genes - variable across stages in AX4 or not 0 - works better with non null genes
 # Works better with all non null genes
-selected_genes=data.T[(data != 0).any(axis=0)].index
-#top_impulse = pd.read_table(pathReplicateImg + 'AX4_bestImpulse2000.tsv')
-#selected_genes=top_impulse.Gene.values
+selected_genes = data.T[(data != 0).any(axis=0)].index
+# top_impulse = pd.read_table(pathReplicateImg + 'AX4_bestImpulse2000.tsv')
+# selected_genes=top_impulse.Gene.values
 data = data[selected_genes]
 
 # Normalise data
 names = data.index
 gene_names = data.columns
 # Works better with log2+m0s1 than minmax scaling
-scaler=pp.StandardScaler()
-data = pd.DataFrame(scaler.fit_transform(np.log2(data+1)), index=names, columns=gene_names)
+scaler = pp.StandardScaler()
+data = pd.DataFrame(scaler.fit_transform(np.log2(data + 1)), index=names, columns=gene_names)
 # tSNE
-#tsne = make_tsne(data=data, perplexities_range=[50, 160], exaggerations=[1, 1], momentums=[0.6, 0.9], random_state=0)
+# tsne = make_tsne(data=data, perplexities_range=[50, 160], exaggerations=[1, 1], momentums=[0.6, 0.9], random_state=0)
 tsne = make_tsne(data=data, perplexities_range=[8, 30], exaggerations=[1, 1], momentums=[0.6, 0.9], random_state=0)
 # Data for plotting
-#plot_data = pd.DataFrame(tsne, index=data.index, columns=['x', 'y'])
+# plot_data = pd.DataFrame(tsne, index=data.index, columns=['x', 'y'])
 
 plot_data = pd.DataFrame()
-#For embedding other strains onto AX4
-mutants=list(conditions['Strain'].unique())
-#mutants.remove('AX4')
+# For embedding other strains onto AX4
+mutants = list(conditions['Strain'].unique())
+# mutants.remove('AX4')
 for mutant in mutants:
-    data = averaged_data.query('Strain =="'+mutant+'"')[selected_genes]
-    print(mutant,data.shape)
+    data = averaged_data.query('Strain =="' + mutant + '"')[selected_genes]
+    print(mutant, data.shape)
     names = data.index
     gene_names = data.columns
     # Works better with log2+m0s1 than minmax scaling
@@ -108,12 +108,11 @@ for mutant in mutants:
 plot_data = pd.concat([plot_data,
                        pd.DataFrame(conditions.values, index=conditions['Measurment'].values,
                                     columns=conditions.columns.values)], axis=1, sort=True)
-plot_by='Replicate'
-#For averaged data
-plot_data = pd.concat([plot_data,averaged_data[['Time','Strain']]], axis=1, sort=True)
-plot_data['Group']=[GROUPS[strain] for strain in plot_data['Strain']]
-plot_by='Strain'
-
+plot_by = 'Replicate'
+# For averaged data
+plot_data = pd.concat([plot_data, averaged_data[['Time', 'Strain']]], axis=1, sort=True)
+plot_data['Group'] = [GROUPS[strain] for strain in plot_data['Strain']]
+plot_by = 'Strain'
 
 plot_data['size'] = minmax_scale(plot_data['Time'], (3, 30))
 
@@ -444,20 +443,20 @@ conditions = conditions.drop(PHENOTYPES, axis=1)
 conditions = pd.concat([conditions, pd.DataFrame(np.zeros((conditions.shape[0], len(PHENOTYPES))), columns=PHENOTYPES)],
                        axis=1)
 # How to fill cells with no image (0 or -1 (for plotting/avg summary)):
-no_image_fill=0
+no_image_fill = 0
 
 no_seq = 0
 no_image = 0
 annotated = 0
-file='/home/karin/Documents/timeTrajectories/data/from_huston/phenotypes/Phenotype_milestone_strains.xlsx'
+file = '/home/karin/Documents/timeTrajectories/data/from_huston/phenotypes/Phenotype_milestone_strains.xlsx'
 wb = load_workbook(file, read_only=True)
 
-#files = [f for f in glob.glob('/home/karin/Documents/timeTrajectories/data/from_huston/phenotypes/' + "*.tab")]
-#for f in files:
-    #phenotypes = pd.read_table(f, index_col=0)
+# files = [f for f in glob.glob('/home/karin/Documents/timeTrajectories/data/from_huston/phenotypes/' + "*.tab")]
+# for f in files:
+# phenotypes = pd.read_table(f, index_col=0)
 for strain in conditions['Strain'].unique():
     if strain in wb.sheetnames:
-        phenotypes=pd.read_excel(file,sheet_name=strain,index_col=0)
+        phenotypes = pd.read_excel(file, sheet_name=strain, index_col=0)
         phenotypes = phenotypes.replace('no image', np.nan)
         for time in phenotypes.index:
             for replicate in phenotypes.columns:
@@ -488,7 +487,7 @@ for strain in conditions['Strain'].unique():
                         annotated += 1
                         for pheno in val:
                             if pheno not in PHENOTYPES:
-                                #print(f, pheno, time, replicate)
+                                # print(f, pheno, time, replicate)
                                 print(strain, pheno, time, replicate)
                             else:
                                 conditions.at[idx_name_conditions, pheno] = 1
@@ -496,23 +495,22 @@ for strain in conditions['Strain'].unique():
                     else:
                         no_image += 1
                         conditions.loc[idx_name_conditions, PHENOTYPES] = [no_image_fill] * len(PHENOTYPES)
-                        #print(val, replicate, time)
+                        # print(val, replicate, time)
 
                 else:
                     if type(val) == str:
                         print('No sample for', replicate, time)
                         no_seq += 1
     else:
-        print('Strain not in file:',strain)
-        for idx_name_conditions in conditions.query('Strain =="'+strain+'"').index:
+        print('Strain not in file:', strain)
+        for idx_name_conditions in conditions.query('Strain =="' + strain + '"').index:
             no_image += 1
             conditions.loc[idx_name_conditions, PHENOTYPES] = [no_image_fill] * len(PHENOTYPES)
 
-
-if no_image_fill ==-1:
+if no_image_fill == -1:
     conditions.to_csv(dataPath + 'conditions_noImage_mergedGenes.tsv', sep='\t', index=False)
-elif no_image_fill ==0:
-# Make all 0 times no_agg if not already filled
+elif no_image_fill == 0:
+    # Make all 0 times no_agg if not already filled
     phenotypes_notnoag = PHENOTYPES.copy()
     phenotypes_notnoag.remove('no_agg')
     for idx, sample in conditions.iterrows():
@@ -529,12 +527,27 @@ elif no_image_fill ==0:
 
 # ***********************************************
 # ****** Averaged stages - for a timepoint add all stages present in each replicate
-conditions_noimg = conditions = pd.read_csv(dataPath + 'conditions_noImage_mergedGenes.tsv', sep='\t', index_col=None)
-phenotypes = ['no_agg', 'stream', 'lag', 'tag', 'tip', 'slug', 'mhat', 'cul',  'FB','yem']
+phenotypes = ['no_agg', 'stream', 'lag', 'tag', 'tip', 'slug', 'mhat', 'cul', 'FB', 'yem']
+
+
+def set_infered(averaged: dict, infered_stages: list):
+    for col in phenotypes:
+        fill = 'no'
+        if col in infered_stages:
+            fill = 'no image'
+        averaged[col] = fill
+
+
+def avgsample_name(group):
+    return group[0] + '_' + str(group[1])
+
+
+conditions_noimg = conditions = pd.read_csv(dataPath + 'conditions_noImage_mergedGenes.tsv', sep='\t',
+                                            index_col=None).sort_values(['Strain', 'Time'])
 averaged_stages = pd.DataFrame(columns=phenotypes)
 grouped = conditions_noimg.groupby(['Strain', 'Time'])
 for group, data in grouped:
-    name = group[0] + '_' + str(group[1])
+    name = avgsample_name(group)
     averaged = {}
     # max_rep=conditions.query('Strain == "'+group[0]+'"')['Replicate'].unique().shape[0]
     for col in phenotypes:
@@ -544,9 +557,9 @@ for group, data in grouped:
         # Decide if combination of 0 an -1 is unknown or known - there could be this phenotype in the sample without image
         # Use this instead of the below to put unknown only if all are unknown (so not if some are 'no')
         elif (pheno_data == -1).all():
-           averaged[col] = 'no image'
+            averaged[col] = 'no image'
         else:
-           averaged[col] = 'no'
+            averaged[col] = 'no'
 
         # If any unknown or less than all replicates put unknown - NOT as we do not have expression for them either
         # elif (pheno_data == 0).all() and pheno_data.shape[0]==max_rep:
@@ -554,6 +567,28 @@ for group, data in grouped:
         #     averaged[col] = 'no'
         # else:
         #     averaged[col] = 'unknown'
+
+    # Modify data with inferred stages if there is no image at that time point (except for strains with no data at all)
+    time = group[1]
+    strain = group[0]
+    # Not strain=='ac3PkaCoe' and time==0 as this does not remove this strain from other comparisons
+    if strain == 'ac3PkaCoe':
+        if time ==0:
+            set_infered(averaged=averaged, infered_stages=['no_agg'])
+    elif strain == 'gtaC':
+        set_infered(averaged=averaged, infered_stages=['no_agg'])
+    else:
+        if (np.array(list(averaged.values()))=='no image').all():
+            if time == 0:
+                set_infered(averaged=averaged, infered_stages=['no_agg'])
+            else:
+                strain_times = conditions_noimg.query('Strain =="' + strain + '"')['Time'].unique()
+                strain_times.sort()
+                previous_time = int(strain_times[np.argwhere(strain_times == time) - 1])
+                previous_data = averaged_stages.loc[avgsample_name((strain, previous_time)),:]
+                #Previous time not a definite no - set also this time to this
+                previous_stages=list(previous_data[previous_data !='no' ].index)
+                set_infered(averaged=averaged, infered_stages=previous_stages)
 
     averaged_stages = averaged_stages.append(pd.DataFrame(averaged, index=[name]), sort=True)
 averaged_stages.index.name = 'Name'
@@ -774,4 +809,3 @@ for params in params_grid:
 
 # Run clus
 # java -jar /home/karin/Documents/Clus/Clus.jar -xval -forest /home/karin/Documents/timeTrajectories/data/stages/classification/clus/stages.s  > stages_out.txt  2>stages_error.txt
-

@@ -35,8 +35,8 @@ rownames(conditions)<-make.names(rownames(conditions))
 #Load data normalised
 genesNorm<-read.table(paste(dataPathNormalised,"mergedGenes_RPKUM.tsv",sep=''), header=TRUE,row.names=1, sep="\t")
 
-STAGES<-c('no_agg','stream','lag','tag','tip','slug','mhat','cul','FB','disappear','tag_spore')
-PHENOTYPES_ORDERED=c('no_agg','disappear', 'stream', 'lag', 'tag', 'tip', 'slug', 'mhat', 'cul', 'FB','tag_spore')
+STAGES<-c('no_agg','stream','lag','tag','tip','slug','mhat','cul','FB','yem')
+PHENOTYPES_ORDERED=c('no_agg', 'stream', 'lag', 'tag', 'tip', 'slug', 'mhat', 'cul', 'FB','yem')
 PHENOTYPES_X=data.frame(Phenotype=PHENOTYPES_ORDERED,X=c(1:length(PHENOTYPES_ORDERED)))
 
 #For testing - add developmental column to conditions, use AX4,comH,tagB replicates and subset genes to 500:'
@@ -201,8 +201,10 @@ for (i in (1:(length(stages)-1))){
 #*** Find stage specific genes 1 vs all adjusting for replicates (Do in WT or all)
 #Uses only replicates present in both stage and rest group
 # For stage A use timepoints with phenotypes A and A/B for test and everything without A as control (B, B/C)
-#conditions_test=conditions
-conditions_test=conditions[conditions$Group=='WT',]
+
+#WT or all - also change the path for saving below
+conditions_test=conditions
+#conditions_test=conditions[conditions$Group=='WT',]
 conditions_test=conditions_test[rowSums(conditions_test[, PHENOTYPES_ORDERED])>0, ]
 for (stage in STAGES){
   print(stage)
@@ -220,7 +222,7 @@ for (stage in STAGES){
     conditions_sub<-rbind(test,control)
     genes_sub<-genes[,rownames(conditions_sub)]
     res<-runDeSeq2(conditions_sub,genes_sub,case=stage,control='other',design=~Replicate+Comparison,main_lvl='Comparison',padj=0.05,logFC=1,
-                   path='/home/karin/Documents/timeTrajectories/data/deTime/stage_vs_other/WT/')
+                   path='/home/karin/Documents/timeTrajectories/data/deTime/stage_vs_other/')
   } 
 } 
 

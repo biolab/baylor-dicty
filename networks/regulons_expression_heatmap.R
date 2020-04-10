@@ -58,8 +58,8 @@ strain_order<-as.vector(read.table(paste(path_strain_order,"strain_order.tsv",se
 #** Regulon groups tab file: First column lists genes and 
 #** a column named Cluster specifying cluster/regulon of each gene 
 regulons=read.table(paste(path_clusters,
-                          #"clusters/mergedGenes_minExpressed0.990.1Strains1Min1Max18_clustersAX4Louvain0.4m0s1log.tab"
-                          "clusters/mergedGenes_minExpressed0.990.1Strains1Min1Max18_clustersLouvain0.4minmaxNologPCA30kN30.tab"
+                          "clusters/mergedGenes_minExpressed0.990.1Strains1Min1Max18_clustersAX4Louvain0.4m0s1log.tab"
+                          #"clusters/mergedGenes_minExpressed0.990.1Strains1Min1Max18_clustersLouvain0.4minmaxNologPCA30kN30.tab"
                           ,sep=''),header=TRUE, sep="\t")
 #Name the first column (should contain genes
 colnames(regulons)[1]<-'Gene'
@@ -277,6 +277,7 @@ colours_regulons2=c('#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911
                     '#80a2ff','#e6beff')
 
 colours_regulons2_map=colours_regulons2[1:length(unique(regulons2$Cluster))]
+#Unique is already ordered as first unique elements
 names(colours_regulons2_map)<-unique(regulons2$Cluster)
 first=TRUE
 for (cluster in cluster_order$Cluster){
