@@ -49,6 +49,7 @@ buildDDS<-function(conditions,genes,t=NULL,case=NULL,ref,design,main_lvl=NULL,co
 # Testd DE with DeSeq2
 testDE<-function(dds,sample,ref,padjSave,logFCSave,path=NULL,time=NULL,main_lvl='Strain'){
   res <- results(dds,contrast=c(main_lvl, sample, ref),parallel = TRUE)
+  print(summary(res))
   resNN <- na.omit(res)
   resOrder<-resNN[order(resNN$padj),]
   resFilter<-resOrder[resOrder$padj<=padjSave & abs(resOrder$log2FoldChange)>=logFCSave,]

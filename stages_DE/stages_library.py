@@ -558,6 +558,15 @@ def accuracy(y_true, y_pred, average):
 
 
 def get_dimredplot_param(data, col, default, to_mode=False):
+    """
+    Based on data datatable (information for single/multiple points) find mode of the parameter or use default
+    if there is no column for the parameter.
+    :param data:
+    :param col:
+    :param default:
+    :param to_mode:
+    :return:
+    """
     if isinstance(data, pd.DataFrame):
         if col in data.columns:
             result = data[col]
@@ -578,10 +587,10 @@ def get_dimredplot_param(data, col, default, to_mode=False):
 # Jitter function
 def rand_jitter(n, min, max, strength=0.005):
     """
-
-    :param n:
-    :param min:
-    :param max:
+    Number is jittered based on: n + randomN * (max-min), where -1 <= randomN <= 1
+    :param n: Number to jitter
+    :param min: Used to determine size of jittering
+    :param max: Used to determine size of jittering
     :param strength: Larger strength leads to stronger jitter. Makes sense to be below 1 (adds random number scaled by
     max-min and strength.
     :return:
@@ -598,22 +607,46 @@ def dim_reduction_plot(plot_data: pd.DataFrame(), plot_by: str, fig_ax: tuple, o
                        phenotypes_list: list = PHENOTYPES, plot_lines: bool = True, jitter_all: bool = False,
                        point_alpha=0.5, point_size=5, jitter_strength: tuple = (0.005, 0.005)):
     """
-    For line width and alpha uses mode when plotting lines and legend
-    Adds all colours to legend
-    :param plot_data:
-    :param plot_by:
-    :param fig_ax:
-    :param colour_by_phenotype:
-    :param add_name:
-    :param colours:
-    :param colours_stage:
-    :param legend_group: position, if None do not plot
+    Plots PC1 vs time (or tSNE - not tested averages and SEM) of strains, phenotype groups and developmental stages.
+    For plotting parameters that are not for individual points (e.g. line width, alpha)
+    uses mode when plotting lines and legend.
+    Adds all colours to legend.
+    :param plot_data: Data of individual 'points'. Must have columns: 'x','y', 'Group' (for colouring),
+        order_column (how to order points in line),
+        and a column matching the split_by parameter (for line plotting and names).
+        Can have 'size' (point size - default param Point_size),  'width' (line width),
+        'alpha' (for plotting - default for points is point_alpha), 'linestyle', 'shape' (point shape),
+        and phenotypes columns (matching phenotypes_list, valued 0 (absent) or 1 (present)).
+    :param plot_by: Plot lines and text annotation based on this column.
+    :param fig_ax: Tupple  (fig,ax) with plt elements used for plotting
+    :param order_column: Order of plotting of groups from split_by, first is pliotted first.
+    :param colour_by_phenotype: Whether to colours samples by phenotype. If false colour by 'Group' colour.
+    :param add_name: Add text with name from plot_by groups.
+    :param colours: Colours for 'Group'. Key: 'Group' value, value: colour.
+    :param colours_stage: Colours for plotting stages, used if colour_by_phenotype=True. Dict with key: from
+        phenotypes_list and value: colour.
+    :param legend_groups: Position for Group legend, if None do not plot
+    :param legend_phenotypes: Position for stages legend, if None do not plot
+    :param  fontsize: Fontsize for annotation.
+    :param plot_order: Plot lines and SEMs in this order. Matching groups from split_by.
+    :param plot_points: Whether to plot points.
+    :param add_avg: Average points with same x value (used for plotting lines and text positioning).
+    :param add_sem: Plot SEM zones.
+    :param sem_alpha: Alpha for SEM zone.
+    :param phenotypes_list: List of phenotypes used to find stage columns in pplot_data
     :param alternative_lines: Plot different lines than based on data points from plot_data.
         Dict with keys being groups obtained by plot_by and values tuple of lists: ([xs],[ys]). Use this also for
         text annotation.
+    :param plot_lines: Whether to plot lines. Lines are plotted between points (rows) in plot_data, ordered by
+        order_column
+    :param jitter_all: Jitter all points. Else jitter only when multiple stages are annotated to same point, not
+        jittering the first stage.
+    :param point_alpha:Default alpha for points used if alpha column absent
+    :param point_size:Default size for points used if size column absent
+    :param jitter_strength: Tuple (strength_x, strength_y) used to jitter points. Use floats << 1 - based on data range.
+        Higher -> more jittering.
     :param sep_text: Smaller number increases the separation of text annotations. Tuple with (x,y), where x,y
         denote values for x and y axis
-    :return:
     """
     if plot_order is not None:
         plot_data = plot_data.loc[
