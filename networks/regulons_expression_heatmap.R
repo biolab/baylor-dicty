@@ -58,8 +58,8 @@ strain_order<-as.vector(read.table(paste(path_strain_order,"strain_order.tsv",se
 #** Regulon groups tab file: First column lists genes and 
 #** a column named Cluster specifying cluster/regulon of each gene 
 regulons=read.table(paste(path_clusters,
-                          "clusters/mergedGenes_minExpressed0.990.1Strains1Min1Max18_clustersAX4Louvain0.4m0s1log.tab"
-                          #"clusters/mergedGenes_minExpressed0.990.1Strains1Min1Max18_clustersLouvain0.4minmaxNologPCA30kN30.tab"
+                          #"clusters/mergedGenes_minExpressed0.990.1Strains1Min1Max18_clustersAX4Louvain0.4m0s1log.tab"
+                          "clusters/mergedGenes_minExpressed0.990.1Strains1Min1Max18_clustersLouvain0.4minmaxNologPCA30kN30.tab"
                           ,sep=''),header=TRUE, sep="\t")
 #Name the first column (should contain genes
 colnames(regulons)[1]<-'Gene'
@@ -241,6 +241,30 @@ sort_clusters <- function(regulons,expression_height=expression_height,expressio
   cluster_order<-data.frame('Cluster'=clusters,'Pattern_mean'=cluster_patterns_mean,'Pattern_median'=cluster_patterns_median)
   cluster_order<-cluster_order[order(cluster_order$Pattern_median,cluster_order$Pattern_mean),]
   return(cluster_order)
+}
+
+#Sort clusters based on peak time in  average of cluster (on averaged scaled data) in AX4
+sort_clusters_expression <- function(regulons,expression){
+  
+  cluster_max<-c()
+  
+  expression<-expression[expression$Strain=='AX4',]
+  times_AX4<-expression$Time
+  #Sort by name so that if overlaping pattern they are still sorted
+  clusters<-unique(regulons$Cluster)
+  vals <- as.numeric(gsub("C","", clusters))
+  clusters<-clusters[order(vals)]
+  for (cluster in clusters){
+    genes=as.character(regulons[regulons$Cluster==cluster,'Gene'])
+    expression_cluster=t(expression[,genes])
+    mean_expression<-colMeans(expression_cluster)
+    max_time<-times_AX4[mean_expression==max(mean_expression)][1]
+    cluster_max<-append(cluster_max,max_time)
+  }
+  cluster_order<-data.frame('Cluster'=clusters,'Max'=cluster_max)
+  cluster_order<-cluster_order[order(cluster_order$Max),]
+  return(cluster_order)
+  
 }
 
 cluster_order<-sort_clusters(regulons=regulons,expression_height=expression_height,expression_patterns=expression_patterns,pattern_type='Peak')
