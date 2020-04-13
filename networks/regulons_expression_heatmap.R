@@ -58,8 +58,8 @@ strain_order<-as.vector(read.table(paste(path_strain_order,"strain_order.tsv",se
 #** Regulon groups tab file: First column lists genes and 
 #** a column named Cluster specifying cluster/regulon of each gene 
 regulons=read.table(paste(path_clusters,
-                          "clusters/mergedGenes_minExpressed0.990.1Strains1Min1Max18_clustersAX4Louvain0.4m0s1log.tab"
-                          #"clusters/mergedGenes_minExpressed0.990.1Strains1Min1Max18_clustersLouvain0.4minmaxNologPCA30kN30.tab"
+                          #"clusters/mergedGenes_minExpressed0.990.1Strains1Min1Max18_clustersAX4Louvain0.4m0s1log.tab"
+                          "clusters/mergedGenes_minExpressed0.990.1Strains1Min1Max18_clustersLouvain0.4minmaxNologPCA30kN30.tab"
                           ,sep=''),header=TRUE, sep="\t")
 #Name the first column (should contain genes
 colnames(regulons)[1]<-'Gene'
@@ -171,7 +171,7 @@ ht_list=Heatmap(t(avg_expression['Time']), height = unit(top_annotation_height, 
                                                                                     #group_cols_ordered, 
                                                                                     text_cols_ordered,
                                                                                   fontsize = cluster_font
-                                                                                  ,fontface='bold'
+                                                                                  #,fontface='bold'
                                        ),show_name = TRUE),
                   Strain = anno_block(gp = 
                                             # Background colour; fill: color, col: border                               
@@ -210,9 +210,13 @@ ht_list=ht_list %v% ht_phenotype
 #Expression heatmap
 
 #Sort clusters based on average peak time in AX4
-sort_clusters <- function(regulons,expression_height=expression_height,expression_patterns=expression_patterns,pattern_type='Peak') {
-  cluster_patterns<-c()
+sort_clusters <- function(regulons,expression_height=expression_height,expression_patterns=expression_patterns,pattern_type='Peak',
+                          use_height=FALSE) {
+  cluster_patterns_mean<-c()
+  cluster_patterns_median<-c()
   #Sort clusters by name (for clusters that have too low AX4 expression)
+  #These clusters are all given max time, but added to df based on their name, so they will stay in 
+  #name-order after sorting by time 
   clusters<-unique(regulons$Cluster)
   vals <- as.numeric(gsub("C","", clusters))
   clusters<-clusters[order(vals)]
@@ -221,19 +225,46 @@ sort_clusters <- function(regulons,expression_height=expression_height,expressio
     genes=as.character(regulons[regulons$Cluster==cluster,'Gene'])
     # Check how many genes were termed unexpressed
     expressed<-mean(expression_height[genes,])
-    if (expressed > 0.5){
+    if (expressed > 0.5 || !use_height){
     #** Select column from expression_patterns to sort clusters on
-      pattern<-mean(expression_patterns[genes,pattern_type])
-      cluster_patterns<-c(cluster_patterns,pattern)
+      pattern_mean<-mean(expression_patterns[genes,pattern_type])
+      pattern_median<-median(expression_patterns[genes,pattern_type])
+      cluster_patterns_mean<-c(cluster_patterns_mean,pattern_mean)
+      cluster_patterns_median<-c(cluster_patterns_median,pattern_median)
     }else{
       #If manly unexpressed in AX4 put it at the end
-      cluster_patterns<-c(cluster_patterns,max(times))
+      cluster_patterns_mean<-c(cluster_patterns,max(times))
+      cluster_patterns_median<-c(cluster_patterns,max(times))
     }
   }
   #Sort
-  cluster_order<-data.frame('Cluster'=clusters,'Pattern'=cluster_patterns)
-  cluster_order<-cluster_order[order(cluster_order$Pattern),]
+  cluster_order<-data.frame('Cluster'=clusters,'Pattern_mean'=cluster_patterns_mean,'Pattern_median'=cluster_patterns_median)
+  cluster_order<-cluster_order[order(cluster_order$Pattern_median,cluster_order$Pattern_mean),]
   return(cluster_order)
+}
+
+#Sort clusters based on peak time in  average of cluster (on averaged scaled data) in AX4
+sort_clusters_expression <- function(regulons,expression){
+  
+  cluster_max<-c()
+  
+  expression<-expression[expression$Strain=='AX4',]
+  times_AX4<-expression$Time
+  #Sort by name so that if overlaping pattern they are still sorted
+  clusters<-unique(regulons$Cluster)
+  vals <- as.numeric(gsub("C","", clusters))
+  clusters<-clusters[order(vals)]
+  for (cluster in clusters){
+    genes=as.character(regulons[regulons$Cluster==cluster,'Gene'])
+    expression_cluster=t(expression[,genes])
+    mean_expression<-colMeans(expression_cluster)
+    max_time<-times_AX4[mean_expression==max(mean_expression)][1]
+    cluster_max<-append(cluster_max,max_time)
+  }
+  cluster_order<-data.frame('Cluster'=clusters,'Max'=cluster_max)
+  cluster_order<-cluster_order[order(cluster_order$Max),]
+  return(cluster_order)
+  
 }
 
 cluster_order<-sort_clusters(regulons=regulons,expression_height=expression_height,expression_patterns=expression_patterns,pattern_type='Peak')

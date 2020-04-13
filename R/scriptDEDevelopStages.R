@@ -202,6 +202,8 @@ for (i in (1:(length(stages)-1))){
 #Uses only replicates present in both stage and rest group
 # For stage A use timepoints with phenotypes A and A/B for test and everything without A as control (B, B/C)
 
+#Use replicate as confounder - if FALSE use all data (not only those reps that in stage of interest and in other)
+adjust_rep=FALSE
 #WT or all - also change the path for saving below
 conditions_test=conditions
 #conditions_test=conditions[conditions$Group=='WT',]
@@ -214,14 +216,19 @@ for (stage in STAGES){
     #single_stage1<-rowSums(test[,STAGES])==1
     #test<-test[single_stage1,]
     control<-conditions_test[conditions_test[stage]!=1,]
-    replicates<-intersect(control$Replicate,test$Replicate)
-    test<-test[test$Replicate %in% replicates,]
-    control<-control[control$Replicate %in% replicates,]
+    if (adjust_rep){
+      replicates<-intersect(control$Replicate,test$Replicate)
+      test<-test[test$Replicate %in% replicates,]
+      control<-control[control$Replicate %in% replicates,]
+    }
     test$Comparison<-rep(stage,dim(test)[1])
     control$Comparison<-rep('other',dim(control)[1])
     conditions_sub<-rbind(test,control)
     genes_sub<-genes[,rownames(conditions_sub)]
-    res<-runDeSeq2(conditions_sub,genes_sub,case=stage,control='other',design=~Replicate+Comparison,main_lvl='Comparison',padj=0.05,logFC=1,
+    design_formula=~Replicate+Comparison
+    if (!adjust_rep) design_formula=~Comparison
+    print(design_formula)
+    res<-runDeSeq2(conditions_sub,genes_sub,case=stage,control='other',design=design_formula,main_lvl='Comparison',padj=0.05,logFC=1,
                    path='/home/karin/Documents/timeTrajectories/data/deTime/stage_vs_other/')
   } 
 } 
