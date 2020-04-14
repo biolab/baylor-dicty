@@ -35,7 +35,7 @@ GROUP_DF = pd.DataFrame(GROUP_DF)
 # GROUP_DF.to_csv('/home/karin/Documents/timeTrajectories/data/regulons/selected_genes/group_df.tsv',sep='\t',
 # index=False)
 
-PHENOTYPES = ['no_agg', 'stream', 'lag', 'tag', 'tip', 'slug', 'mhat', 'cul', 'yem', 'FB']
+PHENOTYPES = ['no_agg', 'stream', 'lag', 'tag', 'tip', 'slug', 'mhat', 'cul',  'FB','yem']
 PHENOTYPES_X = {'no_agg': 0, 'stream': 1, 'lag': 2, 'tag': 3, 'tip': 4, 'slug': 5, 'mhat': 6, 'cul': 7, 'yem': 9,
                 'FB': 8}
 

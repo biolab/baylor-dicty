@@ -1,3 +1,5 @@
+from operator import index
+
 import matplotlib.pyplot as plt
 import glob
 import pandas as pd
@@ -33,6 +35,7 @@ if lab:
     pathClassification = '/home/karin/Documents/timeTrajectories/data/stages/classification/'
     pathRegulons = '/home/karin/Documents/timeTrajectories/data/regulons/'
     pathReplicateImg = '/home/karin/Documents/timeTrajectories/data/replicate_image/'
+    path_deOvR='/home/karin/Documents/timeTrajectories/data/deTime/stage_vs_other/'
 
 else:
     dataPath = '/home/karin/Documents/DDiscoideum/data/RPKUM/'
@@ -809,3 +812,18 @@ for params in params_grid:
 
 # Run clus
 # java -jar /home/karin/Documents/Clus/Clus.jar -xval -forest /home/karin/Documents/timeTrajectories/data/stages/classification/clus/stages.s  > stages_out.txt  2>stages_error.txt
+
+#********************************
+#******** Parse DE one vs rest results into a single file
+#folder='nobatchrep'
+folder='WT_batchrep'
+files = [f for f in glob.glob(path_deOvR+folder+'/' + "*.tsv")]
+combined=pd.DataFrame()
+for stage in PHENOTYPES:
+    file=path_deOvR+folder+'/DE_'+stage+'_ref_other_padj0.05_lFC1.tsv'
+    if file in files:
+        #print(stage)
+        data=pd.read_table(file,index_col=0)
+        data['Stage']=stage
+        combined=pd.concat([combined,data])
+combined.to_csv(path_deOvR+folder+'_combined.tsv',sep='\t')

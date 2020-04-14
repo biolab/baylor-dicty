@@ -242,7 +242,7 @@ sort_clusters <- function(regulons,expression_height=expression_height,expressio
   cluster_order<-cluster_order[order(cluster_order$Pattern_median,cluster_order$Pattern_mean),]
   return(cluster_order)
 }
-
+#UNUSED
 #Sort clusters based on peak time in  average of cluster (on averaged scaled data) in AX4
 sort_clusters_expression <- function(regulons,expression){
   
@@ -324,7 +324,7 @@ for (cluster in cluster_order$Cluster){
   # The as.character ensures that the code works with numeric clusters
   cluster_anno=gsub('C','',as.character(cluster))
   # Rename cluster number to a letter
-  cluster_anno=LETTERS[as.integer(cluster_anno)]
+  #cluster_anno=LETTERS[as.integer(cluster_anno)]
   
   heatmap=Heatmap(t(avg_expression[,genes]),cluster_columns = FALSE,cluster_rows = FALSE,show_column_names = FALSE,
                   show_row_names = FALSE, col=viridis(256),column_title=NULL, 
@@ -344,6 +344,15 @@ for (cluster in cluster_order$Cluster){
 #Plots the combined heatmap 
 ht_list
 
-
-
+#***************************
+#**** Update regulons numbers anf ile based on order in heatmap
+library(purrr)
+cluster_map<-c(paste('C',c(1:nrow(cluster_order)),sep=''))
+names(cluster_map)<-as.vector(cluster_order$Cluster)
+remap_cluster<-function(x){return(cluster_map[[x]])}
+regulons['Cluster']<-unlist(map(as.character(regulons$Cluster),remap_cluster))
+write.table(regulons,paste(path_clusters,
+                          "clusters/mergedGenes_minExpressed0.990.1Strains1Min1Max18_clustersAX4Louvain0.4m0s1log.tab"
+                          #"clusters/mergedGenes_minExpressed0.990.1Strains1Min1Max18_clustersLouvain0.4minmaxNologPCA30kN30.tab"
+                          ,sep=''),row.names=FALSE, sep="\t")
   
