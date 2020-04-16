@@ -35,7 +35,7 @@ GROUP_DF = pd.DataFrame(GROUP_DF)
 # GROUP_DF.to_csv('/home/karin/Documents/timeTrajectories/data/regulons/selected_genes/group_df.tsv',sep='\t',
 # index=False)
 
-PHENOTYPES = ['no_agg', 'stream', 'lag', 'tag', 'tip', 'slug', 'mhat', 'cul',  'FB','yem']
+PHENOTYPES = ['no_agg', 'stream', 'lag', 'tag', 'tip', 'slug', 'mhat', 'cul', 'FB', 'yem']
 PHENOTYPES_X = {'no_agg': 0, 'stream': 1, 'lag': 2, 'tag': 3, 'tip': 4, 'slug': 5, 'mhat': 6, 'cul': 7, 'yem': 9,
                 'FB': 8}
 
@@ -247,12 +247,13 @@ def compare_gene_scores(quantile_normalised: pd.DataFrame, test: str, alternativ
         First tow elements are list of strain groups for comparison (e.g. strain groups in element1 vs strain groups in
         element 2). The strain groups must be given as in X column of GROUP_DF. The third element is name of the
         comparison that will be reported. If this is None the select_single_comparsion must be specified.
+        If select_single_comparison ignores the name.
     :param select_single_comparsion: Order of strain groups to select single separation threshold to split groups in
         two parts (low and high neighbour similarity). This is a list where first element is a list of all strain groups
         as in X column of GROPUP_DF, groups should be ordered (e.g. by development). Second and third elements are lists
          of groups that should not be split up (e.g. references, can be just first and last group from the list of
          all groups. The splitting is performed between any two groups in the specified order so that the reference
-         groups are not split.
+         groups are not split. Uses group_splits if specified
     :param test: 'u' for mannwhitneyu or 't' for t-test.
     :param alternative: less (first group has lesser values than the second), greater, two-sided
     :param comparison_selection: Used if comparisons are selected based onv select_single_comparsion. How to separate
@@ -263,6 +264,13 @@ def compare_gene_scores(quantile_normalised: pd.DataFrame, test: str, alternativ
         elements - min of two differences: mean2-mean of the last strain group in comparison group1 and  mean of first
         strain group in comparison group2 -mean1; last and first used as specified in group_splits).
     """
+    #*** Comparison selection:
+    # Problem of GAM: does not take into account if high group is very consistent/not - the high group is the one that
+    # is important - eg low group is very variable (and this variability is less informative as similarity scores
+    # for unexpressed genes are less reliable) + last group (eg prec) may be low, but if two groups are in 'unsplit'
+    # (eg WT, prec) this is not taken into account.
+    # Problem of std - if high group has very low std a group that should still be high will not be - thus
+    # use diffs to high/low means  if std is very small
     results = []
     if select_single_comparsion is None and group_splits is None:
         raise ValueError('select_single_comparsion or group_splits must be specified')
@@ -272,15 +280,19 @@ def compare_gene_scores(quantile_normalised: pd.DataFrame, test: str, alternativ
         select_single_comparsion = select_single_comparsion[0]
 
         groups = []
-        g1 = []
-        for group in select_single_comparsion:
-            g1.append(group)
-            g2 = [x for x in select_single_comparsion if x not in g1]
-            # print(g1,g2)
-            if set(unsplit1).issubset(g1) and set(unsplit2).issubset(g2):
-                # print(high,low)
-                groups.append([g1.copy(), g2.copy()])
-                # print(groups)
+        if group_splits is None:
+            g1 = []
+            for group in select_single_comparsion:
+                g1.append(group)
+                g2 = [x for x in select_single_comparsion if x not in g1]
+                # print(g1,g2)
+                if set(unsplit1).issubset(g1) and set(unsplit2).issubset(g2):
+                    # print(high,low)
+                    groups.append([g1.copy(), g2.copy()])
+                    # print(groups)
+        else:
+            for g1, g2, name in group_splits:
+                groups.append([g1, g2])
 
     for gene in quantile_normalised.index:
         # print(gene)
@@ -299,6 +311,8 @@ def compare_gene_scores(quantile_normalised: pd.DataFrame, test: str, alternativ
             # This was used to select the best group split when first groups starts to deviate too much from the higher
             # (similarity) set of groups - either based on the difference to the mean of low/high or too many high's
             # standard deviations away from the high
+            # Std - break if mean group more than 2std away from mean high; if 2std<=0.1 instead break only if
+            # mean closer to mean low than mean high
             if comparison_selection in ['closest', 'std']:
                 stop = False
                 for groups12 in groups[::order]:
@@ -312,9 +326,9 @@ def compare_gene_scores(quantile_normalised: pd.DataFrame, test: str, alternativ
                     else:
                         m_high = group_statistic(groups=high_groups, quantile_normalised=quantile_normalised, gene=gene)
                         m = group_statistic(groups=[group], quantile_normalised=quantile_normalised, gene=gene)
+                        m_low = group_statistic(groups=low_groups, quantile_normalised=quantile_normalised,
+                                                gene=gene)
                         if comparison_selection == 'closest':
-                            m_low = group_statistic(groups=low_groups, quantile_normalised=quantile_normalised,
-                                                    gene=gene)
                             # print(m_high,m_low,m)
                             diff_high = abs(m - m_high)
                             diff_low = abs(m - m_low)
@@ -323,7 +337,11 @@ def compare_gene_scores(quantile_normalised: pd.DataFrame, test: str, alternativ
                             std_high = group_statistic(groups=high_groups, quantile_normalised=quantile_normalised,
                                                        gene=gene, mode='std')
                             # print(m_high, std_high, m)
-                            stop = m < (m_high - 2 * std_high)
+                            # account for very low variability cases in WT/PkaR groups - use diff to means then
+                            if (2 * std_high) > 0.1:
+                                stop = m < (m_high - 2 * std_high)
+                            else:
+                                stop = (m - m_low) <= (m_high - m)
 
                     if stop:
                         group1 = groups12[0]
@@ -383,6 +401,8 @@ def compare_gene_scores(quantile_normalised: pd.DataFrame, test: str, alternativ
 
             m1 = values1.mean()
             m2 = values2.mean()
+            me1 = np.median(values1)
+            me2 = np.median(values2)
 
             strains_last1 = GROUP_DF[GROUP_DF['X'] == comparison[0][-1]]['Strain']
             values_last1 = quantile_normalised.loc[gene, strains_last1].values
@@ -414,7 +434,8 @@ def compare_gene_scores(quantile_normalised: pd.DataFrame, test: str, alternativ
                         p = 1 - p / 2
 
             results.append({'Gene': gene, 'Comparison': comparison[2], 'Statistic': statistic, 'p': p,
-                            'Mean1': m1, 'Mean2': m2, 'Difference': m2 - m1, 'Separation': separation})
+                            'Mean1': m1, 'Mean2': m2, 'Difference mean': m2 - m1, 'Difference median': me2 - me1,
+                            'Separation': separation})
 
     results = pd.DataFrame(results)
     # Adjust all pvals to FDR
@@ -429,7 +450,7 @@ def group_statistic(groups, quantile_normalised, gene, mode: str = 'mean'):
     :param quantile_normalised: DF with strains in columns and genes in rows. For each gene in each strain there is a
         score (e.g. average similarity to neighbours).
     :param gene: Gene ID for which to calculate the statistic
-    :param mode: mean or std
+    :param mode: mean or std or median
     """
     strains = GROUP_DF[GROUP_DF['X'].isin(groups)]['Strain']
     values = quantile_normalised.loc[gene, strains].values
@@ -437,6 +458,8 @@ def group_statistic(groups, quantile_normalised, gene, mode: str = 'mean'):
         return values.mean()
     elif mode == 'std':
         return values.std()
+    elif mode == 'median':
+        return values.median()
 
 
 def summary_classification(df: pd.DataFrame, statistic, split, macro_list: list = None, print_df=True):

@@ -20,6 +20,7 @@ from collections import OrderedDict
 from sklearn.mixture import GaussianMixture
 from scipy.integrate import cumtrapz
 from scipy.spatial.distance import correlation
+from scipy.special import comb
 
 import Orange.clustering.louvain as orange_louvain_graph
 from orangecontrib.bioinformatics.ncbi.gene import GeneMatcher
@@ -425,6 +426,20 @@ class NeighbourCalculator:
         return dict(filter(lambda elem: elem[1] >= similarity_threshold, results.items()))
 
     @staticmethod
+    def filter_similarities_npairs(results: dict, n_pairs: float) -> dict:
+        """
+        Retain n_pairs and all pairs that have similarity equal to the similarity of last retained pair.
+        :param results: Dict with values as similarities.
+        :param n_pairs: retain at least that many pairs.
+        :return: Filtered dictionary, retaining only items with values above or equal to threshold.
+        """
+        similarities = list(results.values())
+        similarities.sort(reverse=True)
+        # The last retained similarity
+        similarity_threshold = similarities[n_pairs - 1]
+        return dict(filter(lambda elem: elem[1] >= similarity_threshold, results.items()))
+
+    @staticmethod
     def filter_similarities_matrix(similarities: pd.DataFrame, similarity_threshold: float,
                                    min_neighbours: int = 2) -> list:
         """
@@ -487,9 +502,10 @@ class NeighbourCalculator:
         return list(averages[averages >= similarity_threshold].index)
 
     def compare_conditions(self, neighbours_n: int, inverse: bool,
-                           scale: str, use_log: bool, thresholds: list, filter_column, filter_column_values_sub: list,
+                           scale: str, use_log: bool, filter_column, filter_column_values_sub: list,
                            filter_column_values_test: list, retained: list = None, batch_column=None,
-                           do_mse: bool = True, metric: str = 'cosine'):
+                           thresholds: list = [-np.inf],
+                           do_mse: bool = True, metric: str = 'cosine', threshold_npairs: int = None):
         """
         Evaluates pattern similarity calculation preprocessing and parameters based on difference between subset and
         test set. Computes MSE from differences between similarities of subset gene pairs and corresponding test gene
@@ -504,6 +520,8 @@ class NeighbourCalculator:
         :param filter_column_values_test:Values of filter_column to use for test genes
         :param batch_column: Should batches be used based on some column of conditions
         :param do_mse: Should MSE calculation be performed
+        :param threshold_npairs: After filtering with threhold from thresholds retain only threshold_npairs pairs (or
+            all pairs with similarity equal to that of the last pair).
         :param retained: Two element list - how many genes must be retained. If not within range
          ignore and use next threshold from list. First element min, second max; inclusive.
           If None calculates on all thresholds.
@@ -549,16 +567,32 @@ class NeighbourCalculator:
                 result_filtered = NeighbourCalculator.filter_similarities(result, threshold)
                 result_filtered_test = NeighbourCalculator.filter_similarities(result_test, threshold)
 
+            # Filter N pairs
+            if threshold_npairs is not None:
+                result_filtered = NeighbourCalculator.filter_similarities_npairs(result_filtered, threshold_npairs)
+                result_filtered_test = NeighbourCalculator.filter_similarities_npairs(result_filtered_test,
+                                                                                      threshold_npairs)
+
             # Find genes retained in each result
             gene_names_sub = {gene for pair in result_filtered for gene in pair}
             if retained is not None:
                 if not (retained[0] <= len(gene_names_sub) <= retained[1]):
                     continue
             gene_names_test = {gene for pair in result_filtered_test for gene in pair}
+
             f_val = NeighbourCalculator.f_value(set1=gene_names_sub, set2=gene_names_test)
             p_gene_overlap = Hypergeometric().p_value(k=len(gene_names_sub & gene_names_test), N=n_all_genes,
                                                       m=len(gene_names_sub),
                                                       n=len(gene_names_test))
+
+            pairs_set = set(result_filtered.keys())
+            pairs_test_set = set(result_filtered_test.keys())
+
+            f_val_pairs = NeighbourCalculator.f_value(set1=pairs_set, set2=pairs_test_set)
+            p_pairs_overlap = Hypergeometric().p_value(k=len(pairs_set & pairs_test_set), N=int(comb(n_all_genes, 2)),
+                                                       m=len(pairs_set),
+                                                       n=len(pairs_test_set))
+
             # Calculate MSE for each gene pair -
             # compare similarity from gene subset to similarity of the gene pair in gene test set
             sq_errors = []
@@ -585,11 +619,17 @@ class NeighbourCalculator:
                 mse = float('NaN')
             # n_genes = len(set(gene for pair in result_filtered.keys() for gene in pair))
             data_summary.append(
-                {'metric': metric, 'N neighbours': neighbours_n, 'inverse': inverse, 'use_log': use_log, 'scale': scale,
-                 'threshold': threshold, 'batches': batch_column, 'MSE': mse,
+                {'N neighbours': neighbours_n, 'inverse': inverse, 'use_log': use_log, 'scale': scale,
                  'N pairs 1': len(result_filtered), 'N genes 1': len(gene_names_sub),
                  'N pairs 2': len(result_filtered_test), 'N genes 2': len(gene_names_test),
-                 'F value': f_val, 'p gene overlap': p_gene_overlap})
+                 'F value pairs': f_val_pairs, 'p pairs overlap': p_pairs_overlap,
+                 'F value genes': f_val, 'p gene overlap': p_gene_overlap,
+                 'MSE': mse,
+                 'min similarity 1': min(result_filtered.values()),
+                 'min similarity 2': min(result_filtered_test.values()),
+                 'metric': metric,
+                 'threshold': threshold, 'threshold_npairs': threshold_npairs, 'batches': batch_column,
+                 })
             if retained is not None:
                 break
         return data_summary
