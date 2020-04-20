@@ -360,23 +360,6 @@ savePickle(
     '_splitStrain.pkl', (neigh_WT, sims_dict_WT))
 
 # ************ Find genes  for which neighbours in AX4 do not represent close neighbours (similar as above)
-# TODO correct!!!
-# group_splits = [
-#    ([1], [2, 3, 4, 6, 7], 1),
-#    ([1, 2], [3, 4, 6, 7], 2),
-#   ([1, 2, 3], [4, 6, 7], 3),
-#   ([1, 2, 3, 4], [6, 7], 4)
-# ]
-#Do not include tag as poorly separated from cud. Include lag_diss as despite expression not different from tag_diss
-#the similarities are
-group_splits = [
-    ([1], [2, 3, 4, 5, 7, 8], 1),
-    ([1, 2], [3,4, 5, 7, 8], 2),
-    ([1, 2, 3], [4, 5, 7, 8], 3),
-    ([1, 2, 3,4], [3, 5, 7, 8], 4),
-    ([1, 2, 3, 4, 5], [7, 8], 5)
-]
-
 sims_dict_WT = loadPickle(
     pathSelGenes + 'AX4basedNeigh_newGenes-removeZeroRep_neighSimsDict_scalemean0std1_logTrue_kN11_splitStrain.pkl')[1]
 
@@ -396,23 +379,47 @@ genes_filtered = set(similarity_means_WT.index)
 for strain in GROUP_DF[GROUP_DF['Group'].isin(['prec', 'WT'])]['Strain']:
     threshold = np.quantile(similarity_means_WT[strain], 0.3)
     genes_filtered = genes_filtered & set(similarity_means_WT[similarity_means_WT[strain] >= threshold].index)
+
+
 test = 'u'
 alternative = 'less'
+
+group_splits = [
+    ([1], [2, 3, 4, 5, 7, 8], 1),
+    ([1, 2], [3,4, 5, 7, 8], 2),
+    ([1, 2, 3], [4, 5, 7, 8], 3),
+    ([1, 2, 3, 4], [ 5, 7, 8], 4),
+    ([1, 2, 3, 4, 5], [7, 8], 5)
+]
+select_single_comparsion=[[1, 2, 3, 4, 5, 7, 8], [1], [7, 8]]
+group_df=GROUP_DF.copy()
+#Dis together
+group_df=GROUP_DF.copy()
+group_df.loc[group_df['X']==2,'X']=3
+group_df.loc[group_df['X']==3,'Group']='dis'
+group_splits = [
+    ([1], [ 3, 4, 5, 7, 8], 1),
+    ([1, 3], [4, 5, 7, 8], 3),
+    ([1, 3, 4], [5, 7, 8], 4),
+    ([1, 3, 4, 5], [7, 8], 5)
+]
+select_single_comparsion=[[1,  3, 4, 5, 7, 8], [1], [7, 8]]
+
 # Test for all possible separation points
-results_WT = compare_gene_scores(quantile_normalised=quantile_normalised_WT.loc[genes_filtered, :],
-                                 group_splits=group_splits, test=test,
-                                 alternative=alternative)
-results_WT.to_csv(
-    pathSelGenes + 'comparisonsAvgSims_AX4basedNeigh_' + test + '-' + alternative + '_newGenes_noAll-removeZeroRep_simsDict_scalemean0std1_logTrue_kN11_splitStrain.tsv',
-    sep='\t', index=False)
+# results_WT = compare_gene_scores(quantile_normalised=quantile_normalised_WT.loc[genes_filtered, :],
+#                                  group_splits=group_splits, test=test,
+#                                  alternative=alternative)
+# results_WT.to_csv(
+#     pathSelGenes + 'comparisonsAvgSims_AX4basedNeigh_' + test + '-' + alternative + '_newGenes_noAll-removeZeroRep_simsDict_scalemean0std1_logTrue_kN11_splitStrain.tsv',
+#     sep='\t', index=False)
 
 # OR Test for single separation point
 results_WT = compare_gene_scores(quantile_normalised=quantile_normalised_WT.loc[genes_filtered, :],
                                  group_splits=group_splits, test=test,
-                                 alternative=alternative, select_single_comparsion=[[1, 2, 3, 4, 5, 7, 8], [1], [7, 8]],
-                                 comparison_selection='std')
+                                 alternative=alternative, select_single_comparsion=select_single_comparsion,
+                                 comparison_selection='std',group_df=group_df)
 results_WT.to_csv(
-    pathSelGenes + 'comparisonsAvgSimsSingleSTD01Dif_AX4basedNeigh_' + test + '-' + alternative + '_newGenes_noAll-removeZeroRep_simsDict_scalemean0std1_logTrue_kN11_splitStrain.tsv',
+    pathSelGenes + 'comparisonsAvgSimsSingle2STDAny0.2_AX4basedNeigh_' + test + '-' + alternative + '_newGenes_noAll-removeZeroRep_simsDict_scalemean0std1_logTrue_kN11_splitStrain.tsv',
     sep='\t', index=False)
 
 # ****** For each strain/gene compare similarities to neighbours from AX4 and closest neighbours in the strain
