@@ -3,6 +3,7 @@
 #* Comments starting with '**!' denote required changes (e.g. file names, ...).
 #* For Regulons_by_strain heatmap the images can be saved with resolution 2500w*1500h (specified in R studio Export -> 
 #* Save as image). This resolution ensures that the text on the heatmap does not overlap anymore. 
+dataPathCode='/home/karin/Documents/git/baylor-dicty/R/'
 
 library(ComplexHeatmap)
 library(circlize)
@@ -11,6 +12,7 @@ library(proxy)
 #library(cba)
 library(seriation)
 library(dendextend)
+source(paste(dataPathCode,'heatmap_annotation.R',sep=''))
 
 #**! Paths where expression data (average expression, expression patterns, expression height), strain order,
 #** regulons clusters, and phenotipic data are saved
@@ -159,6 +161,7 @@ for (cluster in cluster_order2$Cluster){
   #print(paste(cluster,length(genes)))
   if (length(genes)>1){
     expression=t(avg_expression[avg_expression$Strain=='AX4',genes])
+    #expression=t(avg_expression[,genes])
     distances<-dist(expression, method="cosine")
     hc<-hclust(d=distances, method = "ward.D2" )
     # Not good ordering-Wrong extraction of labels?
@@ -235,4 +238,13 @@ write.table(regulons,paste(path_clusters,
                           "clusters/mergedGenes_minExpressed0.990.1Strains1Min1Max18_clustersAX4Louvain0.4m0s1log.tab"
                           #"clusters/mergedGenes_minExpressed0.990.1Strains1Min1Max18_clustersLouvain0.4minmaxNologPCA30kN30.tab"
                           ,sep=''),row.names=FALSE, sep="\t")
+
+#*************
+#*** Add letters to AX4 clusters
+cluster_anno=gsub('C','',as.character(regulons$Cluster))
+cluster_anno=LETTERS[as.integer(cluster_anno)]
+regulons$Letter<-cluster_anno
+write.table(regulons,paste(path_clusters,
+                           "clusters/mergedGenes_minExpressed0.990.1Strains1Min1Max18_clustersAX4Louvain0.4m0s1log.tab"
+                           ,sep=''),row.names=FALSE, sep="\t")
   

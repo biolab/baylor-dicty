@@ -569,6 +569,12 @@ genes_orange_avg_fc = np.log2(genes_orange_avg_fc)
 genes_orange_avg_fc[['Time', 'Group']] = genes_orange_avg[['Time', 'Group']]
 genes_orange_avg_fc.to_csv(dataPathSaved + 'genes_averaged_orange_log2FC.tsv', sep='\t')
 
+#*** Sort strains in averaged data
+averaged_data=pd.read_table(dataPathSaved + 'genes_averaged_orange_scale99percentileMax0.1.tsv',index_col=0)
+strain_order=pd.read_table('/home/karin/Documents/timeTrajectories/data/strain_order.tsv',header=None)
+averaged_data['Strain'] = pd.Categorical(averaged_data['Strain'], strain_order[0].values)
+averaged_data=averaged_data.sort_values(['Strain','Time'])
+averaged_data.to_csv(dataPathSaved + 'genes_averaged_orange_scale99percentileMax0.1.tsv', sep='\t')
 # **** Make expression data for single replicate per strain
 merged = ClusterAnalyser.merge_genes_conditions(genes=genes,
                                                 conditions=conditions[['Measurment', 'Replicate', 'Time', 'Strain']],

@@ -844,3 +844,8 @@ for stage in PHENOTYPES:
         data['Stage'] = stage
         combined = pd.concat([combined, data])
 combined.to_csv(path_deOvR + folder + '_combined.tsv', sep='\t')
+
+#************************************
+#*** Save non null genes
+genes_nn=pd.DataFrame(genes[(genes != 0).any(axis=1)].index.values,columns=['Gene'])
+genes_nn.to_csv(dataPath+'nonNullGenes.tsv',sep='\t',index=False)
