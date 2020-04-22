@@ -29,6 +29,7 @@ class GeneSetData:
         self.pval = None
         self.padj = None
         self.in_query = in_query
+        self.in_reference = None
 
 
 def name_genes_entrez(gene_names: list, key_entrez: bool, organism: int = ORGANISM) -> dict:
@@ -110,11 +111,13 @@ def gene_set_enrichment(query_EID: set, reference_EID: set, gene_set_names: list
             gene_set_size = len(gene_set.genes)
             if set_sizes[0] <= gene_set_size <= set_sizes[1]:
                 intersect_query = len(gene_set.genes.intersection(query_EID))
+                intersect_reference = len(gene_set.genes.intersection(reference_EID))
                 if intersect_query > 0:
                     result = gene_set.set_enrichment(reference=reference_EID, query=query_EID)
                     data = GeneSetData(gene_set=gene_set, ontology=gene_set_name)
                     data.pval = result.p_value
                     data.in_query = intersect_query
+                    data.in_reference = intersect_reference
                     enriched.append(data)
     if len(enriched) > 0:
         compute_padj(enriched)
@@ -149,10 +152,9 @@ def get_gene_sets(gene_set_names: list, organism: str = ORGANISM, go_slims: bool
         slims = anno._ontology.slims_subset
     for gene_set_name in gene_set_names:
         gene_sets = load_gene_sets(gene_set_name, str(organism))
+        gene_sets=[gene_set for gene_set in gene_sets if set_sizes[0] <= len(gene_set.genes) <= set_sizes[1]]
         if go_slims and gene_set_name[0] == 'GO':
-            gene_sets = [gene_set for gene_set in gene_sets if gene_set.gs_id in slims
-                         and set_sizes[0] <= len(gene_set.genes) <= set_sizes[1]
-                         ]
+            gene_sets = [gene_set for gene_set in gene_sets if gene_set.gs_id in slims]
         gene_set_ontology[gene_set_name] = gene_sets
     return gene_set_ontology
 

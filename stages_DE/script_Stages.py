@@ -35,7 +35,7 @@ if lab:
     pathClassification = '/home/karin/Documents/timeTrajectories/data/stages/classification/'
     pathRegulons = '/home/karin/Documents/timeTrajectories/data/regulons/'
     pathReplicateImg = '/home/karin/Documents/timeTrajectories/data/replicate_image/'
-    path_deOvR='/home/karin/Documents/timeTrajectories/data/deTime/stage_vs_other/'
+    path_deOvR = '/home/karin/Documents/timeTrajectories/data/deTime/stage_vs_other/'
 
 else:
     dataPath = '/home/karin/Documents/DDiscoideum/data/RPKUM/'
@@ -360,13 +360,6 @@ savePickle(
     '_splitStrain.pkl', (neigh_WT, sims_dict_WT))
 
 # ************ Find genes  for which neighbours in AX4 do not represent close neighbours (similar as above)
-# TODO correct!!!
-group_splits = [
-    ([1], [2, 3, 4, 6, 7], 1),
-    ([1, 2], [3, 4, 6, 7], 2),
-    ([1, 2, 3], [4, 6, 7], 3),
-    ([1, 2, 3, 4], [6, 7], 4)
-]
 sims_dict_WT = loadPickle(
     pathSelGenes + 'AX4basedNeigh_newGenes-removeZeroRep_neighSimsDict_scalemean0std1_logTrue_kN11_splitStrain.pkl')[1]
 
@@ -383,26 +376,50 @@ quantile_normalised_WT = quantile_normalise(similarity_means=similarity_means_WT
 #    sep='\t')
 # Pre select genes that are above a relative threshold in WT and PD strains (that develop)
 genes_filtered = set(similarity_means_WT.index)
-for strain in GROUP_DF[GROUP_DF['Group'].isin(['Prec', 'WT'])]['Strain']:
+for strain in GROUP_DF[GROUP_DF['Group'].isin(['prec', 'WT'])]['Strain']:
     threshold = np.quantile(similarity_means_WT[strain], 0.3)
     genes_filtered = genes_filtered & set(similarity_means_WT[similarity_means_WT[strain] >= threshold].index)
+
+
 test = 'u'
 alternative = 'less'
+
+group_splits = [
+    ([1], [2, 3, 4, 5, 7, 8], 1),
+    ([1, 2], [3,4, 5, 7, 8], 2),
+    ([1, 2, 3], [4, 5, 7, 8], 3),
+    ([1, 2, 3, 4], [ 5, 7, 8], 4),
+    ([1, 2, 3, 4, 5], [7, 8], 5)
+]
+select_single_comparsion=[[1, 2, 3, 4, 5, 7, 8], [1], [7, 8]]
+group_df=GROUP_DF.copy()
+#Dis together
+group_df=GROUP_DF.copy()
+group_df.loc[group_df['X']==2,'X']=3
+group_df.loc[group_df['X']==3,'Group']='dis'
+group_splits = [
+    ([1], [ 3, 4, 5, 7, 8], 1),
+    ([1, 3], [4, 5, 7, 8], 3),
+    ([1, 3, 4], [5, 7, 8], 4),
+    ([1, 3, 4, 5], [7, 8], 5)
+]
+select_single_comparsion=[[1,  3, 4, 5, 7, 8], [1], [7, 8]]
+
 # Test for all possible separation points
-results_WT = compare_gene_scores(quantile_normalised=quantile_normalised_WT.loc[genes_filtered, :],
-                                 group_splits=group_splits, test=test,
-                                 alternative=alternative)
-results_WT.to_csv(
-    pathSelGenes + 'comparisonsAvgSims_AX4basedNeigh_' + test + '-' + alternative + '_newGenes_noAll-removeZeroRep_simsDict_scalemean0std1_logTrue_kN11_splitStrain.tsv',
-    sep='\t', index=False)
+# results_WT = compare_gene_scores(quantile_normalised=quantile_normalised_WT.loc[genes_filtered, :],
+#                                  group_splits=group_splits, test=test,
+#                                  alternative=alternative)
+# results_WT.to_csv(
+#     pathSelGenes + 'comparisonsAvgSims_AX4basedNeigh_' + test + '-' + alternative + '_newGenes_noAll-removeZeroRep_simsDict_scalemean0std1_logTrue_kN11_splitStrain.tsv',
+#     sep='\t', index=False)
 
 # OR Test for single separation point
 results_WT = compare_gene_scores(quantile_normalised=quantile_normalised_WT.loc[genes_filtered, :],
-                                 group_splits=None, test=test,
-                                 alternative=alternative, select_single_comparsion=[[1, 2, 3, 4, 5, 7, 8], [1], [7, 8]],
-                                 comparison_selection='gaussian_mixture')
+                                 group_splits=group_splits, test=test,
+                                 alternative=alternative, select_single_comparsion=select_single_comparsion,
+                                 comparison_selection='std',group_df=group_df)
 results_WT.to_csv(
-    pathSelGenes + 'comparisonsAvgSimsSingleGM_AX4basedNeigh_' + test + '-' + alternative + '_newGenes_noAll-removeZeroRep_simsDict_scalemean0std1_logTrue_kN11_splitStrain.tsv',
+    pathSelGenes + 'comparisonsAvgSimsSingle2STDAny0.2_AX4basedNeigh_' + test + '-' + alternative + '_newGenes_noAll-removeZeroRep_simsDict_scalemean0std1_logTrue_kN11_splitStrain.tsv',
     sep='\t', index=False)
 
 # ****** For each strain/gene compare similarities to neighbours from AX4 and closest neighbours in the strain
@@ -576,21 +593,21 @@ for group, data in grouped:
     strain = group[0]
     # Not strain=='ac3PkaCoe' and time==0 as this does not remove this strain from other comparisons
     if strain == 'ac3PkaCoe':
-        if time ==0:
+        if time == 0:
             set_infered(averaged=averaged, infered_stages=['no_agg'])
     elif strain == 'gtaC':
         set_infered(averaged=averaged, infered_stages=['no_agg'])
     else:
-        if (np.array(list(averaged.values()))=='no image').all():
+        if (np.array(list(averaged.values())) == 'no image').all():
             if time == 0:
                 set_infered(averaged=averaged, infered_stages=['no_agg'])
             else:
                 strain_times = conditions_noimg.query('Strain =="' + strain + '"')['Time'].unique()
                 strain_times.sort()
                 previous_time = int(strain_times[np.argwhere(strain_times == time) - 1])
-                previous_data = averaged_stages.loc[avgsample_name((strain, previous_time)),:]
-                #Previous time not a definite no - set also this time to this
-                previous_stages=list(previous_data[previous_data !='no' ].index)
+                previous_data = averaged_stages.loc[avgsample_name((strain, previous_time)), :]
+                # Previous time not a definite no - set also this time to this
+                previous_stages = list(previous_data[previous_data != 'no'].index)
                 set_infered(averaged=averaged, infered_stages=previous_stages)
 
     averaged_stages = averaged_stages.append(pd.DataFrame(averaged, index=[name]), sort=True)
@@ -813,17 +830,17 @@ for params in params_grid:
 # Run clus
 # java -jar /home/karin/Documents/Clus/Clus.jar -xval -forest /home/karin/Documents/timeTrajectories/data/stages/classification/clus/stages.s  > stages_out.txt  2>stages_error.txt
 
-#********************************
-#******** Parse DE one vs rest results into a single file
-#folder='nobatchrep'
-folder='WT_batchrep'
-files = [f for f in glob.glob(path_deOvR+folder+'/' + "*.tsv")]
-combined=pd.DataFrame()
+# ********************************
+# ******** Parse DE one vs rest results into a single file
+# folder='nobatchrep'
+folder = 'WT_batchrep'
+files = [f for f in glob.glob(path_deOvR + folder + '/' + "*.tsv")]
+combined = pd.DataFrame()
 for stage in PHENOTYPES:
-    file=path_deOvR+folder+'/DE_'+stage+'_ref_other_padj0.05_lFC1.tsv'
+    file = path_deOvR + folder + '/DE_' + stage + '_ref_other_padj0.05_lFC1.tsv'
     if file in files:
-        #print(stage)
-        data=pd.read_table(file,index_col=0)
-        data['Stage']=stage
-        combined=pd.concat([combined,data])
-combined.to_csv(path_deOvR+folder+'_combined.tsv',sep='\t')
+        # print(stage)
+        data = pd.read_table(file, index_col=0)
+        data['Stage'] = stage
+        combined = pd.concat([combined, data])
+combined.to_csv(path_deOvR + folder + '_combined.tsv', sep='\t')
