@@ -2,12 +2,18 @@ from collections import OrderedDict
 from statsmodels.stats.multitest import multipletests
 import pandas as pd
 import numpy as np
+import networkx as nx
+from Orange.widgets.utils.colorpalettes import ContinuousPalettes
+import sklearn.preprocessing as pp
+from collections import defaultdict
+import warnings
 
 from orangecontrib.bioinformatics.ncbi.gene import GeneMatcher
 from orangecontrib.bioinformatics.geneset.__init__ import (list_all, load_gene_sets)
 import orangecontrib.bioinformatics.go as go
 from orangecontrib.bioinformatics.geneset.utils import (GeneSet, GeneSets)
 from orangecontrib.bioinformatics.utils.statistics import Hypergeometric
+from Orange.clustering.louvain import jaccard
 
 ORGANISM = 44689
 HYPERGEOMETRIC = Hypergeometric()
@@ -82,7 +88,7 @@ def GO_enrichment(entrez_ids: list, organism: int = ORGANISM, fdr=0.25, slims: b
 
 def gene_set_enrichment(query_EID: set, reference_EID: set, gene_set_names: list = None, organism=ORGANISM,
                         padj_threshold: float = None, output: str = None, go_slims: bool = False,
-                        gene_sets_ontology: dict = None, set_sizes: tuple = (-np.inf, np.inf),min_overlap:int=None):
+                        gene_sets_ontology: dict = None, set_sizes: tuple = (-np.inf, np.inf), min_overlap: int = None):
     """
     Calculate enrichment for specified gene set ontologies. Padj is performed on combined results of all ontologies.
     Prior to p value calculation removes gene sets that do not overlap with query.
@@ -152,11 +158,128 @@ def get_gene_sets(gene_set_names: list, organism: str = ORGANISM, go_slims: bool
         slims = anno._ontology.slims_subset
     for gene_set_name in gene_set_names:
         gene_sets = load_gene_sets(gene_set_name, str(organism))
-        gene_sets=[gene_set for gene_set in gene_sets if set_sizes[0] <= len(gene_set.genes) <= set_sizes[1]]
+        gene_sets = [gene_set for gene_set in gene_sets if set_sizes[0] <= len(gene_set.genes) <= set_sizes[1]]
         if go_slims and gene_set_name[0] == 'GO':
             gene_sets = [gene_set for gene_set in gene_sets if gene_set.gs_id in slims]
         gene_set_ontology[gene_set_name] = gene_sets
     return gene_set_ontology
+
+
+def rgb_hex(rgb):
+    return '#%02x%02x%02x' % (rgb[0], rgb[1], rgb[2])
+
+def overlap_coefficient(set1,set2):
+    overlap=len(set1 & set2)
+    min_size=min(len(set1),len(set2))
+    return overlap/min_size
+
+def enrichment_map(enriched: list, ax: tuple,query_size,
+                   max_col=-np.log10(10**(-10)),min_col=-np.log10(0.25),
+                   node_sizes=(50,2000),fontsize=10, min_overlap=0):
+    """
+    Plot enrichment map for enriched gene sets
+    :param enriched: List of enriched GeneSetData objects
+    :param ax: plt axis
+    """
+    # Colour palette
+    palette = ContinuousPalettes['linear_viridis']
+    padjs = [-np.log10(data.padj) for data in enriched]
+    # Smallest palette colour is smallest -log10 padj
+    if min_col is None:
+        min_col = min(padjs)
+    if max_col is None:
+        max_col = max(padjs)
+
+    # Size palette
+    size_palette = pp.MinMaxScaler(feature_range=node_sizes)
+    size_palette.fit(np.array([0,1]).reshape(-1,1))
+
+    # Make nodes
+    nodes=[]
+    for data in enriched:
+        name= data.gene_set.name
+        colour= rgb_hex(palette.value_to_color(x=-np.log10(data.padj), low=min_col, high=max_col))
+        ratio_query=data.in_query/query_size
+        if ratio_query>1:
+            warnings.warn('Query size was set too small (in_query>query). Setting ratio to 1.')
+            ratio_query=1
+        size= size_palette.transform(np.array([ratio_query]).reshape(-1,1))[0][0]
+        nodes.append((name,{'color':colour,'size':size}))
+
+    # Make graph (gs overlaps) and directed graph (specify subset)
+    graph = nx.Graph()
+    graph.add_nodes_from(nodes)
+    graph_directed = nx.DiGraph()
+    graph_directed.add_nodes_from(nodes)
+
+    # Compare enriched gene sets
+    for i in range(0, len(enriched) - 1):
+        for j in range(i + 1, len(enriched)):
+            set1, set2 = enriched[i], enriched[j]
+            overlap = len(set1.gene_set.genes & set2.gene_set.genes)
+            #overlap_weight=jaccard(set1.gene_set.genes,set2.gene_set.genes)
+            overlap_weight = overlap_coefficient(set1.gene_set.genes, set2.gene_set.genes)
+
+            if overlap_weight > min_overlap:
+                graph.add_edge(set1.gene_set.name, set2.gene_set.name, weight=overlap_weight)
+                size1=len(set1.gene_set.genes)
+                size2=len(set2.gene_set.genes)
+                min_size = min([size1, size2])
+                #None if equal sizes
+                smaller_order=None
+                if size1<size2:
+                    smaller_order=1
+                elif size1>size2:
+                    smaller_order=-1
+                if overlap == min_size and smaller_order is not None:
+                    node1,node2=[set1,set2][::smaller_order]
+                    graph_directed.add_edge(node1.gene_set.name,node2.gene_set.name,weight=overlap_weight)
+
+    node_attrs = nx_attr_list_node(graph, ['color', 'size'])
+    node_attrs['label']=[node.replace(' ','\n') for node in node_attrs['node']]
+    edge_attrs = nx_attr_list_edge(graph, ['weight'])
+    edge_attrs_directed = nx_attr_list_edge(graph_directed, ['weight'])
+
+    layout=nx.drawing.nx_agraph.graphviz_layout(graph,prog='fdp')
+    node_attrs['layout']=[layout[node] for node in node_attrs['node']]
+
+    nx.draw_networkx_edges(graph_directed, pos=layout, nodelist=node_attrs['node'],
+                           edgelist=edge_attrs_directed['edge'], width=edge_attrs_directed['weight'],
+                           arrowsize=15, alpha=0.3, min_target_margin=30,ax=ax)
+    nx.draw_networkx_edges(graph, pos=layout,nodelist=node_attrs['node'],
+                     edgelist=edge_attrs['edge'],width=edge_attrs['weight'],alpha=0.5,ax=ax)
+    nx.draw_networkx_nodes(graph, nodelist=node_attrs['node'], pos=layout,
+                     node_color=node_attrs['color'], node_size=node_attrs['size'], alpha=0.6,ax=ax)
+    nx.draw_networkx_labels(graph, nodelist=node_attrs['node'], pos=layout,
+                            labels=dict(zip(node_attrs['node'],node_attrs['label'])),font_size=fontsize,ax=ax)
+    ax.axis('off')
+    ax.margins(0.2, 0.1)
+
+
+def nx_attr_list_node(graph,attrs_node):
+    attrs=defaultdict(list)
+    for node,node_attrs in graph.nodes(data=True):
+        attrs['node'].append(node)
+        for attr in attrs_node:
+            if attr in node_attrs.keys():
+                attrs[attr].append(node_attrs[attr])
+            else:
+                attrs[attr].append(None)
+    return attrs
+
+def nx_attr_list_edge(graph, attrs_edge):
+    attrs = defaultdict(list)
+    for node1,node2,edge_attrs in graph.edges(data=True):
+        attrs['edge'].append((node1,node2))
+        for attr in attrs_edge:
+            if attr in edge_attrs.keys():
+                attrs[attr].append(edge_attrs[attr])
+            else:
+                attrs[attr].append(None)
+    return attrs
+
+
+
 
 
 # Not useful as same to normal enrichment due to simetry (Combinatorial identities)
