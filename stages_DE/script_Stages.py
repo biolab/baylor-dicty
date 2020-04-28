@@ -17,6 +17,8 @@ import sklearn.preprocessing as pp
 import itertools
 from sklearn.decomposition import PCA
 from openpyxl import load_workbook
+from scipy.stats import combine_pvalues
+
 
 # import DBA as dba
 import arff
@@ -380,30 +382,29 @@ for strain in GROUP_DF[GROUP_DF['Group'].isin(['prec', 'WT'])]['Strain']:
     threshold = np.quantile(similarity_means_WT[strain], 0.3)
     genes_filtered = genes_filtered & set(similarity_means_WT[similarity_means_WT[strain] >= threshold].index)
 
-
 test = 'u'
 alternative = 'less'
 
 group_splits = [
     ([1], [2, 3, 4, 5, 7, 8], 1),
-    ([1, 2], [3,4, 5, 7, 8], 2),
+    ([1, 2], [3, 4, 5, 7, 8], 2),
     ([1, 2, 3], [4, 5, 7, 8], 3),
-    ([1, 2, 3, 4], [ 5, 7, 8], 4),
+    ([1, 2, 3, 4], [5, 7, 8], 4),
     ([1, 2, 3, 4, 5], [7, 8], 5)
 ]
-select_single_comparsion=[[1, 2, 3, 4, 5, 7, 8], [1], [7, 8]]
-group_df=GROUP_DF.copy()
-#Dis together
-group_df=GROUP_DF.copy()
-group_df.loc[group_df['X']==2,'X']=3
-group_df.loc[group_df['X']==3,'Group']='dis'
+select_single_comparsion = [[1, 2, 3, 4, 5, 7, 8], [1], [7, 8]]
+group_df = GROUP_DF.copy()
+# Dis together
+group_df = GROUP_DF.copy()
+group_df.loc[group_df['X'] == 2, 'X'] = 3
+group_df.loc[group_df['X'] == 3, 'Group'] = 'dis'
 group_splits = [
-    ([1], [ 3, 4, 5, 7, 8], 1),
+    ([1], [3, 4, 5, 7, 8], 1),
     ([1, 3], [4, 5, 7, 8], 3),
     ([1, 3, 4], [5, 7, 8], 4),
     ([1, 3, 4, 5], [7, 8], 5)
 ]
-select_single_comparsion=[[1,  3, 4, 5, 7, 8], [1], [7, 8]]
+select_single_comparsion = [[1, 3, 4, 5, 7, 8], [1], [7, 8]]
 
 # Test for all possible separation points
 # results_WT = compare_gene_scores(quantile_normalised=quantile_normalised_WT.loc[genes_filtered, :],
@@ -417,7 +418,7 @@ select_single_comparsion=[[1,  3, 4, 5, 7, 8], [1], [7, 8]]
 results_WT = compare_gene_scores(quantile_normalised=quantile_normalised_WT.loc[genes_filtered, :],
                                  group_splits=group_splits, test=test,
                                  alternative=alternative, select_single_comparsion=select_single_comparsion,
-                                 comparison_selection='std',group_df=group_df)
+                                 comparison_selection='std', group_df=group_df)
 results_WT.to_csv(
     pathSelGenes + 'comparisonsAvgSimsSingle2STDAny0.2_AX4basedNeigh_' + test + '-' + alternative + '_newGenes_noAll-removeZeroRep_simsDict_scalemean0std1_logTrue_kN11_splitStrain.tsv',
     sep='\t', index=False)
@@ -833,19 +834,62 @@ for params in params_grid:
 # ********************************
 # ******** Parse DE one vs rest results into a single file
 # folder='nobatchrep'
-folder = 'WT_batchrep'
-files = [f for f in glob.glob(path_deOvR + folder + '/' + "*.tsv")]
+#folder = 'WT_batchrep'
+folder = 'strain_batchrep_lFC05_upper'
+# Files for normal stages or strain-combined stages
+#files = [f for f in glob.glob(path_deOvR + folder + '/' + "*.tsv")]
+files = [f for f in glob.glob(path_deOvR + folder + '/' + "*_combined.tsv")]
 combined = pd.DataFrame()
 for stage in PHENOTYPES:
-    file = path_deOvR + folder + '/DE_' + stage + '_ref_other_padj0.05_lFC1.tsv'
+    # File for normal stages or strain-combined stages
+    #file = path_deOvR + folder + '/DE_' + stage + '_ref_other_padj0.05_lFC1.tsv'
+    file = path_deOvR + folder + '/' + stage + '_combined.tsv'
     if file in files:
         # print(stage)
         data = pd.read_table(file, index_col=0)
         data['Stage'] = stage
-        combined = pd.concat([combined, data])
+        combined = pd.concat([combined, data],sort=True)
+#Only for the combined starins
+col_order=[col for col in combined.columns if col not in ['combined_pval','pval_n','combined_padj','Stage']]
+col_order=['combined_pval','pval_n','combined_padj','Stage']+col_order
+combined=combined[col_order]
+
 combined.to_csv(path_deOvR + folder + '_combined.tsv', sep='\t')
 
-#************************************
-#*** Save non null genes
-genes_nn=pd.DataFrame(genes[(genes != 0).any(axis=1)].index.values,columns=['Gene'])
-genes_nn.to_csv(dataPath+'nonNullGenes.tsv',sep='\t',index=False)
+# *************************
+# ***** Combine p values of DESeq2 from different strains
+for stage in PHENOTYPES:
+    files = [f for f in
+             glob.glob(path_deOvR + 'strain_batchrep_lFC05_upper/*_DE_' + stage + '_ref_other_padj_lFC' + "*.tsv")]
+    print(stage, len(files))
+    # if len(files)>1:
+    combined_stage = pd.DataFrame()
+    for file in files:
+        strain = file.split('/')[-1].split('_')[0]
+        data = pd.read_table(file, index_col=0)
+        data.columns = [strain + '_' + col for col in data.columns]
+        combined_stage = pd.concat([combined_stage, data], axis=1, sort=True)
+    # First add new pval cols before selecting them, make sure new ones are not included in analysisis
+    combined_stage['combined_pval'] = np.nan
+    combined_stage['pval_n'] = np.nan
+    pval_cols = [col for col in combined_stage.columns if 'pval' in col and col not in ['combined_pval', 'pval_n']]
+    for gene, data in combined_stage.iterrows():
+        data = data[pval_cols]
+        if (~np.isnan(data)).sum() > 1:
+            pvals = data[~np.isnan(data)].values
+            pval = combine_pvalues(pvalues=pvals, method='stouffer')[1]
+            combined_stage.loc[gene, ['combined_pval', 'pval_n']] = [pval, len(pvals)]
+        elif (~np.isnan(data)).sum() == 1:
+            combined_stage.loc[gene, ['combined_pval', 'pval_n']] = [data[~np.isnan(data)], len(pvals)]
+            combined_stage.loc[gene, 'pval_n'] = 1
+    not_all=combined_stage.query('pval_n < '+str(len(files))).copy()
+    is_all=combined_stage.query('pval_n == '+str(len(files))).copy()
+    is_all['combined_padj'] = multipletests(is_all['combined_pval'],  method='fdr_bh')[1]
+    combined_stage=pd.concat([is_all,not_all],sort=False)
+    combined_stage.to_csv(path_deOvR + 'strain_batchrep_lFC05_upper/'+stage+'_combined.tsv',sep='\t')
+
+
+# ************************************
+# *** Save non null genes
+genes_nn = pd.DataFrame(genes[(genes != 0).any(axis=1)].index.values, columns=['Gene'])
+genes_nn.to_csv(dataPath + 'nonNullGenes.tsv', sep='\t', index=False)
