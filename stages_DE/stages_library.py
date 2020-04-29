@@ -903,23 +903,7 @@ class CustomScaler:
             scaled = data / scaler
         return scaled
 
-def plot_table_barh(df,bar_col,colour_col):
-    bar_width=1
 
-    fig,axs=plt.subplots(nrows=df.shape[0]+1,ncols=df.shape[1],sharex=True)
-    for axs_row in axs:
-        for ax in axs_row:
-            ax.set_axis_off()
-    fig.subplots_adjust(wspace=0, hspace=0)
-
-    #TODO
-    axs[0][0].table(cellText=[list(df.columns)],bbox=[0,0,1,1])
-    axs[1][0].table(cellText=df.iloc[0,:].values.reshape(1,-1),bbox=[0,0,1,1])
-    axs[1][1].barh(0,2,1)
-    axs[2][0].table(cellText=df.iloc[1,:].values.reshape(1,-1),bbox=[0,0,1,1])
-    axs[2][1].barh(0,1.5,1)
-    axs[2][1].set_xlim([1,3])
-    axs[1][1].set_xlim([1, 3])
 
 
 
