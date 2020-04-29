@@ -392,15 +392,19 @@ def convert_EID(genes: iter, name_EID: dict) -> set:
     return set(name_EID[gene] for gene in genes if gene in name_EID.keys())
 
 
-def plot_table_barh(df, bar_col, colour_col, col_widths, figsize, show_barcol=False, show_colour_col=False, min_bar=1,
-                    fontsize=10):
+def plot_table_barh(df, bar_col, colour_col, col_widths, figsize, show_barcol=False, show_colour_col=False, fontsize=10,
+                    min_bar=None, max_bar=None, max_col=None,min_col=None,format_bar_axes=float):
     palette = ContinuousPalettes['linear_viridis']
-    min_col = df[colour_col].min()
-    max_col = df[colour_col].max()
+    if min_col is None:
+        min_col = df[colour_col].min()
+    if max_col is None:
+        max_col = df[colour_col].max()
 
     if min_bar is None:
         min_bar = df[bar_col].min()
-    max_bar = df[bar_col].max()
+    if max_bar is None:
+        max_bar = df[bar_col].max()
+
     cols = list(df.columns)
     if not show_barcol:
         cols.remove(bar_col)
@@ -413,6 +417,8 @@ def plot_table_barh(df, bar_col, colour_col, col_widths, figsize, show_barcol=Fa
 
     for axs_row in axs:
         for ax in axs_row:
+            for spine in ax.spines.values():
+                spine.set_edgecolor('gray')
             ax.spines['bottom'].set_visible(False)
             ax.spines['right'].set_visible(False)
             ax.spines['left'].set_visible(False)
@@ -422,15 +428,17 @@ def plot_table_barh(df, bar_col, colour_col, col_widths, figsize, show_barcol=Fa
     fig.subplots_adjust(wspace=0, hspace=0)
 
     # Header
-    the_table=axs[0][0].table(cellText=[cols], bbox=[0, 0, 1, 1], colWidths=col_widths, fontsize=fontsize, edges='B')
-    # axs[0][1].spines['left'].set_visible(True)
+    the_table=axs[0][0].table(cellText=[cols], bbox=[0, 0, 1, 1], colWidths=col_widths, fontsize=fontsize, edges='',
+                              cellLoc='left')
+    # To make the lower border of table header
+    axs[1][0].spines['top'].set_visible(True)
     the_table.auto_set_font_size(False)
     the_table.set_fontsize(fontsize)
 
     for idx in range(n_row):
         idx_plot = idx + 1
         the_table = axs[idx_plot][0].table(cellText=df.iloc[idx, :][cols].values.reshape(1, -1), bbox=[0, 0, 1, 1],
-                               colWidths=col_widths, fontsize=fontsize, edges='')
+                               colWidths = col_widths, fontsize=fontsize, edges='', cellLoc='left')
         the_table.auto_set_font_size(False)
         the_table.set_fontsize(fontsize)
 
@@ -438,7 +446,7 @@ def plot_table_barh(df, bar_col, colour_col, col_widths, figsize, show_barcol=Fa
             # axs[idx_plot][1].set_axis_on()
             axs[idx_plot][1].xaxis.set_visible(True)
             axs[idx_plot][1].set_xticks(
-                [df[bar_col].min(), (df[bar_col].min() + df[bar_col].max()) / 2, df[bar_col].max()])
+                [format_bar_axes(min_bar), format_bar_axes((min_bar + max_bar) / 2), format_bar_axes(max_bar)])
             axs[idx_plot][1].tick_params(axis='x', labelsize=fontsize)
             axs[idx_plot][1].xaxis.set_ticks_position('top')
             axs[idx_plot][1].xaxis.set_label_position('top')
@@ -457,7 +465,8 @@ def group_diff_enrichment(query_names, group: str, name_eid, all_gene_names_eid,
                           padj: float = 0.25, min_overlap: int = None,
                           use_annotated_genes: bool = False,
                           make_enrichment_map=False, map_edge_filter=0.1,
-                          make_enrichment_bar=False):
+                          make_enrichment_bar=False,
+                          max_lFC_bar=None, max_lFDR_bar=None):
     # Displays only gene sets that have overlap with query greater or equal to min_overlap
     # For p value and padj calculation uses alll that have overlap >=1 } from gene_set_enrichment
     """
@@ -503,7 +512,7 @@ def group_diff_enrichment(query_names, group: str, name_eid, all_gene_names_eid,
                 enrichment_display.append({'Gene set': enriched.gene_set.name,
                                            'Ontology': enriched.ontology[0] + ': ' + enriched.ontology[1],
                                            'FDR': "{:.2e}".format(enriched.padj), 'N in query': enriched.in_query,
-                                           'Set size': len(enriched.gene_set.genes),
+                                           #'Set size': len(enriched.gene_set.genes),
                                            'N in ref.': enriched.in_reference,
                                            'Fold enrichment': fold_enriched})
             result = pd.DataFrame(enrichment_display)
@@ -515,21 +524,25 @@ def group_diff_enrichment(query_names, group: str, name_eid, all_gene_names_eid,
                 fig.suptitle('Group ' + group + ' using ' + str(len(query_eids)) + ' out of ' + str(len(query_names)) +
                              ' genes for enrichment calculation.')
             if make_enrichment_bar:
-                pass
+                fig_bar,axs_bar = plot_enrichment_bar(df=result, query_n=len(query_eids),used_padj=padj,
+                                                    reference_n=len(reference_gene_eids),
+                                                      max_lFDR=max_lFDR_bar, max_lFC=max_lFC_bar)
     print('Enrichment at FDR: ' + str(padj) + ' and min query - gene set overlap', str(min_overlap))
     print('N query genes in displayed gene sets:', len(query_in_enriched), 'out of', len(query_eids),
           'query genes used for enrichment calculation.')
-    # display(result)
-    print('\n')
+    #display(result)
+    #print('\n')
     result = [result]
+    #print(result)
     if make_enrichment_map:
-        result = result.append((fig, ax))
+        result.append((fig, ax))
     if make_enrichment_bar:
-        result = result.append((fig_bar, axs_bar))
+        result.append((fig_bar, axs_bar))
+        #print(result)
     return result
 
 
-def plot_enrichment_bar(df, query_n, reference_n, max_lFDR=10):
+def plot_enrichment_bar(df, query_n, reference_n,used_padj, max_lFDR=10,fig_w=15,max_lFC=None):
     df_plot = pd.DataFrame()
     df_plot['colour'] = [-np.log10(float(padj)) if -np.log10(float(padj)) <= max_lFDR else max_lFDR
                          for padj in df['FDR']]
@@ -539,9 +552,12 @@ def plot_enrichment_bar(df, query_n, reference_n, max_lFDR=10):
         'cellular_component', 'CC').replace(
         'molecular_function', 'MF') for ont in df['Ontology'].values]
     df_plot['FDR'] = df['FDR']
-    df_plot['Reference'] = ["%.2f (%d)" % ((100*n/reference_n), n) for n in df['N in ref.']]
     df_plot['Query'] = ["%.2f (%d)" % ((100*n/query_n), n) for n in df['N in query']]
-
-    plot_table_barh(df=df_plot,bar_col='Fold enrichment',colour_col='colour',col_widths=[40,10,8,10,10],fontsize=8,
-                    figsize=(15,0.4*df_plot.shape[0]))
+    df_plot['Reference'] = ["%.2f (%d)" % ((100 * n / reference_n), n) for n in df['N in ref.']]
+    df_plot=df_plot.sort_values('Fold enrichment',ascending=False)
+    return plot_table_barh(df=df_plot,bar_col='Fold enrichment',colour_col='colour',col_widths=[37,14,8,9,9],
+                           fontsize=9,
+                           #Figsize - based on nrows+header, add some constant or the tables that have less rows
+                           figsize=(fig_w,0.33*(df_plot.shape[0]+1)+0.1),
+                           max_col=max_lFDR,min_col=-np.log10(used_padj),min_bar=1,max_bar=max_lFC,format_bar_axes=int)
 
