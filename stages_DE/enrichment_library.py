@@ -561,3 +561,4 @@ def plot_enrichment_bar(df, query_n, reference_n,used_padj, max_lFDR=10,fig_w=15
                            figsize=(fig_w,0.33*(df_plot.shape[0]+1)+0.1),
                            max_col=max_lFDR,min_col=-np.log10(used_padj),min_bar=1,max_bar=max_lFC,format_bar_axes=int)
 
+
