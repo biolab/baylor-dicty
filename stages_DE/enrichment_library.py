@@ -8,6 +8,8 @@ import sklearn.preprocessing as pp
 from collections import defaultdict
 import warnings
 import matplotlib.pyplot as plt
+import matplotlib.colors
+import math
 
 from orangecontrib.bioinformatics.ncbi.gene import GeneMatcher
 from orangecontrib.bioinformatics.geneset.__init__ import (list_all, load_gene_sets)
@@ -393,12 +395,21 @@ def convert_EID(genes: iter, name_EID: dict) -> set:
 
 
 def plot_table_barh(df, bar_col, colour_col, col_widths, figsize, show_barcol=False, show_colour_col=False, fontsize=10,
-                    min_bar=None, max_bar=None, max_col=None,min_col=None,format_bar_axes=float):
-    palette = ContinuousPalettes['linear_viridis']
+                    min_bar=None, max_bar=None, max_col=None, min_col=None, format_bar_axes=float, cmap='viridis',
+                    automatic_size=True):
+    # palette = ContinuousPalettes['rainbow_bgyr_35_85_c73']
+
     if min_col is None:
         min_col = df[colour_col].min()
     if max_col is None:
         max_col = df[colour_col].max()
+    col_norm = matplotlib.colors.Normalize(vmin=min_col, vmax=max_col, clip=True)
+    if isinstance(cmap, str):
+        cmap = matplotlib.cm.get_cmap(cmap)
+    elif isinstance(cmap, list):
+        cmap = matplotlib.colors.LinearSegmentedColormap.from_list("", cmap)
+    else:
+        raise ValueError('cmap must be str or list of colours')
 
     if min_bar is None:
         min_bar = df[bar_col].min()
@@ -412,8 +423,32 @@ def plot_table_barh(df, bar_col, colour_col, col_widths, figsize, show_barcol=Fa
         cols.remove(colour_col)
     n_row = df.shape[0]
 
-    gs_kw = dict(width_ratios=[4, 1])
-    fig, axs = plt.subplots(nrows=n_row + 1, ncols=2, sharex=True, gridspec_kw=gs_kw, figsize=figsize)
+    border = 0.05
+    width_ratios = [4, 1]
+    dpi = 100
+    gs_kw = dict(width_ratios=width_ratios)
+    if automatic_size:
+        ax_ws, ax_h = calculate_table_size(df[cols].append(pd.DataFrame(cols,index=cols).T), fontsize=fontsize,
+                                           space_w=15, space_h=5)
+        # Heights
+        # Space for headers
+        row_h = (ax_h / (n_row + 1))
+        header_h = row_h * 2
+        height_ratios = [header_h] + [row_h] * n_row
+        ax_h = row_h * n_row + header_h
+
+        # Widths
+        ax_table_w = sum(ax_ws.values())
+        # barplot_w = ax_table_w*(width_ratios[-1] / sum(width_ratios))
+        barplot_w = 100
+        ax_w = ax_table_w + barplot_w
+        width_ratios = [ax_table_w, barplot_w]
+
+        figsize = calculate_fig_size(ax_w, ax_h, borders_w=border * 2, borders_h=border * 2, dpi=dpi)
+        gs_kw = dict(width_ratios=width_ratios, height_ratios=height_ratios)
+    fig, axs = plt.subplots(nrows=n_row + 1, ncols=2, sharex=True, gridspec_kw=gs_kw, figsize=figsize, dpi=dpi,
+                            subplotpars=matplotlib.figure.SubplotParams(
+                                left=border, bottom=border, right=1 - border, top=1 - border, wspace=0, hspace=0))
 
     for axs_row in axs:
         for ax in axs_row:
@@ -428,19 +463,27 @@ def plot_table_barh(df, bar_col, colour_col, col_widths, figsize, show_barcol=Fa
     fig.subplots_adjust(wspace=0, hspace=0)
 
     # Header
-    the_table=axs[0][0].table(cellText=[cols], bbox=[0, 0, 1, 1], colWidths=col_widths, fontsize=fontsize, edges='',
-                              cellLoc='left')
+    if automatic_size:
+        col_widths = [ax_ws[col] for col in cols]
+    the_table = axs[0][0].table(cellText=[cols], bbox=[0, 0, 1, 1], colWidths=col_widths, fontsize=fontsize, edges='',
+                                cellLoc='left')
     # To make the lower border of table header
     axs[1][0].spines['top'].set_visible(True)
     the_table.auto_set_font_size(False)
     the_table.set_fontsize(fontsize)
+    for key, cell in the_table.get_celld().items():
+        cell.PAD = 0
 
     for idx in range(n_row):
         idx_plot = idx + 1
+        if automatic_size:
+            col_widths = [ax_ws[col] for col in cols]
         the_table = axs[idx_plot][0].table(cellText=df.iloc[idx, :][cols].values.reshape(1, -1), bbox=[0, 0, 1, 1],
-                               colWidths = col_widths, fontsize=fontsize, edges='', cellLoc='left')
+                                           colWidths=col_widths, fontsize=fontsize, edges='', cellLoc='left')
         the_table.auto_set_font_size(False)
         the_table.set_fontsize(fontsize)
+        for key, cell in the_table.get_celld().items():
+            cell.PAD = 0
 
         if idx == 0:
             # axs[idx_plot][1].set_axis_on()
@@ -454,11 +497,95 @@ def plot_table_barh(df, bar_col, colour_col, col_widths, figsize, show_barcol=Fa
             axs[idx_plot][1].spines['top'].set_visible(True)
         axs[idx_plot][1].spines['left'].set_visible(True)
         axs[idx_plot][1].barh(0, df.iloc[idx, :][bar_col], 1,
-                              color=rgb_hex(palette.value_to_color(
-                                  x=df.iloc[idx, :][colour_col], low=min_col, high=max_col)))
+                              color=cmap(col_norm(df.iloc[idx, :][colour_col])))
         axs[idx_plot][1].set_xlim([min_bar, max_bar])
 
     return fig, axs
+
+
+# # Addapted from https://stackoverflow.com/questions/44970010/axes-class-set-explicitly-size-width-height-of-axes-in-given-units
+# def set_size(w,h, ax):
+#     """ w, h: width, height in inches """
+#     l = ax.figure.subplotpars.left
+#     r = ax.figure.subplotpars.right
+#     t = ax.figure.subplotpars.top
+#     b = ax.figure.subplotpars.bottom
+#     figw = float(w)/(r-l)
+#     figh = float(h)/(t-b)
+#     ax.figure.set_size_inches(figw, figh)
+# fig, ax=plt.subplots(dpi=100,subplotpars=matplotlib.figure.SubplotParams(left=0.1, bottom=0.1, right=0.9, top=0.9, wspace=0, hspace=0))
+# text_plot=ax.text(0,0,'test_test_test')
+# renderer = fig.canvas.get_renderer()
+# bb = text_plot.get_window_extent(renderer=renderer)
+#
+# set_size(bb.width/100,bb.height/100,ax=ax)
+# plt.close(fig)
+
+
+def calculate_table_size(df, fontsize, space_w, space_h):
+    """
+    For plt tables with no borders/spacing in plotting and no index/header
+    :return:
+    """
+    widths = {}
+    h_row = None
+    for col in df.columns:
+        max_w = 0
+        for val in df[col]:
+            w, h = text_dpi(str(val), fontsize=fontsize)
+            if h_row is None:
+                h_row = h
+            if w > max_w:
+                max_w = w
+        widths[col] = max_w + space_w
+    return widths, (h_row + space_h) * df.shape[0]
+
+
+def calculate_fig_size(ax_w, ax_h, borders_w, borders_h, dpi=100):
+    figw = float(ax_w / dpi) / (1 - borders_w)
+    figh = float(ax_h / dpi) / (1 - borders_h)
+    return figw, figh
+
+
+def text_dpi(text, fontsize):
+    fig, ax = plt.subplots()
+    text_plot = ax.text(0, 0, text, fontsize=fontsize)
+    renderer = fig.canvas.get_renderer()
+    bb = text_plot.get_window_extent(renderer=renderer)
+    plt.close(fig)
+    return bb.width, bb.height
+
+
+def plot_legend_enrichment_bar(cmap, min_FDR, used_padj, base=10):
+    label = '-log' + str(base) + '(FDR)'
+    min_col = -log_base(used_padj, base)
+    max_col = -log_base(min_FDR, base)
+    ticks = range(math.ceil(min_col), math.floor(max_col) + 1)
+    return plot_linear_legend(cmap, min_col, max_col, ticks, label)
+
+
+def plot_linear_legend(cmap, min_col, max_col, ticks, label):
+    col_norm = matplotlib.colors.Normalize(vmin=min_col, vmax=max_col, clip=True)
+    if isinstance(cmap, str):
+        cmap = matplotlib.cm.get_cmap(cmap)
+    elif isinstance(cmap, list):
+        cmap = matplotlib.colors.LinearSegmentedColormap.from_list("", cmap)
+    else:
+        raise ValueError('cmap must be str or list of colours')
+
+    sm = matplotlib.cm.ScalarMappable(cmap=cmap, norm=col_norm)
+    sm.set_array([])
+
+    figsize = (0.8, 2.7)
+    fontsize = 10
+    fig, ax = plt.subplots(figsize=figsize)
+    clb = fig.colorbar(sm, cax=ax, use_gridspec=True, ticks=ticks)
+    for t in clb.ax.get_yticklabels():
+        t.set_fontsize(fontsize)
+    clb.ax.set_title(label + '\n', fontsize=fontsize, loc='left')
+    margins = {"left": 0.1, "bottom": 0.02, "right": 0.5, "top": 0.9}
+    fig.subplots_adjust(**margins)
+    return fig, ax
 
 
 def group_diff_enrichment(query_names, group: str, name_eid, all_gene_names_eid, gene_sets_ontology,
@@ -466,7 +593,7 @@ def group_diff_enrichment(query_names, group: str, name_eid, all_gene_names_eid,
                           use_annotated_genes: bool = False,
                           make_enrichment_map=False, map_edge_filter=0.1,
                           make_enrichment_bar=False,
-                          max_lFC_bar=None, max_lFDR_bar=None):
+                          max_lFC_bar=None, min_FDR_bar=None, cmap_FDR_bar='viridis', lFDR_base_bar=10):
     # Displays only gene sets that have overlap with query greater or equal to min_overlap
     # For p value and padj calculation uses alll that have overlap >=1 } from gene_set_enrichment
     """
@@ -508,11 +635,11 @@ def group_diff_enrichment(query_names, group: str, name_eid, all_gene_names_eid,
             for enriched in enrichment:
                 query_in_enriched.update(enriched.gene_set.genes & query_eids)
                 fold_enriched = (enriched.in_query / len(query_eids)) / (
-                            enriched.in_reference / len(reference_gene_eids))
+                        enriched.in_reference / len(reference_gene_eids))
                 enrichment_display.append({'Gene set': enriched.gene_set.name,
                                            'Ontology': enriched.ontology[0] + ': ' + enriched.ontology[1],
                                            'FDR': "{:.2e}".format(enriched.padj), 'N in query': enriched.in_query,
-                                           #'Set size': len(enriched.gene_set.genes),
+                                           # 'Set size': len(enriched.gene_set.genes),
                                            'N in ref.': enriched.in_reference,
                                            'Fold enrichment': fold_enriched})
             result = pd.DataFrame(enrichment_display)
@@ -524,41 +651,51 @@ def group_diff_enrichment(query_names, group: str, name_eid, all_gene_names_eid,
                 fig.suptitle('Group ' + group + ' using ' + str(len(query_eids)) + ' out of ' + str(len(query_names)) +
                              ' genes for enrichment calculation.')
             if make_enrichment_bar:
-                fig_bar,axs_bar = plot_enrichment_bar(df=result, query_n=len(query_eids),used_padj=padj,
-                                                    reference_n=len(reference_gene_eids),
-                                                      max_lFDR=max_lFDR_bar, max_lFC=max_lFC_bar)
+                fig_bar, axs_bar = plot_enrichment_bar(df=result, query_n=len(query_eids), used_padj=padj,
+                                                       reference_n=len(reference_gene_eids),
+                                                       min_FDR=min_FDR_bar, max_lFC=max_lFC_bar, cmap=cmap_FDR_bar,
+                                                       base_lFDR=lFDR_base_bar)
     print('Enrichment at FDR: ' + str(padj) + ' and min query - gene set overlap', str(min_overlap))
     print('N query genes in displayed gene sets:', len(query_in_enriched), 'out of', len(query_eids),
           'query genes used for enrichment calculation.')
-    #display(result)
-    #print('\n')
+    # display(result)
+    # print('\n')
     result = [result]
-    #print(result)
+    # print(result)
     if make_enrichment_map:
         result.append((fig, ax))
     if make_enrichment_bar:
         result.append((fig_bar, axs_bar))
-        #print(result)
+        # print(result)
     return result
 
 
-def plot_enrichment_bar(df, query_n, reference_n,used_padj, max_lFDR=10,fig_w=15,max_lFC=None):
+def plot_enrichment_bar(df, query_n, reference_n, used_padj, min_FDR=10 ** (-10), fig_w=15, max_lFC=None, base_lFDR=10,
+                        cmap='viridis'):
     df_plot = pd.DataFrame()
-    df_plot['colour'] = [-np.log10(float(padj)) if -np.log10(float(padj)) <= max_lFDR else max_lFDR
+    df_plot['colour'] = [-log_base(float(padj), base_lFDR) if -log_base(float(padj), base_lFDR) <= -log_base(
+        min_FDR, base_lFDR) else -log_base(min_FDR, base_lFDR)
                          for padj in df['FDR']]
     df_plot['Fold enrichment'] = df['Fold enrichment']
     df_plot['Term'] = df['Gene set']
     df_plot['Ontology'] = [ont.replace('biological_process', 'BP').replace(
         'cellular_component', 'CC').replace(
-        'molecular_function', 'MF') for ont in df['Ontology'].values]
+        'molecular_function', 'MF').replace(
+        'Pathways', 'Path.').replace(
+        'Dictybase: Phenotypes', 'DB: Pheno.').replace(
+        'Custom: Baylor', 'Custom') for ont in df['Ontology'].values]
     df_plot['FDR'] = df['FDR']
-    df_plot['Query'] = ["%.2f (%d)" % ((100*n/query_n), n) for n in df['N in query']]
+    df_plot['Query'] = ["%.2f (%d)" % ((100 * n / query_n), n) for n in df['N in query']]
     df_plot['Reference'] = ["%.2f (%d)" % ((100 * n / reference_n), n) for n in df['N in ref.']]
-    df_plot=df_plot.sort_values('Fold enrichment',ascending=False)
-    return plot_table_barh(df=df_plot,bar_col='Fold enrichment',colour_col='colour',col_widths=[37,14,8,9,9],
-                           fontsize=9,
-                           #Figsize - based on nrows+header, add some constant or the tables that have less rows
-                           figsize=(fig_w,0.33*(df_plot.shape[0]+1)+0.1),
-                           max_col=max_lFDR,min_col=-np.log10(used_padj),min_bar=1,max_bar=max_lFC,format_bar_axes=int)
+    df_plot = df_plot.sort_values('Fold enrichment', ascending=False)
+    return plot_table_barh(df=df_plot, bar_col='Fold enrichment', colour_col='colour', col_widths=[37, 14, 8, 9, 9],
+                           fontsize=8,
+                           # Figsize - based on nrows+header, add some constant or the tables that have less rows
+                           figsize=(fig_w, 0.33 * (df_plot.shape[0] + 1) + 0.1),
+                           max_col=-log_base(min_FDR, base_lFDR), min_col=-log_base(float(used_padj), base_lFDR),
+                           min_bar=1, max_bar=max_lFC,
+                           format_bar_axes=int, cmap=cmap)
 
 
+def log_base(x, base):
+    return np.log(x) / np.log(base)
