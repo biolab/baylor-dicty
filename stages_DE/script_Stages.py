@@ -38,6 +38,7 @@ if lab:
     pathRegulons = '/home/karin/Documents/timeTrajectories/data/regulons/'
     pathReplicateImg = '/home/karin/Documents/timeTrajectories/data/replicate_image/'
     path_deOvR = '/home/karin/Documents/timeTrajectories/data/deTime/stage_vs_other/'
+    path_de_neighbouring='/home/karin/Documents/timeTrajectories/data/deTime/neighbouring/'
 
 else:
     dataPath = '/home/karin/Documents/DDiscoideum/data/RPKUM/'
@@ -546,6 +547,82 @@ elif no_image_fill == 0:
 
     conditions.to_csv(dataPath + 'conditions_mergedGenes.tsv', sep='\t', index=False)
 
+#*******************
+#**** Add main stage to conditions
+conditions['main_stage']=''
+
+no_seq = 0
+no_main = 0
+no_image_strain=0
+annotated = 0
+file = '/home/karin/Documents/timeTrajectories/data/from_huston/phenotypes/main_WTstage_20200428.xlsx'
+wb = load_workbook(file, read_only=True)
+
+for strain in conditions['Strain'].unique():
+    if strain in wb.sheetnames:
+        phenotypes = pd.read_excel(file, sheet_name=strain, index_col=0)
+        phenotypes = phenotypes.replace('no image', np.nan)
+        phenotypes = phenotypes.replace('no_image', np.nan)
+        phenotypes = phenotypes.replace('unsynchronized', np.nan)
+        for time in phenotypes.index:
+            for replicate in phenotypes.columns:
+                val = phenotypes.loc[time, replicate]
+
+                # Find conditions row of replicate+time
+                conditions_row = conditions[(conditions['Replicate'] == replicate) & (conditions['Time'] == time)]
+                if conditions_row.shape[0] > 0:
+                    idx_name_conditions = \
+                        conditions[(conditions['Replicate'] == replicate) & (conditions['Time'] == time)].index[0]
+
+                    # Check if there is a phenotype (str) or no phenotype annotation
+                    if type(val) == str:
+                        val = val.replace('rippling', 'stream')
+                        val = val.replace('strem', 'stream')
+                        val = val.replace('no agg', 'no_agg')
+                        val = val.replace('noAgg', 'no_agg')
+                        val = val.replace('small', '')
+                        val = val.replace(')', '')
+                        val = val.replace('(', '')
+                        val = val.replace(' ', '')
+                        val = val.replace('elongating', '')
+                        val = val.replace('shrinking', '')
+                        val = val.replace('Spore', '_spore')
+                        val = val.replace('streaming', 'stream')
+                        annotated += 1
+                        if val not in PHENOTYPES:
+                            print(strain, val, time, replicate)
+                        else:
+                            conditions.at[idx_name_conditions, 'main_stage'] = val
+                    else:
+                        no_main += 1
+                        conditions.loc[idx_name_conditions, 'main_stage'] = None
+                        # print(val, replicate, time)
+
+                else:
+                    if type(val) == str:
+                        print('No sample for', replicate, time)
+                        no_seq += 1
+    else:
+        #print('Strain not in file:', strain)
+        for idx_name_conditions in conditions.query('Strain =="' + strain + '"').index:
+            no_image_strain += 1
+            #conditions.loc[idx_name_conditions, 'main_stage'] = ''
+
+
+# Make all 0 times no_agg if not already filled
+for idx, sample in conditions.iterrows():
+    if sample['Time'] == 0:
+        if (sample['main_stage']==None):
+            conditions.at[idx, 'main_stage'] = 'no_agg'
+            annotated += 1
+            no_main -= 1
+        #else:
+        #    print(sample['Short'])
+
+conditions['main_stage']=conditions['main_stage'].fillna(np.nan).replace('',np.nan)
+
+conditions.to_csv(dataPath + 'conditions_mergedGenes.tsv', sep='\t', index=False)
+
 # ***********************************************
 # ****** Averaged stages - for a timepoint add all stages present in each replicate
 phenotypes = ['no_agg', 'stream', 'lag', 'tag', 'tip', 'slug', 'mhat', 'cul', 'FB', 'yem']
@@ -893,3 +970,22 @@ for stage in PHENOTYPES:
 # *** Save non null genes
 genes_nn = pd.DataFrame(genes[(genes != 0).any(axis=1)].index.values, columns=['Gene'])
 genes_nn.to_csv(dataPath + 'nonNullGenes.tsv', sep='\t', index=False)
+
+#*****************
+#******* Merge results from DESeq2 between neighbouring stages
+combined=[]
+phenotypes=[p for p in PHENOTYPES if p != 'yem']
+#files=[f for f in glob.glob(path_de_neighbouring  + '/DE' + "*.tsv")]
+#for f in files:
+for idx in range(len(phenotypes)-1):
+    #f_split=f.split('/')[-1].split('_')
+    #stage1=f_split[3]
+    #stage2 = f_split[1]
+    stage1=phenotypes[idx]
+    stage2 = phenotypes[idx+1]
+    f=path_de_neighbouring + '/DE_'+stage2+'_ref_'+stage1+'_padj_lFC.tsv'
+    data=pd.read_table(f,index_col=0)[['log2FoldChange','padj']]
+    data.columns=[stage1+'_'+stage2+'_'+col for col in data.columns]
+    combined.append(data)
+combined=pd.concat(combined,axis=1,sort=True)
+combined.to_csv(path_de_neighbouring +'combined.tsv',sep='\t')
