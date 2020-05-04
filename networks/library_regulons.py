@@ -36,9 +36,13 @@ SCALING = 'mean0std1'
 LOG = True
 
 # For preparing Orange data
-STRAIN_ORDER = ['AX4', 'AX4_FD', 'AX4_PE', 'AX4_SE', 'MybBGFP', 'ecmARm', 'gtaI', 'cudA', 'dgcA', 'gtaG', 'tagB',
-                'comH', 'gbfA', 'tgrC1', 'tgrB1',
-                'tgrB1C1', 'gtaC', 'mybB', 'amiB', 'acaA', 'acaAPkaCoe', 'ac3PkaCoe', 'PkaCoe', 'pkaR']
+#STRAIN_ORDER = ['AX4', 'AX4_FD', 'AX4_PE', 'AX4_SE', 'MybBGFP', 'ecmARm', 'gtaI', 'cudA', 'dgcA', 'gtaG', 'tagB',
+#                'comH', 'gbfA', 'tgrC1', 'tgrB1',
+#                'tgrB1C1', 'gtaC', 'mybB', 'amiB', 'acaA', 'acaAPkaCoe', 'ac3PkaCoe', 'PkaCoe', 'pkaR']
+STRAIN_ORDER=['AX4', 'AX4_FD', 'AX4_PE', 'AX4_SE', 'MybBGFP', 'PkaCoe', 'pkaR', 'ac3PkaCoe', 'acaAPkaCoe',
+       'gtaI', 'gtaG', 'cudA', 'dgcA', 'ecmARm', 'tagB', 'comH', 'tgrB1',
+       'tgrB1C1', 'tgrC1', 'gbfA', 'gtaC', 'acaA', 'mybB', 'amiB']
+
 
 
 class NeighbourCalculator:
