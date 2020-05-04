@@ -1,29 +1,17 @@
-from operator import index
-
 import matplotlib.pyplot as plt
 import glob
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import minmax_scale
-import matplotlib.patches as mpatches
-from scipy.stats import rankdata, mannwhitneyu
-from statsmodels.stats.multitest import multipletests
-from skmultilearn.problem_transform import ClassifierChain
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import precision_recall_fscore_support, roc_auc_score
-from sklearn.model_selection import LeaveOneOut
-from skmultilearn.model_selection import iterative_train_test_split, IterativeStratification
-import sklearn.preprocessing as pp
+from skmultilearn.model_selection import iterative_train_test_split
 import itertools
 from sklearn.decomposition import PCA
 from openpyxl import load_workbook
 from scipy.stats import combine_pvalues
 
-
-# import DBA as dba
 import arff
 
-from networks.library_regulons import ClusterAnalyser, NeighbourCalculator, make_tsne, add_tsne
+from networks.library_regulons import ClusterAnalyser, NeighbourCalculator, make_tsne, add_tsne, STRAIN_ORDER
 from networks.functionsDENet import loadPickle, savePickle
 from stages_DE.stages_library import *
 from correlation_enrichment.library_correlation_enrichment import SimilarityCalculator
@@ -38,7 +26,7 @@ if lab:
     pathRegulons = '/home/karin/Documents/timeTrajectories/data/regulons/'
     pathReplicateImg = '/home/karin/Documents/timeTrajectories/data/replicate_image/'
     path_deOvR = '/home/karin/Documents/timeTrajectories/data/deTime/stage_vs_other/'
-    path_de_neighbouring='/home/karin/Documents/timeTrajectories/data/deTime/neighbouring/'
+    path_de_neighbouring = '/home/karin/Documents/timeTrajectories/data/deTime/neighbouring/'
 
 else:
     dataPath = '/home/karin/Documents/DDiscoideum/data/RPKUM/'
@@ -547,13 +535,13 @@ elif no_image_fill == 0:
 
     conditions.to_csv(dataPath + 'conditions_mergedGenes.tsv', sep='\t', index=False)
 
-#*******************
-#**** Add main stage to conditions
-conditions['main_stage']=''
+# *******************
+# **** Add main stage to conditions
+conditions['main_stage'] = ''
 
 no_seq = 0
 no_main = 0
-no_image_strain=0
+no_image_strain = 0
 annotated = 0
 file = '/home/karin/Documents/timeTrajectories/data/from_huston/phenotypes/main_WTstage_20200428.xlsx'
 wb = load_workbook(file, read_only=True)
@@ -603,23 +591,22 @@ for strain in conditions['Strain'].unique():
                         print('No sample for', replicate, time)
                         no_seq += 1
     else:
-        #print('Strain not in file:', strain)
+        # print('Strain not in file:', strain)
         for idx_name_conditions in conditions.query('Strain =="' + strain + '"').index:
             no_image_strain += 1
-            #conditions.loc[idx_name_conditions, 'main_stage'] = ''
-
+            # conditions.loc[idx_name_conditions, 'main_stage'] = ''
 
 # Make all 0 times no_agg if not already filled
 for idx, sample in conditions.iterrows():
     if sample['Time'] == 0:
-        if (sample['main_stage']==None):
+        if (sample['main_stage'] == None):
             conditions.at[idx, 'main_stage'] = 'no_agg'
             annotated += 1
             no_main -= 1
-        #else:
+        # else:
         #    print(sample['Short'])
 
-conditions['main_stage']=conditions['main_stage'].fillna(np.nan).replace('',np.nan)
+conditions['main_stage'] = conditions['main_stage'].fillna(np.nan).replace('', np.nan)
 
 conditions.to_csv(dataPath + 'conditions_mergedGenes.tsv', sep='\t', index=False)
 
@@ -911,25 +898,25 @@ for params in params_grid:
 # ********************************
 # ******** Parse DE one vs rest results into a single file
 # folder='nobatchrep'
-#folder = 'WT_batchrep'
+# folder = 'WT_batchrep'
 folder = 'strain_batchrep_lFC05_upper'
 # Files for normal stages or strain-combined stages
-#files = [f for f in glob.glob(path_deOvR + folder + '/' + "*.tsv")]
+# files = [f for f in glob.glob(path_deOvR + folder + '/' + "*.tsv")]
 files = [f for f in glob.glob(path_deOvR + folder + '/' + "*_combined.tsv")]
 combined = pd.DataFrame()
 for stage in PHENOTYPES:
     # File for normal stages or strain-combined stages
-    #file = path_deOvR + folder + '/DE_' + stage + '_ref_other_padj0.05_lFC1.tsv'
+    # file = path_deOvR + folder + '/DE_' + stage + '_ref_other_padj0.05_lFC1.tsv'
     file = path_deOvR + folder + '/' + stage + '_combined.tsv'
     if file in files:
         # print(stage)
         data = pd.read_table(file, index_col=0)
         data['Stage'] = stage
-        combined = pd.concat([combined, data],sort=True)
-#Only for the combined starins
-col_order=[col for col in combined.columns if col not in ['combined_pval','pval_n','combined_padj','Stage']]
-col_order=['combined_pval','pval_n','combined_padj','Stage']+col_order
-combined=combined[col_order]
+        combined = pd.concat([combined, data], sort=True)
+# Only for the combined starins
+col_order = [col for col in combined.columns if col not in ['combined_pval', 'pval_n', 'combined_padj', 'Stage']]
+col_order = ['combined_pval', 'pval_n', 'combined_padj', 'Stage'] + col_order
+combined = combined[col_order]
 
 combined.to_csv(path_deOvR + folder + '_combined.tsv', sep='\t')
 
@@ -959,33 +946,66 @@ for stage in PHENOTYPES:
         elif (~np.isnan(data)).sum() == 1:
             combined_stage.loc[gene, ['combined_pval', 'pval_n']] = [data[~np.isnan(data)], len(pvals)]
             combined_stage.loc[gene, 'pval_n'] = 1
-    not_all=combined_stage.query('pval_n < '+str(len(files))).copy()
-    is_all=combined_stage.query('pval_n == '+str(len(files))).copy()
-    is_all['combined_padj'] = multipletests(is_all['combined_pval'],  method='fdr_bh')[1]
-    combined_stage=pd.concat([is_all,not_all],sort=False)
-    combined_stage.to_csv(path_deOvR + 'strain_batchrep_lFC05_upper/'+stage+'_combined.tsv',sep='\t')
-
+    not_all = combined_stage.query('pval_n < ' + str(len(files))).copy()
+    is_all = combined_stage.query('pval_n == ' + str(len(files))).copy()
+    is_all['combined_padj'] = multipletests(is_all['combined_pval'], method='fdr_bh')[1]
+    combined_stage = pd.concat([is_all, not_all], sort=False)
+    combined_stage.to_csv(path_deOvR + 'strain_batchrep_lFC05_upper/' + stage + '_combined.tsv', sep='\t')
 
 # ************************************
 # *** Save non null genes
 genes_nn = pd.DataFrame(genes[(genes != 0).any(axis=1)].index.values, columns=['Gene'])
 genes_nn.to_csv(dataPath + 'nonNullGenes.tsv', sep='\t', index=False)
 
-#*****************
-#******* Merge results from DESeq2 between neighbouring stages
-combined=[]
-phenotypes=[p for p in PHENOTYPES if p != 'yem']
-#files=[f for f in glob.glob(path_de_neighbouring  + '/DE' + "*.tsv")]
-#for f in files:
-for idx in range(len(phenotypes)-1):
-    #f_split=f.split('/')[-1].split('_')
-    #stage1=f_split[3]
-    #stage2 = f_split[1]
-    stage1=phenotypes[idx]
-    stage2 = phenotypes[idx+1]
-    f=path_de_neighbouring + '/DE_'+stage2+'_ref_'+stage1+'_padj_lFC.tsv'
-    data=pd.read_table(f,index_col=0)[['log2FoldChange','padj']]
-    data.columns=[stage1+'_'+stage2+'_'+col for col in data.columns]
+# *****************
+# ******* Merge results from DESeq2 between neighbouring stages
+combined = []
+phenotypes = [p for p in PHENOTYPES if p != 'yem']
+# files=[f for f in glob.glob(path_de_neighbouring  + '/DE' + "*.tsv")]
+# for f in files:
+for idx in range(len(phenotypes) - 1):
+    # f_split=f.split('/')[-1].split('_')
+    # stage1=f_split[3]
+    # stage2 = f_split[1]
+    stage1 = phenotypes[idx]
+    stage2 = phenotypes[idx + 1]
+    f = path_de_neighbouring + '/DE_' + stage2 + '_ref_' + stage1 + '_padj_lFC.tsv'
+    data = pd.read_table(f, index_col=0)[['log2FoldChange', 'padj']]
+    data.columns = [stage1 + '_' + stage2 + '_' + col for col in data.columns]
     combined.append(data)
-combined=pd.concat(combined,axis=1,sort=True)
-combined.to_csv(path_de_neighbouring +'combined.tsv',sep='\t')
+combined = pd.concat(combined, axis=1, sort=True)
+combined.to_csv(path_de_neighbouring + 'combined.tsv', sep='\t')
+
+# *************
+# *** Average data for main stages
+# Select for now only WT as only this has all data and samples that have annotated main stage
+conditions_main = conditions.query('Group =="WT"').query('~main_stage.isna()', engine='python')
+# Average expression
+genes_group = genes[conditions_main.Measurment].copy().T
+genes_group=genes_group.join(pd.DataFrame(conditions_main[['Strain','main_stage']].values,
+                              index=conditions_main['Measurment'],columns=['Strain','main_stage']))
+averaged=genes_group.groupby(['Strain','main_stage']).mean().reset_index()
+# Sort by strain and stage
+averaged['main_stage']=pd.Categorical(averaged['main_stage'], categories=PHENOTYPES,ordered=True)
+averaged['Strain']=pd.Categorical(averaged['Strain'], categories=STRAIN_ORDER,ordered=True)
+averaged=averaged.sort_values(['Strain','main_stage'])
+
+averaged.to_csv(pathStages+'genes_averaged_orange_mainStage.tsv',sep='\t')
+
+# Scale
+percentile = 0.99
+max_val = 0.1
+genes_orange_avg_scaled = averaged.copy()
+genes_orange_avg_scaled = genes_orange_avg_scaled.drop(['Strain', 'main_stage'], axis=1)
+genes_avg_percentile = genes_orange_avg_scaled.quantile(q=percentile, axis=0)
+genes_orange_avg_scaled = genes_orange_avg_scaled - genes_avg_percentile
+genes_avg_percentile = genes_avg_percentile.replace(0, 1)
+genes_orange_avg_scaled = genes_orange_avg_scaled / genes_avg_percentile
+# Bound at max 0.1 (to remove outliers)
+genes_orange_avg_scaled[genes_orange_avg_scaled > max_val] = max_val
+genes_orange_avg_scaled[['Strain', 'main_stage']] = averaged[['Strain', 'main_stage']]
+genes_orange_avg_scaled['Group'] = [GROUPS[strain] for strain in genes_orange_avg_scaled['Strain']]
+genes_orange_avg_scaled.index=[strain+'_'+main
+                               for strain,main in genes_orange_avg_scaled[['Strain', 'main_stage']].values]
+genes_orange_avg_scaled.to_csv(pathStages+'genes_averaged_orange_mainStage_scale'+ str(percentile)[2:] +
+                                        'percentileMax' + str(max_val) + '.tsv',sep='\t')
