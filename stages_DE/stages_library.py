@@ -6,6 +6,7 @@ import random
 from statistics import mean
 from scipy.stats import mannwhitneyu, ttest_ind
 from statsmodels.stats.multitest import multipletests
+import matplotlib
 
 from sklearn.mixture import GaussianMixture
 from sklearn.metrics import adjusted_rand_score
@@ -16,6 +17,10 @@ import matplotlib.patches as mpatches
 from orangecontrib.bioinformatics.utils.statistics import Hypergeometric
 from Orange.clustering.louvain import jaccard
 from scipy.optimize import curve_fit
+
+font='Arial'
+matplotlib.rcParams.update({'font.family': font})
+plt.rcParams["font.family"] = font
 
 GROUPS = {'amiB': 'agg-', 'mybB': 'agg-', 'acaA': 'agg-', 'gtaC': 'agg-',
           'gbfA': 'lag_dis', 'tgrC1': 'lag_dis', 'tgrB1': 'tag_dis', 'tgrB1C1': 'tag_dis',

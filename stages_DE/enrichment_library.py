@@ -21,6 +21,9 @@ from Orange.clustering.louvain import jaccard
 ORGANISM = 44689
 HYPERGEOMETRIC = Hypergeometric()
 
+font='Arial'
+matplotlib.rcParams.update({'font.family': font})
+plt.rcParams["font.family"] = font
 
 class GeneSetData:
     """

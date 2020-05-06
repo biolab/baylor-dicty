@@ -957,25 +957,6 @@ for stage in PHENOTYPES:
 genes_nn = pd.DataFrame(genes[(genes != 0).any(axis=1)].index.values, columns=['Gene'])
 genes_nn.to_csv(dataPath + 'nonNullGenes.tsv', sep='\t', index=False)
 
-# *****************
-# ******* Merge results from DESeq2 between neighbouring stages
-combined = []
-phenotypes = [p for p in PHENOTYPES if p != 'yem']
-# files=[f for f in glob.glob(path_de_neighbouring  + '/DE' + "*.tsv")]
-# for f in files:
-for idx in range(len(phenotypes) - 1):
-    # f_split=f.split('/')[-1].split('_')
-    # stage1=f_split[3]
-    # stage2 = f_split[1]
-    stage1 = phenotypes[idx]
-    stage2 = phenotypes[idx + 1]
-    f = path_de_neighbouring + '/DE_' + stage2 + '_ref_' + stage1 + '_padj_lFC.tsv'
-    data = pd.read_table(f, index_col=0)[['log2FoldChange', 'padj']]
-    data.columns = [stage1 + '_' + stage2 + '_' + col for col in data.columns]
-    combined.append(data)
-combined = pd.concat(combined, axis=1, sort=True)
-combined.to_csv(path_de_neighbouring + 'combined.tsv', sep='\t')
-
 # *************
 # *** Average data for main stages
 # Select for now only WT as only this has all data and samples that have annotated main stage
@@ -1009,3 +990,38 @@ genes_orange_avg_scaled.index=[strain+'_'+main
                                for strain,main in genes_orange_avg_scaled[['Strain', 'main_stage']].values]
 genes_orange_avg_scaled.to_csv(pathStages+'genes_averaged_orange_mainStage_scale'+ str(percentile)[2:] +
                                         'percentileMax' + str(max_val) + '.tsv',sep='\t')
+
+
+# *****************
+# ******* Merge results from DESeq2 between neighbouring stages
+combined = []
+phenotypes = [p for p in PHENOTYPES if p != 'yem']
+# files=[f for f in glob.glob(path_de_neighbouring  + '/DE' + "*.tsv")]
+# for f in files:
+for idx in range(len(phenotypes) - 1):
+    # f_split=f.split('/')[-1].split('_')
+    # stage1=f_split[3]
+    # stage2 = f_split[1]
+    stage1 = phenotypes[idx]
+    stage2 = phenotypes[idx + 1]
+    f = path_de_neighbouring + '/DE_' + stage2 + '_ref_' + stage1 + '_padj_lFC.tsv'
+    data = pd.read_table(f, index_col=0)[['log2FoldChange', 'pvalue','padj']]
+    data.columns = [stage1 + '_' + stage2 + '_' + col for col in data.columns]
+    combined.append(data)
+combined = pd.concat(combined, axis=1, sort=True)
+
+# Adjust FDR across all comparisons, as they are all looked at together. Use only non-na pvalues
+pvals=[]
+for col in combined.columns:
+    if 'pvalue' in col:
+        for row in combined.index:
+            pval=combined.at[row,col]
+            if not np.isnan(pval):
+                pvals.append({'row':row,'col':col,'pval':pval})
+pvals=pd.DataFrame(pvals)
+pvals['FDR_overall']=multipletests(pvals['pval'], method='fdr_bh')[1]
+for row_name,data in pvals.iterrows():
+    comparison=data['col'].rstrip('pvalue')
+    combined.at[data['row'],comparison+'FDR_overall']=data['FDR_overall']
+
+combined.to_csv(path_de_neighbouring + 'combined.tsv', sep='\t')
