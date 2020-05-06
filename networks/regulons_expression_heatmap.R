@@ -87,6 +87,8 @@ legend_width=0.7
 top_annotation_height=0.6
 phenotype_annotation_height=3
 cluster_font=15
+#Imports made in heatmao_annotation.r
+fontfamily='Arial'
 
 ht_list<-make_annotation(phenotypes_font,legend_height,legend_width,top_annotation_height,phenotype_annotation_height,cluster_font)
 #Expression heatmap
@@ -201,7 +203,7 @@ for (cluster in cluster_order$Cluster){
   genes<-as.character(genes[order(match(genes,AX4_ordered))])
   regulons2_annotation=rowAnnotation(AX4_clusters = regulons2[genes,],col = list(AX4_clusters = colours_regulons2_map),
                      show_legend = FALSE,annotation_name_side = "top",show_annotation_name = first,
-                     annotation_name_gp=gpar(fontsize = cluster_font))
+                     annotation_name_gp=gpar(fontsize = cluster_font,fontfamily=fontfamily))
   
   # Remove 'C' from cluster name
   # The as.character ensures that the code works with numeric clusters
@@ -216,9 +218,9 @@ for (cluster in cluster_order$Cluster){
                   title = "\nRelative \nexpression\n",
                   at = c(min_expression, round(mean(c(min_expression,max_expression)),1),max_expression),
                   grid_width= unit(legend_width, "cm"),grid_height= unit(legened_height, "cm") ,
-                  labels_gp = gpar(fontsize = cluster_font),title_gp = gpar(fontsize = cluster_font)),
+                  labels_gp = gpar(fontsize = cluster_font,fontfamily=fontfamily),title_gp = gpar(fontsize = cluster_font,fontfamily=fontfamily)),
                   #** Cluster name fontsize
-                  row_title_gp=gpar(fontsize=cluster_font),
+                  row_title_gp=gpar(fontsize=cluster_font,fontfamily=fontfamily),
                   left_annotation = regulons2_annotation)
   first=FALSE
   ht_list=ht_list %v% heatmap

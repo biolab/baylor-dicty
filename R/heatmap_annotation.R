@@ -3,10 +3,17 @@
 library(ComplexHeatmap)
 library(circlize)
 library(viridis)
+library(extrafont)
 
 
 path_strain_order='/home/karin/Documents/timeTrajectories/data/'
 path_phenotypes = '/home/karin/Documents/timeTrajectories/data/stages/'
+path_expression='/home/karin/Documents/timeTrajectories/data/regulons/'
+
+#Import fonts and press y to continue
+font_import(prompt=FALSE)
+loadfonts(device = "postscript")
+loadfonts(device = "pdf")
 
 #**! Specify file names for phenotipic data
 #** Phenotypes tab file: Short averaged sample names in rows (as in avg_expression) and columns with phenotypes.
@@ -21,6 +28,9 @@ for(col in colnames(avg_phenotype)){
   avg_phenotype[col]=new_col
 }
 
+# Only for finding strain groups
+avg_expression=read.table(paste(path_expression,"genes_averaged_orange_scale99percentileMax0.1.tsv",sep=''),
+                          header=TRUE,row.names=1, sep="\t")
 
 #** Strain order - single column with ordered strain names
 strain_order<-as.vector(read.table(paste(path_strain_order,"strain_order.tsv",sep=''))[,1])
@@ -34,6 +44,7 @@ legend_width=0.7
 top_annotation_height=0.6
 phenotype_annotation_height=3
 cluster_font=15
+fontfamily='Arial'
 
 #Strain groups annotation
 #** Colours of strain groups
@@ -61,11 +72,11 @@ make_annotation<-function(phenotypes_font=parent.frame()$phenotypes_font,legend_
   #                 ),
   #                 cluster_columns=FALSE,name='\nPhenotypic \ngroup\n',
   #                 #** Strain name font size
-  #                 column_title_gp=gpar(fontsize=legend_font),
+  #                 column_title_gp=gpar(fontsize=legend_font,fontfamily=fontfamily),
   #                 col=group_cols, heatmap_legend_param = list( 
   #                 grid_width= unit(legend_width, "cm"),grid_height= unit(legened_height, "cm") ,
-  #                 labels_gp = gpar(fontsize = cluster_font),title_gp = gpar(fontsize = cluster_font)),
-  #                 row_names_gp = gpar(fontsize = cluster_font))
+  #                 labels_gp = gpar(fontsize = cluster_font,fontfamily=fontfamily),title_gp = gpar(fontsize = cluster_font,fontfamily=fontfamily)),
+  #                 row_names_gp = gpar(fontsize = cluster_font,fontfamily=fontfamily))
   
   #Time annotation
   times=unique(avg_expression$Time)
@@ -105,9 +116,9 @@ make_annotation<-function(phenotypes_font=parent.frame()$phenotypes_font,legend_
                   cluster_columns=FALSE, show_column_names = FALSE,name='\nTime\n',col=col_time,
                   heatmap_legend_param = list( at = c(min(times),as.integer(mean(c(min(times),max(times)))),max(times)),
                                                grid_width= unit(legend_width, "cm"),grid_height= unit(legened_height, "cm") ,
-                                               labels_gp = gpar(fontsize = cluster_font),title_gp = gpar(fontsize = cluster_font)),
-                  row_names_gp = gpar(fontsize = cluster_font),
-                  #column_title_gp=gpar(border =group_cols_ordered,fontsize=cluster_font,col =text_cols_ordered,fill=group_cols_ordered,
+                                               labels_gp = gpar(fontsize = cluster_font,fontfamily=fontfamily),title_gp = gpar(fontsize = cluster_font,fontfamily=fontfamily)),
+                  row_names_gp = gpar(fontsize = cluster_font,fontfamily=fontfamily),
+                  #column_title_gp=gpar(border =group_cols_ordered,fontsize=cluster_font,fontfamily=fontfamily,col =text_cols_ordered,fill=group_cols_ordered,
                   #                     fontface='bold'),
                   #Annotation for Phenotype group
                   top_annotation = HeatmapAnnotation(
@@ -123,7 +134,7 @@ make_annotation<-function(phenotypes_font=parent.frame()$phenotypes_font,legend_
                                                                                       # 'black',
                                                                                       #group_cols_ordered, 
                                                                                       text_cols_ordered,
-                                                                                    fontsize = cluster_font
+                                                                                    fontsize = cluster_font,fontfamily=fontfamily
                                                                                     #,fontface='bold'
                                          ),show_name = TRUE),
                     Strain = anno_block(gp = 
@@ -138,10 +149,10 @@ make_annotation<-function(phenotypes_font=parent.frame()$phenotypes_font,legend_
                                                                                    'black',
                                                                                  #group_cols_ordered, 
                                                                                  #text_cols_ordered,
-                                                                                 fontsize = cluster_font
+                                                                                 fontsize = cluster_font,fontfamily=fontfamily
                                                                                  #,fontface='bold'
                                         ), show_name = TRUE),
-                    annotation_name_gp=gpar(fontsize = cluster_font)
+                    annotation_name_gp=gpar(fontsize = cluster_font,fontfamily=fontfamily)
                   )
   )
   #ht_list=ht_list %v% ht_time
@@ -153,10 +164,10 @@ make_annotation<-function(phenotypes_font=parent.frame()$phenotypes_font,legend_
   #phenotype_cols=c('no data'= '#d9d9d9', 'yes'= '#74cf19', 'no'='#b54c4c')
   ht_phenotype=Heatmap(t(avg_phenotype)[,rownames(avg_expression)], height = unit(phenotype_annotation_height, "cm"),
                        cluster_columns=FALSE,cluster_rows=FALSE, show_column_names = FALSE,name='\nMorphological \nstage\n',col=phenotype_cols,
-                       row_names_gp = gpar(fontsize = phenotypes_font), na_col = "white",
-                       row_title ='Morphological stage',row_title_side ='right',row_title_gp=gpar(fontsize = cluster_font),
+                       row_names_gp = gpar(fontsize = phenotypes_font,fontfamily=fontfamily), na_col = "white",
+                       row_title ='Morphological stage',row_title_side ='right',row_title_gp=gpar(fontsize = cluster_font,fontfamily=fontfamily),
                        heatmap_legend_param = list( grid_width= unit(legend_width, "cm"),grid_height= unit(legened_height, "cm") ,
-                                                    labels_gp = gpar(fontsize = cluster_font),title_gp = gpar(fontsize = cluster_font)))
+                                                    labels_gp = gpar(fontsize = cluster_font,fontfamily=fontfamily),title_gp = gpar(fontsize = cluster_font,fontfamily=fontfamily)))
   ht_list=ht_list %v% ht_phenotype
   
   return(ht_list)
