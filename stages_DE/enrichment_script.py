@@ -4,14 +4,14 @@ import stages_DE.enrichment_library as enr
 path_sets = '/home/karin/Documents/timeTrajectories/data/from_huston/gene_sets/'
 #################
 ### Change Mariko's gene sets to gmt
-set_files = {'cAMP': ['cAMP_gene_inf.xlsx'],
-             'chemo': ['chemo_list.xlsx'],
-             'cell cycle': ['cell_cycle.txt'],
-             'hssA': ['hssA_sigN_57aa.txt'],
+set_files = {'pulse_induced': ['cAMP_gene_inf.xlsx'],
+             'chemotaxis': ['chemo_list.xlsx'],
+             #'cell cycle': ['cell_cycle.txt'],
+             'hssA_sig_gtaG57aa': ['hssA_sigN_57aa.txt'],
              #'psp': ['psp_pst_20200426.txt'],
              #'pst': ['psp_pst_20200426.txt'],
-             'psp': ['pst_495_psp_394_FC.xlsx','psp_394_FC>2.4'],
-             'pst': ['pst_495_psp_394_FC.xlsx','pst_495_FC<-2.4'],
+             'psp_gene': ['pst_495_psp_394_FC.xlsx','psp_394_FC>2.4'],
+             'pst_gene': ['pst_495_psp_394_FC.xlsx','pst_495_FC<-2.4'],
              'TF': ['TF-list.xlsx',0],
              'histone/histone variant':[ 'TF-list.xlsx',0],
              'chromatin/centromere': ['TF-list.xlsx',0],
