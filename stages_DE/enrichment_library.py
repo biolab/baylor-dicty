@@ -418,7 +418,7 @@ def plot_table_barh(df: pd.DataFrame, bar_col, colour_col, col_widths: list, fig
     :param min_col: Minimal value for colour scale.If val<min_col use min_col colour.
     :param format_bar_axes: Bar axes labels are formated with this function.
         E.g. use int to use integers for the axis labels.
-    :param cmap: Plt colourmap name or list of colours to use in linear colourmap.
+    :param cmap: Plt colourmap name or list of colours or cmap to use in linear colourmap.
     :param automatic_size: Scale the table columns and figsize based on textsize. Bar plot is set to dpi=100.
     :return: fig,ax
     """
@@ -435,8 +435,10 @@ def plot_table_barh(df: pd.DataFrame, bar_col, colour_col, col_widths: list, fig
         cmap = matplotlib.cm.get_cmap(cmap)
     elif isinstance(cmap, list):
         cmap = matplotlib.colors.LinearSegmentedColormap.from_list("", cmap)
+    elif isinstance(cmap, matplotlib.colors.Colormap):
+        pass
     else:
-        raise ValueError('cmap must be str or list of colours')
+        raise ValueError('cmap must be str or list of colours or cmap')
 
     # Bar plot axes length scale
     if min_bar is None:
@@ -620,7 +622,7 @@ def text_dpi(text: str, fontsize: int):
 def plot_legend_enrichment_bar(cmap, min_FDR: float, used_padj: float, base=10):
     """
     Plot legend for enrichment barplot. Lower FDR has 'higher' colour. Transform values -logB(FDR), where B is base.
-    :param cmap: As in plot_linear_legend - plt cmap name or list of colours
+    :param cmap: As in plot_linear_legend - plt cmap name or list of colours or cmap instance
     :param min_FDR: The upper limit for FDR colour legend - all FDRs below this have same colour.
     :param used_padj: Lower limit for FDR colour legend - the threshold used for enrichment result filtering
     :param base: Log base for FDR transform used for colour mapping.
@@ -636,7 +638,7 @@ def plot_legend_enrichment_bar(cmap, min_FDR: float, used_padj: float, base=10):
 def plot_continous_legend(cmap, min_col, max_col, ticks, label):
     """
     Plot a contonious colourscale legend.
-    :param cmap: Plt cmap name or list of colours
+    :param cmap: Plt cmap name or list of colours or cmap object
     :param min_col: Min value mapped to cmap.
     :param max_col: Max value mapped to cmap.
     :param ticks: Legend ticks in the same units as min_col and max_col
@@ -648,6 +650,8 @@ def plot_continous_legend(cmap, min_col, max_col, ticks, label):
         cmap = matplotlib.cm.get_cmap(cmap)
     elif isinstance(cmap, list):
         cmap = matplotlib.colors.LinearSegmentedColormap.from_list("", cmap)
+    elif isinstance(cmap, matplotlib.colors.Colormap):
+        pass
     else:
         raise ValueError('cmap must be str or list of colours')
 
