@@ -714,9 +714,8 @@ def group_diff_enrichment(query_names: list, group: str, name_eid: dict, all_gen
         query_annotated_ratio = 'NA'
         if len(query_EID) > 0:
             query_annotated_ratio = round(len(query_eids) / len(query_EID), 2)
-        print('Ratio of genes annotated with a gene set in reference',
-              round(len(reference_gene_eids) / len(all_gene_names_eid), 2),
-              'and query', query_annotated_ratio)
+        print("Genes annotated with a gene set in reference %.1f%% and group %.1f%%" % (
+            (len(reference_gene_eids) / len(all_gene_names_eid))*100,query_annotated_ratio*100))
 
     query_in_enriched = set()
     result = None
@@ -737,7 +736,7 @@ def group_diff_enrichment(query_names: list, group: str, name_eid: dict, all_gen
                         enriched.in_reference / len(reference_gene_eids))
                 enrichment_display.append({'Gene set': enriched.gene_set.name,
                                            'Ontology': enriched.ontology[0] + ': ' + enriched.ontology[1],
-                                           'FDR': "{:.2e}".format(enriched.padj), 'N in query': enriched.in_query,
+                                           'FDR': "{:.2e}".format(enriched.padj), 'N in group': enriched.in_query,
                                            # 'Set size': len(enriched.gene_set.genes),
                                            'N in ref.': enriched.in_reference,
                                            'Fold enrichment': fold_enriched})
@@ -757,9 +756,9 @@ def group_diff_enrichment(query_names: list, group: str, name_eid: dict, all_gen
                                                        min_FDR=min_FDR_bar, max_FE=max_FE_bar, cmap=cmap_FDR_bar,
                                                        base_lFDR=lFDR_base_bar)
 
-    print('Enrichment at FDR: ' + str(padj) + ' and min query - gene set overlap', str(min_overlap))
-    print('N query genes in displayed gene sets:', len(query_in_enriched), 'out of', len(query_eids),
-          'query genes used for enrichment calculation.')
+    print('Enrichment at FDR: ' + str(padj) + ' and min group - gene set overlap', str(min_overlap))
+    print('N group genes in displayed gene sets:', len(query_in_enriched), 'out of', len(query_eids),
+          'group genes used for enrichment calculation.')
 
     # Prepare results list
     # display(result)
@@ -802,9 +801,9 @@ def plot_enrichment_bar(df: pd.DataFrame, query_n, reference_n, used_padj, min_F
         'Pathways', 'Path.').replace(
         'Dictybase: Phenotypes', 'DB: Pheno.').replace(
         'Custom: Baylor', 'Custom') for ont in df['Ontology'].values]
+    df_plot['Group'] = ["%d (%.1f%%)" % (n,(100 * n / query_n)) for n in df['N in group']]
+    df_plot['Reference'] = ["%d (%.1f%%)" % (n,(100 * n / reference_n)) for n in df['N in ref.']]
     df_plot['FDR'] = df['FDR']
-    df_plot['Query'] = ["%.2f (%d)" % ((100 * n / query_n), n) for n in df['N in query']]
-    df_plot['Reference'] = ["%.2f (%d)" % ((100 * n / reference_n), n) for n in df['N in ref.']]
     df_plot = df_plot.sort_values('Fold enrichment', ascending=False)
     return plot_table_barh(df=df_plot, bar_col='Fold enrichment', colour_col='colour', col_widths=[37, 14, 8, 9, 9],
                            fontsize=8,
