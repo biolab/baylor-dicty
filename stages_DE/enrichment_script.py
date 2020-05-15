@@ -46,7 +46,7 @@ for set_name in set_files.keys():
     # file = file.query('subset =="' + set_name + '"')
     organism = '44689'
     ontology = 'Custom-Baylor'
-    genes = file['ddb_g'].unique()
+    genes = [gene.strip() for gene in file['ddb_g'].unique()]
     genes_eid_name = enr.name_genes_entrez(gene_names=genes, key_entrez=True, organism=int(organism))
     genes_eid = genes_eid_name.keys()
     print('\n'+set_name, ': all genes', len(genes), '(with repeated', file['ddb_g'].shape[0], '),', 'with EID', len(genes_eid))
