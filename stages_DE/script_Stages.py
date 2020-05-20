@@ -543,7 +543,7 @@ no_seq = 0
 no_main = 0
 no_image_strain = 0
 annotated = 0
-file = '/home/karin/Documents/timeTrajectories/data/from_huston/phenotypes/main_WTstage_20200428.xlsx'
+file = '/home/karin/Documents/timeTrajectories/data/from_huston/phenotypes/main_stage.xlsx'
 wb = load_workbook(file, read_only=True)
 
 for strain in conditions['Strain'].unique():
@@ -996,7 +996,8 @@ genes_orange_avg_scaled.to_csv(pathStages+'genes_averaged_orange_mainStage_scale
 # ******* Merge results from DESeq2 between neighbouring stages
 combined = []
 phenotypes = [p for p in PHENOTYPES if p != 'yem']
-# files=[f for f in glob.glob(path_de_neighbouring  + '/DE' + "*.tsv")]
+folder='AX4'
+# files=[f for f in glob.glob(path_de_neighbouring+folder  + '/DE' + "*.tsv")]
 # for f in files:
 for idx in range(len(phenotypes) - 1):
     # f_split=f.split('/')[-1].split('_')
@@ -1004,7 +1005,7 @@ for idx in range(len(phenotypes) - 1):
     # stage2 = f_split[1]
     stage1 = phenotypes[idx]
     stage2 = phenotypes[idx + 1]
-    f = path_de_neighbouring + '/DE_' + stage2 + '_ref_' + stage1 + '_padj_lFC.tsv'
+    f = path_de_neighbouring+folder+ '/DE_' + stage2 + '_ref_' + stage1 + '_padj_lFC.tsv'
     data = pd.read_table(f, index_col=0)[['log2FoldChange', 'pvalue','padj']]
     data.columns = [stage1 + '_' + stage2 + '_' + col for col in data.columns]
     combined.append(data)
@@ -1024,4 +1025,4 @@ for row_name,data in pvals.iterrows():
     comparison=data['col'].rstrip('pvalue')
     combined.at[data['row'],comparison+'FDR_overall']=data['FDR_overall']
 
-combined.to_csv(path_de_neighbouring + 'combined.tsv', sep='\t')
+combined.to_csv(path_de_neighbouring+folder + '/combined.tsv', sep='\t')
