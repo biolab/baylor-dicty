@@ -453,7 +453,7 @@ conditions = conditions.drop(PHENOTYPES, axis=1)
 conditions = pd.concat([conditions, pd.DataFrame(np.zeros((conditions.shape[0], len(PHENOTYPES))), columns=PHENOTYPES)],
                        axis=1)
 # How to fill cells with no image (0 or -1 (for plotting/avg summary)):
-no_image_fill = 0
+no_image_fill = -1
 
 no_seq = 0
 no_image = 0
@@ -1026,3 +1026,7 @@ for row_name,data in pvals.iterrows():
     combined.at[data['row'],comparison+'FDR_overall']=data['FDR_overall']
 
 combined.to_csv(path_de_neighbouring+folder + '/combined.tsv', sep='\t')
+
+
+
+
