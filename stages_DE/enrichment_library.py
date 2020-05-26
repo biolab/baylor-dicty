@@ -21,9 +21,10 @@ from Orange.clustering.louvain import jaccard
 ORGANISM = 44689
 HYPERGEOMETRIC = Hypergeometric()
 
-font='Arial'
+font = 'Arial'
 matplotlib.rcParams.update({'font.family': font})
 plt.rcParams["font.family"] = font
+
 
 class GeneSetData:
     """
@@ -145,7 +146,7 @@ def gene_set_enrichment(query_EID: set, reference_EID: set, gene_set_names: list
 
 
 def get_gene_sets(gene_set_names: list, organism: str = ORGANISM, go_slims: bool = False,
-                  set_sizes: tuple = (-np.inf, np.inf)) -> dict:
+                  set_sizes: tuple = (-np.inf, np.inf), reference: set = None) -> dict:
     """
     Get all gene sets.
     :param gene_set_names: Names of ontologies for which to get gene sets (as returned by list_gene_sets)
@@ -154,6 +155,8 @@ def get_gene_sets(gene_set_names: list, organism: str = ORGANISM, go_slims: bool
     only gene sets that are in 'goslim_generic'
     :param set_sizes: Use only gene sets with size greater or equal to 1st element of set_sizes and smaller or equal to
     2nd element of set_sizes, default is -inf,inf
+    :param reference: List of gene EIDs to use as a reference set. Gene set filtering based on gene set size takes in
+    account only genes present in reference.
     :return: Dict with key is ontology name and values are its GeneSet objects
     """
     gene_set_ontology = dict()
@@ -164,7 +167,11 @@ def get_gene_sets(gene_set_names: list, organism: str = ORGANISM, go_slims: bool
         slims = anno._ontology.slims_subset
     for gene_set_name in gene_set_names:
         gene_sets = load_gene_sets(gene_set_name, str(organism))
-        gene_sets = [gene_set for gene_set in gene_sets if set_sizes[0] <= len(gene_set.genes) <= set_sizes[1]]
+        if reference is None:
+            gene_sets = [gene_set for gene_set in gene_sets if set_sizes[0] <= len(gene_set.genes) <= set_sizes[1]]
+        else:
+            gene_sets = [gene_set for gene_set in gene_sets if
+                         set_sizes[0] <= len(gene_set.genes & reference) <= set_sizes[1]]
         if go_slims and gene_set_name[0] == 'GO':
             gene_sets = [gene_set for gene_set in gene_sets if gene_set.gs_id in slims]
         gene_set_ontology[gene_set_name] = gene_sets
@@ -411,9 +418,9 @@ def plot_table_barh(df: pd.DataFrame, bar_col, colour_col, col_widths: list, fig
     :param figsize: Figure size. Ignored if automatic_size is True.
     :param show_barcol: Also show in table the column used for bar size plotting
     :param show_colour_col:  Also show in table the column used for bar colour
-    :param fontsize: Image font
+    :param fontsize: Image fontget_gene_sets
     :param min_bar: Axis min for barplot.
-    :param max_bar: Axis max for barplot.
+    :param max_bar: Axis max for barplot. If None use max of values and formated max value.
     :param max_col: Maximal value for colour scale. If val>max_col use max_col colour.
     :param min_col: Minimal value for colour scale.If val<min_col use min_col colour.
     :param format_bar_axes: Bar axes labels are formated with this function.
@@ -445,6 +452,7 @@ def plot_table_barh(df: pd.DataFrame, bar_col, colour_col, col_widths: list, fig
         min_bar = df[bar_col].min()
     if max_bar is None:
         max_bar = df[bar_col].max()
+        max_bar = max(max_bar, format_bar_axes(max_bar))
 
     # Columns to show in the table
     cols = list(df.columns)
@@ -719,7 +727,7 @@ def group_diff_enrichment(query_names: list, group: str, name_eid: dict, all_gen
         if len(query_EID) > 0:
             query_annotated_ratio = round(len(query_eids) / len(query_EID), 2)
         print("Genes annotated with a gene set in reference %.1f%% and group %.1f%%" % (
-            (len(reference_gene_eids) / len(all_gene_names_eid))*100,query_annotated_ratio*100))
+            (len(reference_gene_eids) / len(all_gene_names_eid)) * 100, query_annotated_ratio * 100))
 
     query_in_enriched = set()
     result = None
@@ -778,7 +786,7 @@ def group_diff_enrichment(query_names: list, group: str, name_eid: dict, all_gen
 
 
 def plot_enrichment_bar(df: pd.DataFrame, query_n, reference_n, used_padj, min_FDR=10 ** (-10), fig_w=15, max_FE=None,
-                        base_lFDR=10, cmap='viridis',automatic_size: bool = True):
+                        base_lFDR=10, cmap='viridis', automatic_size: bool = True):
     """
     Plot enrichment table with fold enrichment barplot
     :param df: Enrichment table as made in group_diff_enrichment
@@ -805,8 +813,8 @@ def plot_enrichment_bar(df: pd.DataFrame, query_n, reference_n, used_padj, min_F
         'Pathways', 'Path.').replace(
         'Dictybase: Phenotypes', 'DB: Pheno.').replace(
         'Custom: Baylor', 'Custom') for ont in df['Ontology'].values]
-    df_plot['Group'] = ["%d (%.1f%%)" % (n,(100 * n / query_n)) for n in df['N in group']]
-    df_plot['Reference'] = ["%d (%.1f%%)" % (n,(100 * n / reference_n)) for n in df['N in ref.']]
+    df_plot['Group'] = ["%d (%.1f%%)" % (n, (100 * n / query_n)) for n in df['N in group']]
+    df_plot['Reference'] = ["%d (%.1f%%)" % (n, (100 * n / reference_n)) for n in df['N in ref.']]
     df_plot['FDR'] = df['FDR']
     df_plot = df_plot.sort_values('Fold enrichment', ascending=False)
     return plot_table_barh(df=df_plot, bar_col='Fold enrichment', colour_col='colour', col_widths=[37, 14, 8, 9, 9],
@@ -815,7 +823,7 @@ def plot_enrichment_bar(df: pd.DataFrame, query_n, reference_n, used_padj, min_F
                            figsize=(fig_w, 0.33 * (df_plot.shape[0] + 1) + 0.1),
                            max_col=-log_base(min_FDR, base_lFDR), min_col=-log_base(float(used_padj), base_lFDR),
                            min_bar=1, max_bar=max_FE,
-                           format_bar_axes=int, cmap=cmap, automatic_size=automatic_size)
+                           format_bar_axes=math.ceil, cmap=cmap, automatic_size=automatic_size)
 
 
 def log_base(x: float, base):
