@@ -1477,7 +1477,7 @@ for strain, data in splitted.items():
     genes_adjusted.append(data)
 genes_adjusted = pd.concat(genes_adjusted, axis=1)
 genes_adjusted.to_csv(pathByStrain + 'genesAdjustUnexpressed' + str(ration_max) + str(proportion) + '.tsv', sep='\t')
-#******************************88
+#******************************
 #**** Compare regulon clusters
 files = [f for f in glob.glob(pathByStrain + 'kN300_mean0std1_log/clusters/' + "*.tab")]
 clusters_df=[]
