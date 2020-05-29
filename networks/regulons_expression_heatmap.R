@@ -60,15 +60,15 @@ expression_height<-expression_height=='True'
 #** Regulon groups tab file: First column lists genes and 
 #** a column named Cluster specifying cluster/regulon of each gene 
 regulons=read.table(paste(path_clusters,
-                          #"clusters/mergedGenes_minExpressed0.990.1Strains1Min1Max18_clustersAX4Louvain0.4m0s1log.tab"
-                          "clusters/mergedGenes_minExpressed0.990.1Strains1Min1Max18_clustersLouvain0.4minmaxNologPCA30kN30.tab"
+                          #"clusters/mergedGenes_minExpressed0.990.1Strains1Min1Max18_clustersAX4Louvain0.8m0s1log.tab"
+                          "clusters/mergedGenes_minExpressed0.990.1Strains1Min1Max18_clustersLouvain0.3minmaxNologPCA30kN30.tab"
                           ,sep=''),header=TRUE, sep="\t")
 #Name the first column (should contain genes
 colnames(regulons)[1]<-'Gene'
 
 #** Regulon2 groups tab file (used for side annotation): First column lists genes and 
 #** a column named Cluster specifying cluster/regulon of each gene
-regulons2=read.table(paste(path_clusters,"clusters/mergedGenes_minExpressed0.990.1Strains1Min1Max18_clustersAX4Louvain0.4m0s1log.tab",sep=''),
+regulons2=read.table(paste(path_clusters,"clusters/mergedGenes_minExpressed0.990.1Strains1Min1Max18_clustersAX4Louvain0.8m0s1log.tab",sep=''),
                     header=TRUE, sep="\t")
 #Name the first column (should contain genes)
 rownames(regulons2)<-regulons2[,1]
@@ -188,13 +188,18 @@ max_expression<-max(expressions[,regulons$Gene])
 #col = colorRamp2(c(min_expression,mean(c(min_expression,max_expression)),max_expression), c( "#440154FF", "#1F968BFF",'#FDE725FF'))
 
 #Expression heatmaps
-colours_regulons2=c('#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#fabebe',
-                    '#008080', '#000000', '#9a6324', '#fffac8', '#800000', '#aaffc3', '#808000',  '#000075', '#808080',
-                    '#80a2ff','#e6beff')
+# 21 colours ordered by rainbow
+#colours_regulons2=c( '#800000','#e6194b', '#fabebe','#f58231','#9a6324','#ffe119', '#fffac8',  '#9dd100',  '#808000', '#3cb44b', '#aaffc3','#008080',
+#                     '#46f0f0','#80a2ff','#4363d8', '#000075', '#911eb4','#f032e6','#e6beff','#808080','#000000')
+# 13 colours ordered by rainbow
+colours_regulons2=c( '#800000','#e6194b', '#f58231','#9a6324','#ffe119',   '#9dd100',   '#3cb44b', '#aaffc3',
+                     '#46f0f0','#2e97ff', '#000075', '#911eb4','#f032e6')
+
 
 colours_regulons2_map=colours_regulons2[1:length(unique(regulons2$Cluster))]
-#Unique is already ordered as first unique elements
-names(colours_regulons2_map)<-unique(regulons2$Cluster)
+regulons2_clusters<-as.vector(unique(regulons2$Cluster))
+names(colours_regulons2_map)<-regulons2_clusters[order(nchar(regulons2_clusters), regulons2_clusters)]
+
 first=TRUE
 for (cluster in cluster_order$Cluster){
   print(cluster)
@@ -230,15 +235,15 @@ for (cluster in cluster_order$Cluster){
 ht_list
 
 #***************************
-#**** Update regulons numbers anf ile based on order in heatmap
+#**** Update regulons numbers and file based on order in heatmap
 library(purrr)
 cluster_map<-c(paste('C',c(1:nrow(cluster_order)),sep=''))
 names(cluster_map)<-as.vector(cluster_order$Cluster)
 remap_cluster<-function(x){return(cluster_map[[x]])}
 regulons['Cluster']<-unlist(map(as.character(regulons$Cluster),remap_cluster))
 write.table(regulons,paste(path_clusters,
-                          "clusters/mergedGenes_minExpressed0.990.1Strains1Min1Max18_clustersAX4Louvain0.4m0s1log.tab"
-                          #"clusters/mergedGenes_minExpressed0.990.1Strains1Min1Max18_clustersLouvain0.4minmaxNologPCA30kN30.tab"
+                          "clusters/mergedGenes_minExpressed0.990.1Strains1Min1Max18_clustersAX4Louvain1.4m0s1log.tab"
+                          #"clusters/mergedGenes_minExpressed0.990.1Strains1Min1Max18_clustersLouvain0.3minmaxNologPCA30kN30.tab"
                           ,sep=''),row.names=FALSE, sep="\t")
 
 #*************
@@ -247,6 +252,6 @@ cluster_anno=gsub('C','',as.character(regulons$Cluster))
 cluster_anno=LETTERS[as.integer(cluster_anno)]
 regulons$Letter<-cluster_anno
 write.table(regulons,paste(path_clusters,
-                           "clusters/mergedGenes_minExpressed0.990.1Strains1Min1Max18_clustersAX4Louvain0.4m0s1log.tab"
+                           "clusters/mergedGenes_minExpressed0.990.1Strains1Min1Max18_clustersAX4Louvain0.8m0s1log.tab"
                            ,sep=''),row.names=FALSE, sep="\t")
   
