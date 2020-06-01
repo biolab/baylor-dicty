@@ -596,7 +596,7 @@ for strain in conditions['Strain'].unique():
             no_image_strain += 1
             # conditions.loc[idx_name_conditions, 'main_stage'] = ''
 
-# Make all 0 times no_agg if not already filled
+# Make all 0 times no_agg if not already filled. Do this only for strains that have also other annotations.
 for idx, sample in conditions.iterrows():
     if sample['Time'] == 0:
         if (sample['main_stage'] == None):
@@ -960,7 +960,8 @@ genes_nn.to_csv(dataPath + 'nonNullGenes.tsv', sep='\t', index=False)
 # *************
 # *** Average data for main stages
 # Select for now only WT as only this has all data and samples that have annotated main stage
-conditions_main = conditions.query('Group =="WT"').query('~main_stage.isna()', engine='python')
+# conditions_main = conditions.query('Group =="WT"').query('~main_stage.isna()', engine='python')
+conditions_main = conditions.query('~main_stage.isna()', engine='python')
 # Average expression
 genes_group = genes[conditions_main.Measurment].copy().T
 genes_group=genes_group.join(pd.DataFrame(conditions_main[['Strain','main_stage']].values,

@@ -45,6 +45,9 @@ top_annotation_height=0.6
 phenotype_annotation_height=3
 cluster_font=15
 fontfamily='Arial'
+strain_gap=1
+group_gap=2.5
+gap_units='mm'
 
 #Strain groups annotation
 #** Colours of strain groups
@@ -56,6 +59,10 @@ group_cols_background=c('agg-'= 'white', 'lag_dis'= 'white','tag_dis'='#666666',
                         'WT'= 'white','sFB'= 'white', 'prec'='white' )
 group_cols_text=c('agg-'= 'black', 'lag_dis'= 'black','tag_dis'='black', 'tag'='black', 'cud'= '#eeeeee', 
                   'WT'= 'black','sFB'= '#eeeeee', 'prec'='#eeeeee' )
+
+#** Colours of phenotype annotations
+phenotype_cols=c('no image'= '#d9d9d9', 'no_agg'= '#ed1c24', 'stream'= '#985006', 'lag'= '#f97402', 'tag'= '#d9d800', 'tip'= '#66cf00',
+  'slug'= '#008629', 'mhat'= '#00c58f', 'cul'= '#0ff2ff', 'FB'= '#00b2ff', 'yem'='#666666')
 
 make_annotation<-function(phenotypes_font=parent.frame()$phenotypes_font,legend_height=parent.frame()$legend_height,
                           legend_width=parent.frame()$legend_width,top_annotation_height=parent.frame()$top_annotation_height,
@@ -173,7 +180,99 @@ make_annotation<-function(phenotypes_font=parent.frame()$phenotypes_font,legend_
   return(ht_list)
 }
 
+make_anno_mainstage<-function(legend_height=parent.frame()$legend_height,
+                          legend_width=parent.frame()$legend_width,top_annotation_height=parent.frame()$top_annotation_height,
+                              cluster_font=parent.frame()$cluster_font,
+                           strain_gap=parent.frame()$strain_gap,group_gap=parent.frame()$group_gap, gap_units=parent.frame()$gap_units){
 
+  group_data=t(avg_expression['Group'])
+  rownames(group_data)<-c('Phenotypic group')
+
+  #** Group colours and gaps
+  group_cols_ordered=c()
+  groups_ordered=c()
+  background_cols_ordered=c()
+  text_cols_ordered=c()
+  gaps=c()
+  previous_group=NULL
+  for(strain in strain_order){
+    if(strain %in% avg_expression$Strain){
+        group=as.character(avg_expression[avg_expression$Strain==strain,'Group'][1])
+        #print(paste(strain,group,group_cols[group]))
+        groups_ordered<-append(groups_ordered,group)
+        group_cols_ordered<-append(group_cols_ordered,group_cols[group])
+        background_cols_ordered<-append(background_cols_ordered,group_cols_background[group])
+        text_cols_ordered<-append(text_cols_ordered,group_cols_text[group])
+        #Gaps - if previous group was different add larger gap; (N gaps = N-1 columns)
+        if (!is.null(previous_group)){
+          if (previous_group==group){
+            gaps=append(gaps,strain_gap)
+          }else{
+            gaps=append(gaps,group_gap)
+          }
+        }
+        previous_group=group
+   }else{
+        strain_order=strain_order[strain_order!=strain]
+    }
+  }
+  gaps=unit(gaps,gap_units)
+
+  ht_list=Heatmap(t(avg_expression['main_stage']), height = unit(top_annotation_height, "cm"),
+                  column_split=factor(avg_expression$Strain,
+                  #** Ordering of the strains in the heatmap (a vector of strain names)
+                  levels=strain_order ),
+                  column_title =NULL,column_gap=gaps,
+                  cluster_columns=FALSE, show_column_names = FALSE,name='\nMorphological \nstage\n',col=phenotype_cols,
+                  heatmap_legend_param =
+                  list(
+                  grid_width= unit(legend_width, "cm"),grid_height= unit(legend_height, "cm") ,
+                  labels_gp = gpar(fontsize = cluster_font),title_gp = gpar(fontsize = cluster_font)
+                      ),
+                  row_names_gp = gpar(fontsize = cluster_font),
+                  #column_title_gp=gpar(border =group_cols_ordered,fontsize=cluster_font,col =text_cols_ordered,fill=group_cols_ordered,
+                  #                     fontface='bold'),
+                  #Annotation for Phenotype group
+                  top_annotation = HeatmapAnnotation(
+                    Phenotype=anno_block(gp =
+                                           # Background colour; fill: color, col: border
+                                           #gpar(fill = '#949494',col='transparent'),
+                                           #gpar(fill = 'white',col='transparent'),
+                                           #gpar(fill = background_cols_ordered,col='transparent'),
+                                           #gpar(fill = group_cols_ordered,col=group_cols_ordered),
+                                           gpar(fill=group_cols_ordered,col=group_cols_ordered,lwd =2,linejoin='mitre'),
+                                         labels = groups_ordered , labels_gp = gpar(col =
+                                                                                      # Text colour
+                                                                                      # 'black',
+                                                                                      #group_cols_ordered,
+                                                                                      text_cols_ordered,
+                                                                                    fontsize = cluster_font
+                                                                                    #,fontface='bold'
+                                         ),
+                                         #show_name = TRUE
+                                        ) ,
+                    Strain = anno_block(gp =
+                                              # Background colour; fill: color, col: border
+                                              #gpar(fill = '#949494',col='transparent'),
+                                              #gpar(fill = 'white',col='transparent'),
+                                              #gpar(fill = background_cols_ordered,col='transparent'),
+                                              #gpar(fill = group_cols_ordered,col=group_cols_ordered),
+                                                gpar(fill='white',col=group_cols_ordered,lwd =2,linejoin='mitre'),
+                          labels = strain_order , labels_gp = gpar(col =
+                                                                      # Text colour
+                                                                     'black',
+                                                                      #group_cols_ordered,
+                                                                      #text_cols_ordered,
+                                                                      fontsize = cluster_font
+                                                                    #,fontface='bold'
+                                                                    ),
+                                        #show_name = TRUE
+                                       ),
+                  annotation_name_gp=gpar(fontsize = cluster_font)
+                          )
+                  )
+  return(ht_list)
+}
 
 
 
