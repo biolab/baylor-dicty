@@ -4,7 +4,7 @@ THREADS=20
 
 buildDDS<-function(conditions,genes,t=NULL,case=NULL,ref,design,main_lvl=NULL,coldata=NULL,filter=1,set_main_lvl=FALSE){
 
-  # BUilds a DDS for DESeq2
+  # Builds a DDS for DESeq2
   # Conditions (M*D), genes (G*M) - dataframes
   # t - subset Time, vector
   # case, ref - retain only these from main_lvl, case (case can be vector)
