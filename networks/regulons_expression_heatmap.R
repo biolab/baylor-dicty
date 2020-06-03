@@ -60,8 +60,8 @@ expression_height<-expression_height=='True'
 #** Regulon groups tab file: First column lists genes and 
 #** a column named Cluster specifying cluster/regulon of each gene 
 regulons=read.table(paste(path_clusters,
-                          #"clusters/mergedGenes_minExpressed0.990.1Strains1Min1Max18_clustersAX4Louvain0.8m0s1log.tab"
-                          "clusters/mergedGenes_minExpressed0.990.1Strains1Min1Max18_clustersLouvain0.3minmaxNologPCA30kN30.tab"
+                          "clusters/mergedGenes_minExpressed0.990.1Strains1Min1Max18_clustersAX4Louvain0.8m0s1log.tab"
+                          #"clusters/mergedGenes_minExpressed0.990.1Strains1Min1Max18_clustersLouvain0.4minmaxNologPCA30kN30.tab"
                           ,sep=''),header=TRUE, sep="\t")
 #Name the first column (should contain genes
 colnames(regulons)[1]<-'Gene'
@@ -214,7 +214,7 @@ for (cluster in cluster_order$Cluster){
   # The as.character ensures that the code works with numeric clusters
   cluster_anno=gsub('C','',as.character(cluster))
   # Rename cluster number to a letter
-  #cluster_anno=LETTERS[as.integer(cluster_anno)]
+  cluster_anno=LETTERS[as.integer(cluster_anno)]
   
   heatmap=Heatmap(t(avg_expression[,genes]),cluster_columns = FALSE,cluster_rows = FALSE,show_column_names = FALSE,
                   show_row_names = FALSE, col=viridis(256),column_title=NULL, 

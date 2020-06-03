@@ -41,8 +41,9 @@ for (col in colnames(data)){
 
 optically_order_genes <- function(genes,avg_expression=parent.frame()$avg_expression){
   if (length(genes)>1){
-    #expression<-t(avg_expression[avg_expression$Strain=='AX4',genes])
-    expression=t(avg_expression[,genes])
+    expression<-t(avg_expression[avg_expression$Strain=='AX4',genes])
+    #expression=t(avg_expression[,genes])
+    # Looks same as 1-simil(expression, method="cosine")
     distances<-dist(expression, method="cosine")
     hc<-hclust(d=distances, method = "ward.D2" )
     hc_ordered<-reorder(x=hc,dist = distances)
@@ -73,8 +74,8 @@ top_annotation_height=0.6
 cluster_font=15
 #Imports made in heatmao_annotation.R
 fontfamily='Arial'
-strain_gap=0.5
-group_gap=2.5
+strain_gap=1
+group_gap=3.5
 gap_units='mm'
 
 ht_list<-make_anno_mainstage(legend_height=legend_height,legend_width=legend_width,

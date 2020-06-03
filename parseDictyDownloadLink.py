@@ -79,9 +79,13 @@ print('remouved:',removed)
 
 #In unix: Do in separate foldrs and remove empty files before merging
 #Get cookies: ./extract_cookies.sh ~/.mozilla/firefox/frw4paco.default-release/cookies.sqlite > cookies.txt
+# For laptop: ./extract_cookies.sh /home/karin/.mozilla/firefox/lxhknj9d.default-release/cookies.sqlite > cookies.txt
 # grep dictyexpress cookies.txt >cookies_dicty.txt
 # while read l;do read fileName url <<< $l; wget -O "$fileName".tab.gz  --load-cookies=/home/karin/Documents/cookies_dicty.txt $url; done < /home/karin/Documents/timeTrajectories/data/dictyRPKUM1_All_milestone_mRNA_gff.txt
 # while read l;do read fileName url <<< $l; wget -O "$fileName".tab.gz --load-cookies=/home/karin/Documents/cookies_dicty.txt $url; done < /home/karin/Documents/timeTrajectories/data/dictyRPKUM2_All_milestone_mRNA_gff.txt
+
+# TODO with curl
+# curl --cookie cookies_dicty.txt https://dictyexpress.research.bcm.edu/data/5cadf0b66b1339075fcd3b63/pool36_tagB-_bio1_00h_1_TCGCAGG_unmapped.fastq.gz -o try.gz
 
 #Merge files into one
 path = '/home/karin/Documents/timeTrajectories/data/countsRaw/'
