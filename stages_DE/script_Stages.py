@@ -1028,6 +1028,13 @@ for row_name,data in pvals.iterrows():
 
 combined.to_csv(path_de_neighbouring+folder + '/combined.tsv', sep='\t')
 
-
-
-
+#***********
+#*** Prepare stage annotation metafile for supplementary
+stage_anno=conditions.copy()
+stage_anno=stage_anno[[col for col in stage_anno.columns if col in  PHENOTYPES or col =='main_stage']]
+stage_anno['Sample']=[rep+'_hr'+str(t).zfill(2) for rep,t in zip(conditions['Replicate'],conditions['Time'])]
+stage_anno['main_stage']=stage_anno['main_stage'].fillna('NA')
+for idx in stage_anno.index:
+    if all(stage_anno.loc[idx,PHENOTYPES]==0):
+        stage_anno.loc[idx, PHENOTYPES]='NA'
+stage_anno.to_csv('/home/karin/Documents/timeTrajectories/data/read_meta/stage_annotation.tsv',sep='\t',index=False)
