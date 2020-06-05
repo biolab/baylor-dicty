@@ -6,7 +6,10 @@ from collections import OrderedDict
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+from shutil import copyfile
 
+path_meta = '/home/karin/Documents/timeTrajectories/data/read_meta/'
+dataPath = '/home/karin/Documents/timeTrajectories/data/RPKUM/combined/'
 
 # Returns 1 if removed
 def parse_link_parts(patrt1,part2,part6,project,linksFile1,linksFile2):
@@ -361,3 +364,75 @@ for line in lines:
         if part2 not in files2:
             missing.append(part2)
 
+# *********************************************
+# ******* OLD For editing fastq files
+
+samples = pd.read_excel(path_meta + 'Fastq_inProject_onGenBoard.xlsx')
+with open(path_meta+'links_file.tsv','w') as links_file:
+    for name, data in samples.iterrows():
+        files = data['Project name in GenBoard'].strip()
+        prefix = data['sample prefix']
+        prefix=prefix.lower()
+        files = pd.read_csv(path_meta + files + '.csv')
+        n_files=0
+        filtered_n = 0
+        for name1, file_data in files.iterrows():
+            description=file_data['Description'].lower()
+            contains_all_prefixes=all([prefix_sub in description for prefix_sub  in prefix.split(',')])
+            if contains_all_prefixes and 'Filtered' not in file_data['Name']:
+                n_files+=1
+                sample_name=file_data['Description'].replace('Description of ','').\
+                    replace(' reads upload.','').replace('.fq.','.fastq.')
+                links_file.write(sample_name+
+                                 '\thttps://dictyexpress.research.bcm.edu/data/'+file_data['labels']+'/'+
+                                 sample_name+'\n')
+            elif contains_all_prefixes and 'Filtered' in file_data['Name']:
+                filtered_n+=1
+        print(prefix, data['Project name in GenBoard'].strip(), n_files)
+#***************************
+#****** Download all fastq files for submission
+geo=pd.read_excel(path_meta+'GEO_metadata.xlsx',index_col=0)
+conditions = pd.read_csv(dataPath + 'conditions_mergedGenes.tsv', sep='\t', index_col=None)
+
+urls=[]
+for idx_name,sample in geo.iterrows():
+    if 'GEO' not in sample['raw file (mate 1)']:
+        time=sample['characteristics: developing time'].strip('hr')
+        if time !='00':
+            time=time.lstrip('0')
+        measurment=conditions.query('Replicate == "'+sample['title'].split('_hr')[0]+
+                                    '" & Time == '+time)['Measurment']
+        measurment=measurment.values[0].split('_mapped')[0]
+        measurment_edited=measurment.lower().replace('-','_')
+        url=None
+        for file in ['MK_mybB-.csv','MK_pool35_pkaR-.csv','MK_pool36, 37 tagB PkaCoe acaA-PkaCoe.csv','MK_pool38.csv']:
+            file=pd.read_csv(path_meta + file)
+            for idx_name, db_data in file.iterrows():
+                description=db_data['Description'].lower().replace('-','_')
+                if measurment_edited in description and 'Filtered' not in db_data['Name']:
+                    sample_db=db_data['Description'].replace('Description of ','').\
+                        replace(' reads upload.','').replace('.fq.','.fastq.')
+                    url='https://dictyexpress.research.bcm.edu/data/'+db_data['labels']+'/'+sample_db
+        urls.append({'file':sample['raw file (mate 1)'],'url':url})
+        if type(sample['raw file (mate 2)']) == str:
+            url2=None
+            if url is not None:
+                url2=url.replace('maye1','mate2')
+            urls.append({'file': sample['raw file (mate 2)'], 'url': url2})
+pd.DataFrame(urls).to_csv(path_meta+'links_file.tsv',sep='\t')
+
+#*******************
+#*** Rename RPKUM and count files for GEO
+def rename_reads(path_old,path_new, suffix):
+    for file in glob.glob(path_old + "*.tab"):
+        data=conditions.query('Measurment == "'+file.replace('.tab','').replace(path_old,'').replace('-','_')+'"')
+        name=data['Replicate'].values[0]+'_hr'+str(data['Time'].values[0]).zfill(2)
+        copyfile(file,path_new+name+suffix+'.tab')
+
+rename_reads(path_old='/home/karin/Documents/timeTrajectories/data/RPKUM/',
+             path_new='/home/karin/Documents/timeTrajectories/data/GEO/RPKUM/',
+             suffix='_nor')
+
+rename_reads(path_old='/home/karin/Documents/timeTrajectories/data/countsRaw/',
+             path_new='/home/karin/Documents/timeTrajectories/data/GEO/read_counts/',
+             suffix='_rc')
