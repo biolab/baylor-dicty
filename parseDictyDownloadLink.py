@@ -403,23 +403,34 @@ for idx_name,sample in geo.iterrows():
         measurment=conditions.query('Replicate == "'+sample['title'].split('_hr')[0]+
                                     '" & Time == '+time)['Measurment']
         measurment=measurment.values[0].split('_mapped')[0]
-        measurment_edited=measurment.lower().replace('-','_')
+        measurment_edited=measurment.lower().replace('-','_').replace('hr','h')
         url=None
-        for file in ['MK_mybB-.csv','MK_pool35_pkaR-.csv','MK_pool36, 37 tagB PkaCoe acaA-PkaCoe.csv','MK_pool38.csv']:
-            file=pd.read_csv(path_meta + file)
+        found_n_files=0
+        for file_path in glob.glob(path_meta+'fastq_linkdata/*'):
+            file=pd.read_csv(file_path)
+            found_in_file=0
             for idx_name, db_data in file.iterrows():
-                description=db_data['Description'].lower().replace('-','_')
-                if measurment_edited in description and 'Filtered' not in db_data['Name']:
-                    sample_db=db_data['Description'].replace('Description of ','').\
-                        replace(' reads upload.','').replace('.fq.','.fastq.')
+                db_sample_name=db_data['Name'].lower().replace('-','_').replace('hr','h')
+                if measurment_edited in db_sample_name and 'Filtered' not in db_data['Name']:
+                    found_in_file+=1
+                    sample_db=db_data['Name'].replace('.fq.','.fastq.').replace(' (Upload)','').strip()
                     url='https://dictyexpress.research.bcm.edu/data/'+db_data['labels']+'/'+sample_db
+            if found_in_file>1:
+                print(measurment,'found in',file_path,found_in_file)
+            if found_in_file > 0:
+                found_n_files+=1
+        if found_n_files>1:
+            print('Found in more than one project',measurment,found_n_files)
+        if url is not None:
+            if ' ' in url:
+                print('Error in url',url)
         urls.append({'file':sample['raw file (mate 1)'],'url':url})
         if type(sample['raw file (mate 2)']) == str:
             url2=None
             if url is not None:
                 url2=url.replace('maye1','mate2')
             urls.append({'file': sample['raw file (mate 2)'], 'url': url2})
-pd.DataFrame(urls).to_csv(path_meta+'links_file.tsv',sep='\t')
+pd.DataFrame(urls).to_csv(path_meta+'links_file.tsv',sep='\t',index=False)
 
 #*******************
 #*** Rename RPKUM and count files for GEO
