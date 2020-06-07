@@ -575,6 +575,7 @@ strain_order=pd.read_table('/home/karin/Documents/timeTrajectories/data/strain_o
 averaged_data['Strain'] = pd.Categorical(averaged_data['Strain'], strain_order[0].values)
 averaged_data=averaged_data.sort_values(['Strain','Time'])
 averaged_data.to_csv(dataPathSaved + 'genes_averaged_orange_scale99percentileMax0.1.tsv', sep='\t')
+
 # **** Make expression data for single replicate per strain
 merged = ClusterAnalyser.merge_genes_conditions(genes=genes,
                                                 conditions=conditions[['Measurment', 'Replicate', 'Time', 'Strain']],

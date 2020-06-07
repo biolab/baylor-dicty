@@ -87,8 +87,6 @@ print('remouved:',removed)
 # while read l;do read fileName url <<< $l; wget -O "$fileName".tab.gz  --load-cookies=/home/karin/Documents/cookies_dicty.txt $url; done < /home/karin/Documents/timeTrajectories/data/dictyRPKUM1_All_milestone_mRNA_gff.txt
 # while read l;do read fileName url <<< $l; wget -O "$fileName".tab.gz --load-cookies=/home/karin/Documents/cookies_dicty.txt $url; done < /home/karin/Documents/timeTrajectories/data/dictyRPKUM2_All_milestone_mRNA_gff.txt
 
-# TODO with curl
-# curl --cookie cookies_dicty.txt https://dictyexpress.research.bcm.edu/data/5cadf0b66b1339075fcd3b63/pool36_tagB-_bio1_00h_1_TCGCAGG_unmapped.fastq.gz -o try.gz
 
 #Merge files into one
 path = '/home/karin/Documents/timeTrajectories/data/countsRaw/'
@@ -414,7 +412,9 @@ for idx_name,sample in geo.iterrows():
                 if measurment_edited in db_sample_name and 'Filtered' not in db_data['Name']:
                     found_in_file+=1
                     sample_db=db_data['Name'].replace('.fq.','.fastq.').replace(' (Upload)','').strip()
-                    url='https://dictyexpress.research.bcm.edu/data/'+db_data['labels']+'/'+sample_db
+                    #url='https://dictyexpress.research.bcm.edu/data/'+db_data['labels']+'/'+sample_db
+                    url = 'https://dictyexpress.research.bcm.edu/data/' + db_data['labels'] + '/' + \
+                          measurment+'.fastq.gz'
             if found_in_file>1:
                 print(measurment,'found in',file_path,found_in_file)
             if found_in_file > 0:
@@ -428,10 +428,27 @@ for idx_name,sample in geo.iterrows():
         if type(sample['raw file (mate 2)']) == str:
             url2=None
             if url is not None:
-                url2=url.replace('maye1','mate2')
+                url2=url.replace('mate1','mate2').replace('_R1_001','_R2_001')
+                if url==url2:
+                    print('Wrong mate2 url',url2)
             urls.append({'file': sample['raw file (mate 2)'], 'url': url2})
 pd.DataFrame(urls).to_csv(path_meta+'links_file.tsv',sep='\t',index=False)
 
+
+# For download, could add nohup & around curl but it terminates if too many processes
+# while read l
+# do read fileName url <<< $l
+# echo $fileName $url
+# curl -o "$fileName"  --cookie cookies_dicty.txt $url
+# done < links_file.tsv
+
+# Put the above in script, split the links into subfiles for paralel with: split -n 5 links_file.tsv links_file_sub.
+# for f in `ls|grep sub`
+# do
+# nohup ./download.sh $f  > nohup_"$f".out 2 > nohup_"$f".err &
+# done
+
+# curl --cookie cookies_dicty.txt https://dictyexpress.research.bcm.edu/data/5cadf0b66b1339075fcd3b63/pool36_tagB-_bio1_00h_1_TCGCAGG_unmapped.fastq.gz -o try.gz
 #*******************
 #*** Rename RPKUM and count files for GEO
 def rename_reads(path_old,path_new, suffix):
