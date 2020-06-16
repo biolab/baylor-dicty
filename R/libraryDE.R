@@ -5,6 +5,7 @@ THREADS=20
 buildDDS<-function(conditions,genes,t=NULL,case=NULL,ref,design,main_lvl=NULL,coldata=NULL,filter=1,set_main_lvl=FALSE){
 
   # Builds a DDS for DESeq2
+  # Does not work on single column conditions df
   # Conditions (M*D), genes (G*M) - dataframes
   # t - subset Time, vector
   # case, ref - retain only these from main_lvl, case (case can be vector)
@@ -47,10 +48,14 @@ buildDDS<-function(conditions,genes,t=NULL,case=NULL,ref,design,main_lvl=NULL,co
 }
 
 # Testd DE with DeSeq2
-testDE<-function(dds,sample,ref,padjSave=NULL,logFCSave=NULL,path=NULL,time=NULL,main_lvl='Strain'){
+testDE<-function(dds,sample,ref,padjSave=NULL,logFCSave=NULL,path=NULL,time=NULL,main_lvl='Strain',removeNA=TRUE){
   res <- results(dds,contrast=c(main_lvl, sample, ref),parallel = TRUE)
   print(summary(res))
-  resNN <- na.omit(res)
+  if(removeNA){
+      resNN <- na.omit(res)
+  }else{
+      resNN<-res
+  }
   resOrder<-resNN[order(resNN$padj),]
   if(!is.null(padjSave)) resOrder<-resOrder[resOrder$padj<=padjSave,]
   if(!is.null(logFCSave))resOrder<-resOrder[abs(resOrder$log2FoldChange)>=logFCSave,]
@@ -70,7 +75,7 @@ testDE<-function(dds,sample,ref,padjSave=NULL,logFCSave=NULL,path=NULL,time=NULL
 
 # Run DeSeq2 from raw data. Removes genes with all 0
 runDeSeq2<-function(conditions,genes,time=NULL,case,control='AX4',design=~Strain,main_lvl='Strain',padj=0.05,logFC=1,path=NULL,
-                   save_dds_path=NULL){
+                   save_dds_path=NULL,removeNA=TRUE){
   # Conditions (M*D), genes (G*M) - dataframes
   # time - subset Time, vector
   # case, ref - retain only these from main_lvl, case (case can be vector)
@@ -80,6 +85,7 @@ runDeSeq2<-function(conditions,genes,time=NULL,case,control='AX4',design=~Strain
   # padj, logFC - filter results, remove below logFC or above padj
   # path - save, adds file name
   # save_dds_path -path to save dds, if NULL do not save
+    #removeNA r-deseq results remove rows containing NA
   dds<-buildDDS(conditions=conditions,genes=genes,t=time,case=case,ref=control,design=design,main_lvl=main_lvl,filter=1,set_main_lvl=TRUE)$dds
   dds <- DESeq(dds,parallel = TRUE)
   if(!is.null(save_dds_path)){
@@ -90,8 +96,8 @@ runDeSeq2<-function(conditions,genes,time=NULL,case,control='AX4',design=~Strain
 
       saveRDS(object=dds,file=paste(path,paste(case,collapse = ''),'_ref_',control,time_str,'.rds',sep=''))
   }
-  if (is.null(path)) return(testDE(dds=dds,sample=case,ref=control,padjSave=padj,logFCSave=logFC,path=path,main_lvl=main_lvl))
-  else testDE(dds=dds,sample=case,ref=control,padjSave=padj,logFCSave=logFC,path=path,time=time,main_lvl=main_lvl)
+  if (is.null(path)) return(testDE(dds=dds,sample=case,ref=control,padjSave=padj,logFCSave=logFC,path=path,main_lvl=main_lvl,removeNA=removeNA))
+  else testDE(dds=dds,sample=case,ref=control,padjSave=padj,logFCSave=logFC,path=path,time=time,main_lvl=main_lvl,removeNA=removeNA)
 }
 
 # Make design matrix for nested levels as described in DESeq2 manual
