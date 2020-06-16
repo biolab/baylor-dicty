@@ -19,7 +19,7 @@ avg_expression=read.table(paste(path_expression,"genes_averaged_orange_mainStage
 
 data_impulse<-read.table(paste(pathImpulse,'DEacrossStages_summary_mainstage_AX4_0.001.tsv',sep=''),
                     header=TRUE,sep='\t',row.names=1)
-data_deseq<-read.table(paste(pathDeseq,'AX4/','combined.tsv',sep=''),
+data_deseq<-read.table(paste(pathDeseq,'AX4_keepNA/','combined.tsv',sep=''),
                     header=TRUE,sep='\t',row.names=1)
 data<-merge(data_deseq,data_impulse,all=TRUE,by="row.names")
 row.names(data)<-data$Row.names
