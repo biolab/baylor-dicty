@@ -44,7 +44,7 @@ optically_order_genes <- function(genes,avg_expression=parent.frame()$avg_expres
     expression<-t(avg_expression[avg_expression$Strain=='AX4',genes])
     #expression=t(avg_expression[,genes])
     # Looks same as 1-simil(expression, method="cosine")
-    distances<-dist(expression, method="cosine")
+    distances<-dist(expression, method="Euclidean")
     hc<-hclust(d=distances, method = "ward.D2" )
     hc_ordered<-reorder(x=hc,dist = distances)
     genes<- as.dendrogram(hc_ordered) %>% labels
