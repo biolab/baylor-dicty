@@ -19,7 +19,7 @@ avg_expression=read.table(paste(path_expression,"genes_averaged_orange_mainStage
 
 data_impulse<-read.table(paste(pathImpulse,'DEacrossStages_summary_mainstage_AX4_0.001.tsv',sep=''),
                     header=TRUE,sep='\t',row.names=1)
-data_deseq<-read.table(paste(pathDeseq,'AX4/','combined.tsv',sep=''),
+data_deseq<-read.table(paste(pathDeseq,'AX4_keepNA/','combined.tsv',sep=''),
                     header=TRUE,sep='\t',row.names=1)
 data<-merge(data_deseq,data_impulse,all=TRUE,by="row.names")
 row.names(data)<-data$Row.names
@@ -44,7 +44,7 @@ optically_order_genes <- function(genes,avg_expression=parent.frame()$avg_expres
     expression<-t(avg_expression[avg_expression$Strain=='AX4',genes])
     #expression=t(avg_expression[,genes])
     # Looks same as 1-simil(expression, method="cosine")
-    distances<-dist(expression, method="cosine")
+    distances<-dist(expression, method="Euclidean")
     hc<-hclust(d=distances, method = "ward.D2" )
     hc_ordered<-reorder(x=hc,dist = distances)
     genes<- as.dendrogram(hc_ordered) %>% labels

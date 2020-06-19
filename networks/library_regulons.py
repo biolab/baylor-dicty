@@ -284,8 +284,8 @@ class NeighbourCalculator:
             for neighbour in range(distances.shape[1]):
                 distance = distances[gene, neighbour]
                 # Because of rounding the similarity may be slightly above one and distance slightly below 0
-                if distance < 0 or distance > 1:
-                    if round(distance, 4) != 0 or distance > 1:
+                if distance < 0 or distance > 2:
+                    if round(distance, 4) != 0 or distance > 2:
                         warnings.warn(
                             'Odd cosine distance at ' + str(gene) + ' ' + str(neighbour) + ' :' + str(distance),
                             Warning)

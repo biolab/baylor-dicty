@@ -627,7 +627,7 @@ def avgsample_name(group):
     return group[0] + '_' + str(group[1])
 
 
-conditions_noimg = conditions = pd.read_csv(dataPath + 'conditions_noImage_mergedGenes.tsv', sep='\t',
+conditions_noimg = pd.read_csv(dataPath + 'conditions_noImage_mergedGenes.tsv', sep='\t',
                                             index_col=None).sort_values(['Strain', 'Time'])
 averaged_stages = pd.DataFrame(columns=phenotypes)
 grouped = conditions_noimg.groupby(['Strain', 'Time'])
@@ -997,7 +997,7 @@ genes_orange_avg_scaled.to_csv(pathStages+'genes_averaged_orange_mainStage_scale
 # ******* Merge results from DESeq2 between neighbouring stages
 combined = []
 phenotypes = [p for p in PHENOTYPES if p != 'yem']
-folder='AX4'
+folder='AX4_keepNA'
 # files=[f for f in glob.glob(path_de_neighbouring+folder  + '/DE' + "*.tsv")]
 # for f in files:
 for idx in range(len(phenotypes) - 1):
@@ -1008,6 +1008,8 @@ for idx in range(len(phenotypes) - 1):
     stage2 = phenotypes[idx + 1]
     f = path_de_neighbouring+folder+ '/DE_' + stage2 + '_ref_' + stage1 + '_padj_lFC.tsv'
     data = pd.read_table(f, index_col=0)[['log2FoldChange', 'pvalue','padj']]
+    # Remove genes for which pvalue was not calculated (e.g. outliers, ...)
+    data=data[~data['pvalue'].isna()]
     data.columns = [stage1 + '_' + stage2 + '_' + col for col in data.columns]
     combined.append(data)
 combined = pd.concat(combined, axis=1, sort=True)
