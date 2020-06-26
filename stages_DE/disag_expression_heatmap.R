@@ -114,7 +114,7 @@ pdf(paste0(path_disag,
 draw(ht_list)
 graphics.off()
 
-#Expression heatmap
+#Expression heatmap - disag tag_dic vs AX4 all
 ht_list<-make_annotation(phenotypes_font,legend_height,legend_width,top_annotation_height,phenotype_annotation_height,cluster_font)
 
 data<-read.table(paste0(path_disag,
