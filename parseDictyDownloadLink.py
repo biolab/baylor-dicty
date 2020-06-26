@@ -297,6 +297,39 @@ plt.yscale('log')
 genes.T[list((conditions["Replicate"] == 'AX4_Pool261') | (conditions["Replicate"] == 'AX4_Pool26'))].T.boxplot()
 # RESULT: Top hat gene counts are higher (median based) (eg. pool261 and bio11); same for pkaR_bio1 compared to bio2 and mybB_bio13 compared to mybB_bio1
 
+# Check sum RPKUM sum for each sample
+sum_data=pd.DataFrame({'x':range(genes.shape[1]),'RPKUM sum':np.log10(genes.loc[:,conditions['Measurment']].sum().values),'Time':conditions['Time'],'Strain':conditions['Strain']})
+
+cmap_dict=dict(zip(conditions['Strain'].unique(),range(len(conditions['Strain'].unique()))))
+cmap=matplotlib.cm.get_cmap('tab20')
+fig, ax = plt.subplots()
+for strain in sum_data['Strain'].unique():
+    data=sum_data.query('Strain =="'+strain+'"')
+    ax.scatter(data['x'],data['RPKUM sum'].values, c=cmap(cmap_dict[strain]),label=strain,s=(data['Time']+10))
+ax.legend(loc='best')
+ax.set_ylabel('log10(RPKUM sum)')
+ax.set_xlabel('sample')
+
+
+# RPKUm dist for sample
+# From https://stackoverflow.com/questions/41997493/python-matplotlib-boxplot-color
+def draw_plot(data, edge_color, fill_color,ax,positions):
+    bp = ax.boxplot(data, patch_artist=True,positions=positions,
+                    #showfliers=False
+                    )
+
+    for element in ['boxes', 'whiskers', 'fliers', 'means', 'medians', 'caps']:
+        plt.setp(bp[element], color=edge_color)
+
+    for patch in bp['boxes']:
+        patch.set(facecolor=fill_color)
+
+fig, ax = plt.subplots()
+for idx, data in conditions.iterrows():
+    color=cmap(cmap_dict[data['Strain']])
+    draw_plot(genes[data['Measurment']], color, color, ax,positions=[idx])
+ax.set_xlabel('Samples')
+ax.set_ylabel('RPKUM distn ')
 
 # OLD - when replicates were added latter
 conditions = pd.read_csv('/home/karin/Documents/timeTrajectories/data/countsRaw/combined/conditions.tsv', sep='\t')
