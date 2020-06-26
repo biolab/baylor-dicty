@@ -138,7 +138,7 @@ ht_list=ht_list %v% heatmap
 
 #Plots the combined heatmap
 pdf(paste0(path_disag,
-           'disagVSAX4all/expressionHeatmap_alternativegreater_FDRoptim0.01DE_tgrB1hr8hr10hr12andtgrB1C1hr8hr10hr12_ref_AX4all_DEpadj',padj,
+           'disagVSAX4all/expressionHeatmap_disagVSAX4all_alternativegreater_FDRoptim0.01DE_tgrB1hr8hr10hr12andtgrB1C1hr8hr10hr12_ref_AX4all_DEpadj',padj,
            'lfc',lfc,'.pdf'), width = 35, height = 8)
 draw(ht_list)
 graphics.off()
