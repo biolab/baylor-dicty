@@ -412,10 +412,77 @@ results_WT.to_csv(
     pathSelGenes + 'comparisonsAvgSimsSingle2STDAny0.2_AX4basedNeigh_' + test + '-' + alternative + '_newGenes_noAll-removeZeroRep_simsDict_scalemean0std1_logTrue_kN11_splitStrain.tsv',
     sep='\t', index=False)
 
+# ************ Find genes  for which neighbours in AX4 do not represent close neighbours in other strain groups, but
+# do in WT
+sims_dict = loadPickle(
+    pathSelGenes + 'AX4basedNeigh_newGenes-removeZeroRep_neighSimsDict_scalemean0std1_logTrue_kN11_splitStrain.pkl')[1]
+
+# Make DF with all genes and neighbours in rows and strains in columns.
+# Reindex individual strain data to have same gene index to start with.
+# replace np.nan with 0
+genes_AX4 = sims_dict['AX4'].index
+merged_sims = pd.DataFrame()
+for strain, data in sims_dict.items():
+    data = data.reindex(genes_AX4)
+    data = data.replace(np.nan, 0)
+    # List all neighbours of all genes in a column, so that neighbours of a gene follow each other
+    merged_sims[strain] = data.values.ravel()
+merged_sims.index = np.array([[gene] * sims_dict['AX4'].shape[1] for gene in genes_AX4]).ravel()
+
+# Quantile normalise across all neighbours and genes
+quantile_normalised = quantile_normalise(similarity_means=merged_sims)
+quantile_normalised.to_csv(
+    pathSelGenes + 'simsQuantileNormalised_AX4basedNeigh_noAll-removeZeroRep_scalemean0std1_logTrue_kN11_splitStrain_nonAvg.tsv',
+    sep='\t')
+
+# Pre select genes that have AX4 neighbours median above regulons threshold
+# Thresholds
+threshold_dict_strain = pd.read_table(
+    '/home/karin/Documents/timeTrajectories/data/regulons/selected_genes/thresholds/strainThresholds_k2_m0s1log_best0.7.tsv',
+    sep='\t')
+threshold_dict_strain = {data['Strain']: np.round(data['Threshold'], 3) for row, data in
+                         threshold_dict_strain.iterrows()}
+
+genes_filtered = set(genes_AX4)
+for strain in GROUP_DF[GROUP_DF['Group'] == 'WT']['Strain']:
+    threshold = threshold_dict_strain[strain]
+    medians = sims_dict[strain].median(axis=1)
+    genes_filtered = genes_filtered & set(medians[medians >= threshold].index)
+    print(len(genes_filtered))
+
+# Find genes without close neighbours in AX4
+strains_WT = GROUP_DF[GROUP_DF['Group'] == 'WT']['Strain']
+for group in GROUP_DF[GROUP_DF['Group'] != 'WT']['Group'].unique():
+    print(group)
+    strains = GROUP_DF[GROUP_DF['Group'] == group]['Strain']
+    group_results = []
+    for gene in genes_filtered:
+        values_WT = quantile_normalised.loc[gene, strains_WT].values.ravel()
+        values_mutant = quantile_normalised.loc[gene, strains].values.ravel()
+
+        result = mannwhitneyu(values_mutant, values_WT, alternative='less')
+        p = result[1]
+        statistic = result[0]
+
+        m_WT = values_WT.mean()
+        m_mutant = values_mutant.mean()
+        me_WT = np.median(values_WT)
+        me_mutant = np.median(values_mutant)
+
+        group_results.append({'Gene': gene, 'Statistic': statistic, 'p': p,
+                              'Mean WT': m_WT, 'Mean mutant': m_mutant, 'Difference mean': m_WT - m_mutant,
+                              'Median WT': me_WT, 'Median mutant': me_mutant, 'Difference median': me_WT - me_mutant})
+    group_results = pd.DataFrame(group_results)
+    # Adjust pvals to FDR
+    group_results['FDR'] = multipletests(pvals=group_results['p'], method='fdr_bh', is_sorted=False)[1]
+    group_results.to_csv(
+        pathSelGenes + 'comparisonsSims_'+group+'_AX4basedNeigh_u-less_removeZeroRep_scalemean0std1_logTrue_kN11.tsv',
+        sep='\t', index=False)
+
 # ****** For each strain/gene compare similarities to neighbours from AX4 and closest neighbours in the strain
 # Similarities to neighbours from AX4 - do not quantile normalise !!!!!
 sims_dict_WT = loadPickle(
-    pathSelGenes + 'AX4basedNeigh_newGenes-removeZeroRep_neighSimsDict_scalemean0std1_logTrue_kN11_splitStrain.pkl')[1]
+    pathSelGenes + 'AX4basedNeigh_newGenes-removeZeroRep_neighSimsDict_scalemean0std1_logTrue_kN11_splitStrains.pkl')[1]
 similarity_means_WT = similarity_mean_df(sims_dict=sims_dict_WT, index=genes.index, replace_na_sims=0,
                                          replace_na_mean=None)
 
@@ -628,7 +695,7 @@ def avgsample_name(group):
 
 
 conditions_noimg = pd.read_csv(dataPath + 'conditions_noImage_mergedGenes.tsv', sep='\t',
-                                            index_col=None).sort_values(['Strain', 'Time'])
+                               index_col=None).sort_values(['Strain', 'Time'])
 averaged_stages = pd.DataFrame(columns=phenotypes)
 grouped = conditions_noimg.groupby(['Strain', 'Time'])
 for group, data in grouped:
@@ -964,15 +1031,15 @@ genes_nn.to_csv(dataPath + 'nonNullGenes.tsv', sep='\t', index=False)
 conditions_main = conditions.query('~main_stage.isna()', engine='python')
 # Average expression
 genes_group = genes[conditions_main.Measurment].copy().T
-genes_group=genes_group.join(pd.DataFrame(conditions_main[['Strain','main_stage']].values,
-                              index=conditions_main['Measurment'],columns=['Strain','main_stage']))
-averaged=genes_group.groupby(['Strain','main_stage']).mean().reset_index()
+genes_group = genes_group.join(pd.DataFrame(conditions_main[['Strain', 'main_stage']].values,
+                                            index=conditions_main['Measurment'], columns=['Strain', 'main_stage']))
+averaged = genes_group.groupby(['Strain', 'main_stage']).mean().reset_index()
 # Sort by strain and stage
-averaged['main_stage']=pd.Categorical(averaged['main_stage'], categories=PHENOTYPES,ordered=True)
-averaged['Strain']=pd.Categorical(averaged['Strain'], categories=STRAIN_ORDER,ordered=True)
-averaged=averaged.sort_values(['Strain','main_stage'])
+averaged['main_stage'] = pd.Categorical(averaged['main_stage'], categories=PHENOTYPES, ordered=True)
+averaged['Strain'] = pd.Categorical(averaged['Strain'], categories=STRAIN_ORDER, ordered=True)
+averaged = averaged.sort_values(['Strain', 'main_stage'])
 
-averaged.to_csv(pathStages+'genes_averaged_orange_mainStage.tsv',sep='\t')
+averaged.to_csv(pathStages + 'genes_averaged_orange_mainStage.tsv', sep='\t')
 
 # Scale
 percentile = 0.99
@@ -987,17 +1054,16 @@ genes_orange_avg_scaled = genes_orange_avg_scaled / genes_avg_percentile
 genes_orange_avg_scaled[genes_orange_avg_scaled > max_val] = max_val
 genes_orange_avg_scaled[['Strain', 'main_stage']] = averaged[['Strain', 'main_stage']]
 genes_orange_avg_scaled['Group'] = [GROUPS[strain] for strain in genes_orange_avg_scaled['Strain']]
-genes_orange_avg_scaled.index=[strain+'_'+main
-                               for strain,main in genes_orange_avg_scaled[['Strain', 'main_stage']].values]
-genes_orange_avg_scaled.to_csv(pathStages+'genes_averaged_orange_mainStage_scale'+ str(percentile)[2:] +
-                                        'percentileMax' + str(max_val) + '.tsv',sep='\t')
-
+genes_orange_avg_scaled.index = [strain + '_' + main
+                                 for strain, main in genes_orange_avg_scaled[['Strain', 'main_stage']].values]
+genes_orange_avg_scaled.to_csv(pathStages + 'genes_averaged_orange_mainStage_scale' + str(percentile)[2:] +
+                               'percentileMax' + str(max_val) + '.tsv', sep='\t')
 
 # *****************
 # ******* Merge results from DESeq2 between neighbouring stages
 combined = []
 phenotypes = [p for p in PHENOTYPES if p != 'yem']
-folder='AX4_keepNA'
+folder = 'AX4_keepNA'
 # files=[f for f in glob.glob(path_de_neighbouring+folder  + '/DE' + "*.tsv")]
 # for f in files:
 for idx in range(len(phenotypes) - 1):
@@ -1006,37 +1072,37 @@ for idx in range(len(phenotypes) - 1):
     # stage2 = f_split[1]
     stage1 = phenotypes[idx]
     stage2 = phenotypes[idx + 1]
-    f = path_de_neighbouring+folder+ '/DE_' + stage2 + '_ref_' + stage1 + '_padj_lFC.tsv'
-    data = pd.read_table(f, index_col=0)[['log2FoldChange', 'pvalue','padj']]
+    f = path_de_neighbouring + folder + '/DE_' + stage2 + '_ref_' + stage1 + '_padj_lFC.tsv'
+    data = pd.read_table(f, index_col=0)[['log2FoldChange', 'pvalue', 'padj']]
     # Remove genes for which pvalue was not calculated (e.g. outliers, ...)
-    data=data[~data['pvalue'].isna()]
+    data = data[~data['pvalue'].isna()]
     data.columns = [stage1 + '_' + stage2 + '_' + col for col in data.columns]
     combined.append(data)
 combined = pd.concat(combined, axis=1, sort=True)
 
 # Adjust FDR across all comparisons, as they are all looked at together. Use only non-na pvalues
-pvals=[]
+pvals = []
 for col in combined.columns:
     if 'pvalue' in col:
         for row in combined.index:
-            pval=combined.at[row,col]
+            pval = combined.at[row, col]
             if not np.isnan(pval):
-                pvals.append({'row':row,'col':col,'pval':pval})
-pvals=pd.DataFrame(pvals)
-pvals['FDR_overall']=multipletests(pvals['pval'], method='fdr_bh')[1]
-for row_name,data in pvals.iterrows():
-    comparison=data['col'].rstrip('pvalue')
-    combined.at[data['row'],comparison+'FDR_overall']=data['FDR_overall']
+                pvals.append({'row': row, 'col': col, 'pval': pval})
+pvals = pd.DataFrame(pvals)
+pvals['FDR_overall'] = multipletests(pvals['pval'], method='fdr_bh')[1]
+for row_name, data in pvals.iterrows():
+    comparison = data['col'].rstrip('pvalue')
+    combined.at[data['row'], comparison + 'FDR_overall'] = data['FDR_overall']
 
-combined.to_csv(path_de_neighbouring+folder + '/combined.tsv', sep='\t')
+combined.to_csv(path_de_neighbouring + folder + '/combined.tsv', sep='\t')
 
-#***********
-#*** Prepare stage annotation metafile for supplementary
-stage_anno=conditions.copy()
-stage_anno=stage_anno[[col for col in stage_anno.columns if col in  PHENOTYPES or col =='main_stage']]
-stage_anno['Sample']=[rep+'_hr'+str(t).zfill(2) for rep,t in zip(conditions['Replicate'],conditions['Time'])]
-stage_anno['main_stage']=stage_anno['main_stage'].fillna('NA')
+# ***********
+# *** Prepare stage annotation metafile for supplementary
+stage_anno = conditions.copy()
+stage_anno = stage_anno[[col for col in stage_anno.columns if col in PHENOTYPES or col == 'main_stage']]
+stage_anno['Sample'] = [rep + '_hr' + str(t).zfill(2) for rep, t in zip(conditions['Replicate'], conditions['Time'])]
+stage_anno['main_stage'] = stage_anno['main_stage'].fillna('NA')
 for idx in stage_anno.index:
-    if all(stage_anno.loc[idx,PHENOTYPES]==0):
-        stage_anno.loc[idx, PHENOTYPES]='NA'
-stage_anno.to_csv('/home/karin/Documents/timeTrajectories/data/read_meta/stage_annotation.tsv',sep='\t',index=False)
+    if all(stage_anno.loc[idx, PHENOTYPES] == 0):
+        stage_anno.loc[idx, PHENOTYPES] = 'NA'
+stage_anno.to_csv('/home/karin/Documents/timeTrajectories/data/read_meta/stage_annotation.tsv', sep='\t', index=False)
