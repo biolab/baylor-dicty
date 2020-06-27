@@ -350,6 +350,75 @@ savePickle(
     pathSelGenes + 'AX4basedNeigh_newGenes-removeZeroRep_neighSimsDict_scalemean0std1_logTrue_kN' + str(NEIGHBOURS) +
     '_splitStrain.pkl', (neigh_WT, sims_dict_WT))
 
+# ***** OPTION2 Similarity to closest neighbours of AX4 across strains
+# Calculate neighbours on whole AX4 profile and then for similarities perform calculations on same n of samples of
+# each strain, resampling multipole times to include more samples
+# In each strain calculate similarity to genes that were identified as closest neighbours in AX4
+# E. g. Do neighbourhoods change?
+NEIGHBOURS = 11
+# Closest neighbours in AX4
+strain = 'AX4'
+nonzero = genes_zero_count[genes_zero_count[strain] == 0].index
+data = splitted[strain]
+data = data.loc[nonzero, :]
+neighbour_calculator = NeighbourCalculator(genes=data)
+neigh_WT, sims_AX4 = neighbour_calculator.neighbours(n_neighbours=NEIGHBOURS, inverse=False,
+                                                     scale='mean0std1',
+                                                     log=True,
+                                                     return_neigh_dist=True, remove_self=True)
+# Similarity in other strains
+# For individual strains do not include genes that are all 0 in at least one replicate for calculation of any neighbours
+n_samples = 10
+n_resample = 10
+sims_dict_WT = dict()
+random.seed(0)
+genes_WT = set(neigh_WT.index)
+for strain, data in splitted.items():
+    print(strain)
+    nonzero = set(genes_zero_count[genes_zero_count[strain] == 0].index)
+    nonzero = list(nonzero & genes_WT)
+    print('nonzero', len(nonzero))
+    data = data.loc[nonzero, :]
+    all_samples = list(data.columns)
+    # Do for subsets of 10 samples
+    similarities_resamples = []
+    for i in range(n_resample):
+        samples = random.sample(all_samples, n_samples)
+        # Keep only data that is not all zero in samples subset
+        data_sub = data.loc[:, samples]
+        data_sub = data_sub[(data_sub != 0).any(axis=1)]
+        print('sub', data_sub.shape[0], samples)
+        data_sub = pd.DataFrame(
+            NeighbourCalculator.get_index_query(genes=data_sub, inverse=False, scale='mean0std1', log=True)[0],
+            index=data_sub.index, columns=data_sub.columns)
+        n_genes = data_sub.shape[0]
+        similarities = np.empty((n_genes, NEIGHBOURS - 1))
+        similarities[:] = np.nan
+        for idx_gene in range(n_genes):
+            gene = data_sub.index[idx_gene]
+            neighbours_WT = neigh_WT.loc[gene, :].values
+            for idx_neigh in range(NEIGHBOURS - 1):
+                neigh = neighbours_WT[idx_neigh]
+                if neigh in data_sub.index:
+                    similarities[idx_gene][idx_neigh] = SimilarityCalculator.calc_cosine(data_sub.loc[gene, :],
+                                                                                         data_sub.loc[neigh, :])
+        similarities = pd.DataFrame(similarities, index=data_sub.index, columns=range(NEIGHBOURS - 1))
+        # Add genes for which similarities were not calculated
+        similarities = similarities.reindex(genes_WT)
+        # Replace non-calculated similarities (e.g. 0 expression) with 0
+        similarities = similarities.replace(np.nan, 0)
+        similarities_resamples.append(similarities.values)
+
+    # Median of resampled similarities for each gene-neighbour pair is the saved similarity for the pair
+    # Use median so that if profile was all 0 by chance and was thus given similarity 0 this will not affect it too much
+    similarities_resamples = np.median(np.array(similarities_resamples), axis=0)
+    similarities_resamples = pd.DataFrame(similarities_resamples, index=genes_WT, columns=range(NEIGHBOURS - 1))
+    sims_dict_WT[strain] = similarities_resamples
+
+savePickle(
+    pathSelGenes + 'AX4basedNeigh_newGenes-removeZeroRep_neighSimsDict_scalemean0std1_logTrue_kN' + str(NEIGHBOURS) +
+    '_splitStrain_samples' + str(n_samples) + 'resample' + str(n_resample) + '.pkl', (neigh_WT, sims_dict_WT))
+
 # ************ Find genes  for which neighbours in AX4 do not represent close neighbours (similar as above)
 sims_dict_WT = loadPickle(
     pathSelGenes + 'AX4basedNeigh_newGenes-removeZeroRep_neighSimsDict_scalemean0std1_logTrue_kN11_splitStrain.pkl')[1]
@@ -435,7 +504,7 @@ quantile_normalised.to_csv(
     pathSelGenes + 'simsQuantileNormalised_AX4basedNeigh_noAll-removeZeroRep_scalemean0std1_logTrue_kN11_splitStrain_nonAvg.tsv',
     sep='\t')
 
-# Pre select genes that have AX4 neighbours median above regulons threshold
+# Pre select genes that have WT neighbours median above regulons threshold
 # Thresholds
 threshold_dict_strain = pd.read_table(
     '/home/karin/Documents/timeTrajectories/data/regulons/selected_genes/thresholds/strainThresholds_k2_m0s1log_best0.7.tsv',
@@ -476,7 +545,71 @@ for group in GROUP_DF[GROUP_DF['Group'] != 'WT']['Group'].unique():
     # Adjust pvals to FDR
     group_results['FDR'] = multipletests(pvals=group_results['p'], method='fdr_bh', is_sorted=False)[1]
     group_results.to_csv(
-        pathSelGenes + 'comparisonsSims_'+group+'_AX4basedNeigh_u-less_removeZeroRep_scalemean0std1_logTrue_kN11.tsv',
+        pathSelGenes + 'comparisonsSims_' + group + '_AX4basedNeigh_u-less_removeZeroRep_scalemean0std1_logTrue_kN11.tsv',
+        sep='\t', index=False)
+
+# ************ Find genes  for which neighbours in AX4 do not represent close neighbours in other strain groups, but
+# do in WT; using the resampled data that does not need quantile normalisation - no difference in profile length
+sims_dict = loadPickle(
+    pathSelGenes + 'AX4basedNeigh_newGenes-removeZeroRep_neighSimsDict_scalemean0std1_logTrue_kN11_splitStrain_samples10resample10.pkl')[
+    1]
+
+# Make DF with all genes and neighbours in rows and strains in columns.
+# Reindexing and np replacement is not needed as this is done before
+genes_AX4 = sims_dict['AX4'].index
+merged_sims = pd.DataFrame()
+for strain, data in sims_dict.items():
+    if (data.index != genes_AX4).any() or data.isna().any().any():
+        raise ValueError('Data index does not match AX4 index or data contains na values')
+    # List all neighbours of all genes in a column, so that neighbours of a gene follow each other
+    merged_sims[strain] = data.values.ravel()
+merged_sims.index = np.array([[gene] * sims_dict['AX4'].shape[1] for gene in genes_AX4]).ravel()
+
+merged_sims['Gene'] = merged_sims.index
+medians = merged_sims.groupby('Gene').median()
+merged_sims = merged_sims.drop('Gene', axis=1)
+medians.to_csv(pathSelGenes +
+               'simsMedian_AX4basedNeigh_newGenes-removeZeroRep_neighSimsDict_scalemean0std1_logTrue_kN11_splitStrain_samples10resample10.tsv')
+
+# Pre select genes that have WT neighbours above AX4 based threshold
+
+genes_filtered = set(genes_AX4)
+# Here quantile 0.2 and not 0.3 (regulons) is used - this gives similar graph threshold as in regulons
+# This may be because regulons were computed on genes not null in AX4 (N=12316) and these similarities only
+# on genes non-null in any AX4 replicate (N=11501), thus including less genes
+threshold = medians['AX4'].quantile(0.2)
+for strain in GROUP_DF[GROUP_DF['Group'] == 'WT']['Strain']:
+    medians_strain = medians[strain]
+    genes_filtered = genes_filtered & set(medians_strain[medians_strain >= threshold].index)
+    print(len(genes_filtered))
+
+# Find genes without close neighbours in AX4
+strains_WT = GROUP_DF[GROUP_DF['Group'] == 'WT']['Strain']
+for group in GROUP_DF[GROUP_DF['Group'] != 'WT']['Group'].unique():
+    print(group)
+    strains = GROUP_DF[GROUP_DF['Group'] == group]['Strain']
+    group_results = []
+    for gene in genes_filtered:
+        values_WT = merged_sims.loc[gene, strains_WT].values.ravel()
+        values_mutant = merged_sims.loc[gene, strains].values.ravel()
+
+        result = mannwhitneyu(values_mutant, values_WT, alternative='less')
+        p = result[1]
+        statistic = result[0]
+
+        m_WT = values_WT.mean()
+        m_mutant = values_mutant.mean()
+        me_WT = np.median(values_WT)
+        me_mutant = np.median(values_mutant)
+
+        group_results.append({'Gene': gene, 'Statistic': statistic, 'p': p,
+                              'Mean WT': m_WT, 'Mean mutant': m_mutant, 'Difference mean': m_WT - m_mutant,
+                              'Median WT': me_WT, 'Median mutant': me_mutant, 'Difference median': me_WT - me_mutant})
+    group_results = pd.DataFrame(group_results)
+    # Adjust pvals to FDR
+    group_results['FDR'] = multipletests(pvals=group_results['p'], method='fdr_bh', is_sorted=False)[1]
+    group_results.to_csv(
+        pathSelGenes + 'comparisonsSims_' + group + '_AX4basedNeigh_u-less_removeZeroRep_scalemean0std1_logTrue_kN11_samples10resample10.tsv',
         sep='\t', index=False)
 
 # ****** For each strain/gene compare similarities to neighbours from AX4 and closest neighbours in the strain
@@ -1058,6 +1191,74 @@ genes_orange_avg_scaled.index = [strain + '_' + main
                                  for strain, main in genes_orange_avg_scaled[['Strain', 'main_stage']].values]
 genes_orange_avg_scaled.to_csv(pathStages + 'genes_averaged_orange_mainStage_scale' + str(percentile)[2:] +
                                'percentileMax' + str(max_val) + '.tsv', sep='\t')
+
+# *************
+# *** Average data for main stages
+# Select for now only WT as only this has all data and samples that have annotated main stage
+# conditions_main = conditions.query('Group =="WT"').query('~main_stage.isna()', engine='python')
+conditions_main = conditions.query('~main_stage.isna()', engine='python')
+# Average expression
+genes_group = genes[conditions_main.Measurment].copy().T
+genes_group = genes_group.join(pd.DataFrame(conditions_main[['Strain', 'main_stage']].values,
+                                            index=conditions_main['Measurment'], columns=['Strain', 'main_stage']))
+averaged = genes_group.groupby(['Strain', 'main_stage']).mean().reset_index()
+# Sort by strain and stage
+averaged['main_stage'] = pd.Categorical(averaged['main_stage'], categories=PHENOTYPES, ordered=True)
+averaged['Strain'] = pd.Categorical(averaged['Strain'], categories=STRAIN_ORDER, ordered=True)
+averaged = averaged.sort_values(['Strain', 'main_stage'])
+
+averaged.to_csv(pathStages + 'genes_averaged_orange_mainStage.tsv', sep='\t')
+
+# Scale
+percentile = 0.99
+max_val = 0.1
+genes_orange_avg_scaled = averaged.copy()
+genes_orange_avg_scaled = genes_orange_avg_scaled.drop(['Strain', 'main_stage'], axis=1)
+genes_avg_percentile = genes_orange_avg_scaled.quantile(q=percentile, axis=0)
+genes_orange_avg_scaled = genes_orange_avg_scaled - genes_avg_percentile
+genes_avg_percentile = genes_avg_percentile.replace(0, 1)
+genes_orange_avg_scaled = genes_orange_avg_scaled / genes_avg_percentile
+# Bound at max 0.1 (to remove outliers)
+genes_orange_avg_scaled[genes_orange_avg_scaled > max_val] = max_val
+genes_orange_avg_scaled[['Strain', 'main_stage']] = averaged[['Strain', 'main_stage']]
+genes_orange_avg_scaled['Group'] = [GROUPS[strain] for strain in genes_orange_avg_scaled['Strain']]
+genes_orange_avg_scaled.index = [strain + '_' + main
+                                 for strain, main in genes_orange_avg_scaled[['Strain', 'main_stage']].values]
+genes_orange_avg_scaled.to_csv(pathStages + 'genes_averaged_orange_mainStage_scale' + str(percentile)[2:] +
+                               'percentileMax' + str(max_val) + '.tsv', sep='\t')
+# *************
+# *** Average data chubs
+genes_mb= pd.read_csv('/home/karin/Documents/timeTrajectories/data/from_huston/normalised_mediaBuffer.tsv', sep='\t', index_col=0)
+conditions_mb = pd.read_csv('/home/karin/Documents/timeTrajectories/data/from_huston/conditions_mediaBuffer.tsv', sep='\t', index_col=None)
+
+# Average expression
+genes_group = genes_mb[conditions_mb.Measurment].copy().T
+genes_group = genes_group.join(pd.DataFrame(conditions_mb[['Group', 'Time']].values,
+                                            index=conditions_mb['Measurment'], columns=['Group', 'Time']))
+averaged = genes_group.groupby(['Group', 'Time']).mean().reset_index()
+# Sort
+averaged['Group'] = pd.Categorical(averaged['Group'], categories=['media','buff'], ordered=True)
+averaged = averaged.sort_values(['Group', 'Time'])
+
+averaged.to_csv('/home/karin/Documents/timeTrajectories/data/from_huston/averaged_mediaBuffer.tsv', sep='\t')
+
+# Scale
+percentile = 0.99
+max_val = 0.1
+genes_orange_avg_scaled = averaged.copy()
+genes_orange_avg_scaled = genes_orange_avg_scaled.drop(['Group', 'Time'], axis=1)
+genes_avg_percentile = genes_orange_avg_scaled.quantile(q=percentile, axis=0)
+genes_orange_avg_scaled = genes_orange_avg_scaled - genes_avg_percentile
+genes_avg_percentile = genes_avg_percentile.replace(0, 1)
+genes_orange_avg_scaled = genes_orange_avg_scaled / genes_avg_percentile
+# Bound at max 0.1 (to remove outliers)
+genes_orange_avg_scaled[genes_orange_avg_scaled > max_val] = max_val
+genes_orange_avg_scaled[['Group', 'Time']] = averaged[['Group', 'Time']]
+genes_orange_avg_scaled.index = [group + '_' + str(time)
+                                 for group, time in genes_orange_avg_scaled[['Group', 'Time']].values]
+genes_orange_avg_scaled.to_csv('/home/karin/Documents/timeTrajectories/data/from_huston/averaged_scale' + str(percentile)[2:] +
+                               'percentileMax' + str(max_val) + 'mediaBuffer.tsv', sep='\t')
+
 
 # *****************
 # ******* Merge results from DESeq2 between neighbouring stages
