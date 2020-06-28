@@ -192,10 +192,12 @@ for(strain in strain_order){
 gaps=unit(gaps,'mm')
 
 
-heatmap_sims <- Heatmap(as.matrix(median_sims[genes,]), col=rev(viridis(256)),
-                        column_split=factor(colnames(median_sims),
-                                      #** Ordering of the strains in the heatmap (a vector of strain names)
-                                      levels=strain_order ),column_gap=gaps,column_title =NULL,
+heatmap_sims <- Heatmap(as.matrix(median_sims[genes,strain_order]), col=rev(viridis(256)),
+                        column_split=factor(
+                          colnames(median_sims),levels=strain_order
+                          ),
+                        column_gap=unit(gsub(gap_units,'',gsub(unit(strain_gap,gap_units),unit(0,gap_units),gaps, fixed=TRUE)),gap_units),
+                        column_title =NULL,
                         cluster_columns = FALSE, cluster_rows = FALSE, show_row_names = FALSE,show_column_names=FALSE,
                         heatmap_legend_param = list(title = "\nMedian\nsimilarity\n",
                                                     grid_width= unit(legend_width, "cm"),grid_height= unit(legened_height, "cm") ,
