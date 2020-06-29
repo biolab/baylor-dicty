@@ -89,8 +89,9 @@ selected_cols<-list()
 for(group in strain_groups){
   selected_cols[[group]]<-c('0'='white','1'=group_cols[[group]])
 }
+# Colours of groups ordered as groups
+group_cols_ordered<-unlist(lapply(strain_groups, function(x) group_cols[[x]]))
 
-group_cols_list<-as.vector(unlist(lapply(strain_groups, function(x) group_cols[[x]])))
 if(FALSE){
 for(group in strain_groups){
   print(group)
@@ -124,8 +125,8 @@ for(group in strain_groups){
 
   lgd_list <- list(
     Legend(labels = strain_groups, title = "Aberrant\nneighborhood\n",
-        legend_gp = gpar(col = group_cols_list,
-                         fill=group_cols_list,
+        legend_gp = gpar(col = group_cols_ordered,
+                         fill=group_cols_ordered,
            fontsize = cluster_font,fontfamily=fontfamily
         ),grid_width= unit(legend_width, "cm"),grid_height= unit(legened_height, "cm"),
            labels_gp = gpar(fontsize = cluster_font,fontfamily=fontfamily),
@@ -225,3 +226,42 @@ pdf(paste0(path_aberrant,'selectedSimilarities_padj',FDR, 'MEdiff',MEDIFF,
   draw(heatmap_selected+heatmap_sims)
   graphics.off()
 
+# *** Heatmap of overlap between groups
+#' Overlap between two vectors normalised by the length of the smaller vector
+#' @param s1 vector 1
+#' @param s2 vector2
+#' @return len_overlap/len_smaller_vector
+proportion_smaller<-function(s1,s2){
+    return(length(intersect(s1,s2))/min(length(s1),length(s2)))
+}
+
+# Matrix with relative overlap between selected genes in each group
+n_groups<-length(strain_groups)
+group_overlap<-matrix(,nrow=n_groups,ncol=n_groups)
+for(i in 1:(n_groups-1)){
+    for(j in (1+i):n_groups){
+      genes1 <- rownames(all_abberant)[all_abberant[strain_groups[i]] == 1]
+      genes2<-rownames(all_abberant)[all_abberant[strain_groups[j]] == 1]
+      group_overlap[i,j]=proportion_smaller(genes1,genes2)
+    }
+}
+colnames(group_overlap)<-strain_groups
+rownames(group_overlap)<-strain_groups
+
+
+overlap_heatmap<-Heatmap(group_overlap,cluster_columns = FALSE,cluster_rows = FALSE,
+        col = viridis(256),
+        heatmap_legend_param = list(
+          title = "Ratio\nsmaller\noverlap\n",
+          grid_width = unit(legend_width, "cm"), grid_height = unit(legened_height, "cm"),
+          labels_gp = gpar(fontsize = cluster_font, fontfamily = fontfamily),
+          title_gp = gpar(fontsize = cluster_font, fontfamily = fontfamily)
+        ),
+        column_names_gp = gpar(fontsize = cluster_font, fontfamily = fontfamily, col=group_cols_ordered ),
+        row_names_gp = gpar(fontsize = cluster_font, fontfamily = fontfamily,col=group_cols_ordered )
+)
+pdf(paste0(path_aberrant, 'selectedOverlap_padj',FDR, 'MEdiff',MEDIFF,
+             '_AX4basedNeigh_newGenes-removeZeroRep_neighSimsDict_scalemean0std1_logTrue_kN11_splitStrain_samples10resample10.pdf'),
+    width = 8, height = 7)
+draw(overlap_heatmap)
+graphics.off()
