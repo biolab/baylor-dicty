@@ -577,11 +577,14 @@ genes_filtered = set(genes_AX4)
 # Here quantile 0.2 and not 0.3 (regulons) is used - this gives similar graph threshold as in regulons
 # This may be because regulons were computed on genes not null in AX4 (N=12316) and these similarities only
 # on genes non-null in any AX4 replicate (N=11501), thus including less genes
+# In both AX4 and MybBGFP N=6171 (in AX4: 9201, MybBGFP: 6414) genes were selected at threshold 0.7743873008057314
 threshold = medians['AX4'].quantile(0.2)
 for strain in GROUP_DF[GROUP_DF['Group'] == 'WT']['Strain']:
     medians_strain = medians[strain]
-    genes_filtered = genes_filtered & set(medians_strain[medians_strain >= threshold].index)
-    print(len(genes_filtered))
+    selected_genes_strain=set(medians_strain[medians_strain >= threshold].index)
+    genes_filtered = genes_filtered & selected_genes_strain
+    print('selected in',strain,len(selected_genes_strain),'remaining',len(genes_filtered))
+
 
 # Find genes without close neighbours in AX4
 strains_WT = GROUP_DF[GROUP_DF['Group'] == 'WT']['Strain']
