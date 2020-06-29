@@ -564,27 +564,29 @@ for strain, data in sims_dict.items():
     # List all neighbours of all genes in a column, so that neighbours of a gene follow each other
     merged_sims[strain] = data.values.ravel()
 merged_sims.index = np.array([[gene] * sims_dict['AX4'].shape[1] for gene in genes_AX4]).ravel()
+merged_sims.to_csv(pathSelGenes +
+               'simsAll_AX4basedNeigh_newGenes-removeZeroRep_neighSimsDict_scalemean0std1_logTrue_kN11_splitStrain_samples10resample10.tsv',sep='\t')
 
 merged_sims['Gene'] = merged_sims.index
 medians = merged_sims.groupby('Gene').median()
 merged_sims = merged_sims.drop('Gene', axis=1)
 medians.to_csv(pathSelGenes +
-               'simsMedian_AX4basedNeigh_newGenes-removeZeroRep_neighSimsDict_scalemean0std1_logTrue_kN11_splitStrain_samples10resample10.tsv')
+               'simsMedian_AX4basedNeigh_newGenes-removeZeroRep_neighSimsDict_scalemean0std1_logTrue_kN11_splitStrain_samples10resample10.tsv',sep='\t')
 
 # Pre select genes that have WT neighbours above AX4 based threshold
 
-genes_filtered = set(genes_AX4)
 # Here quantile 0.2 and not 0.3 (regulons) is used - this gives similar graph threshold as in regulons
 # This may be because regulons were computed on genes not null in AX4 (N=12316) and these similarities only
 # on genes non-null in any AX4 replicate (N=11501), thus including less genes
 # In both AX4 and MybBGFP N=6171 (in AX4: 9201, MybBGFP: 6414) genes were selected at threshold 0.7743873008057314
-threshold = medians['AX4'].quantile(0.2)
+MESIM_THRESHOLD = medians['AX4'].quantile(0.2)
+
+genes_filtered = set(genes_AX4)
 for strain in GROUP_DF[GROUP_DF['Group'] == 'WT']['Strain']:
     medians_strain = medians[strain]
-    selected_genes_strain=set(medians_strain[medians_strain >= threshold].index)
+    selected_genes_strain = set(medians_strain[medians_strain >= MESIM_THRESHOLD].index)
     genes_filtered = genes_filtered & selected_genes_strain
-    print('selected in',strain,len(selected_genes_strain),'remaining',len(genes_filtered))
-
+    print('selected in', strain, len(selected_genes_strain), 'remaining', len(genes_filtered))
 
 # Find genes without close neighbours in AX4
 strains_WT = GROUP_DF[GROUP_DF['Group'] == 'WT']['Strain']
@@ -614,6 +616,93 @@ for group in GROUP_DF[GROUP_DF['Group'] != 'WT']['Group'].unique():
     group_results.to_csv(
         pathSelGenes + 'comparisonsSims_' + group + '_AX4basedNeigh_u-less_removeZeroRep_scalemean0std1_logTrue_kN11_samples10resample10.tsv',
         sep='\t', index=False)
+
+# * Compare each group (as ref) against other groups
+# Problem with this is that less genes are selected for comparison in larger groups
+# selected in tagB 6839
+# selected in comH 4640
+# ___ selected in all tag 4168
+# selected in pkaR 5679
+# selected in PkaCoe 4910
+# ___ selected in all prec 3865
+# selected in gbfA 2864
+# selected in tgrC1 2778
+# ___ selected in all lag_dis 1616
+# selected in amiB 2996
+# selected in mybB 3475
+# selected in acaA 2375
+# selected in gtaC 3202
+# ___ selected in all agg- 1120
+# selected in AX4 9201
+# selected in MybBGFP 6414
+# ___ selected in all WT 6171
+# selected in ecmARm 3444
+# selected in gtaI 4012
+# selected in cudA 4523
+# selected in dgcA 4523
+# selected in gtaG 6570
+# ___ selected in all cud 1589
+# selected in acaAPkaCoe 2655
+# selected in ac3PkaCoe 4085
+# ___ selected in all sFB 2157
+# selected in tgrB1 3303
+# selected in tgrB1C1 3116
+# ___ selected in all tag_dis 2216
+
+for group_ref in set(GROUPS.values()):
+    # All genes included on the start
+    genes_filtered = set(genes_AX4)
+    for strain in GROUP_DF[GROUP_DF['Group'] == group_ref]['Strain']:
+        medians_strain = medians[strain]
+        selected_genes_strain = set(medians_strain[medians_strain >= MESIM_THRESHOLD].index)
+        genes_filtered = genes_filtered & selected_genes_strain
+        print('selected in', strain, len(selected_genes_strain))
+    print('___ selected in all', group_ref, len(genes_filtered))
+
+    strains_ref = GROUP_DF[GROUP_DF['Group'] == group_ref]['Strain']
+    for group in GROUP_DF[GROUP_DF['Group'] != group_ref]['Group'].unique():
+        strains = GROUP_DF[GROUP_DF['Group'] == group]['Strain']
+        group_results = []
+        for gene in genes_filtered:
+            values_ref = merged_sims.loc[gene, strains_ref].values.ravel()
+            values_mutant = merged_sims.loc[gene, strains].values.ravel()
+
+            result = mannwhitneyu(values_mutant, values_ref, alternative='less')
+            p = result[1]
+            statistic = result[0]
+
+            m_ref = values_ref.mean()
+            m_mutant = values_mutant.mean()
+            me_ref = np.median(values_ref)
+            me_mutant = np.median(values_mutant)
+
+            group_results.append({'Gene': gene, 'Statistic': statistic, 'p': p,
+                                  'Mean WT': m_ref, 'Mean mutant': m_mutant, 'Difference mean': m_ref - m_mutant,
+                                  'Median WT': me_ref, 'Median mutant': me_mutant,
+                                  'Difference median': me_ref - me_mutant})
+        group_results = pd.DataFrame(group_results)
+        # Adjust pvals to FDR
+        group_results['FDR'] = multipletests(pvals=group_results['p'], method='fdr_bh', is_sorted=False)[1]
+        group_results.to_csv(
+            pathSelGenes + 'group_vs_group/comparisonsSims_CASE' + group + '_REF' + group_ref +
+            '_AX4basedNeigh_u-less_removeZeroRep_scalemean0std1_logTrue_kN11_samples10resample10.tsv',
+            sep='\t', index=False)
+
+# Check how many genes were significantly
+fdr=0.001
+mediff=0.3
+groups_ordered=['WT','prec','sFB','cud','tag','tag_dis','lag_dis','agg-']
+selected_aberrant=pd.DataFrame(index=groups_ordered,columns=groups_ordered)
+selected_aberrant.index.name='reference_rows'
+selected_aberrant.columns.name='case_cols'
+for group_ref in set(GROUPS.values()):
+    for group in GROUP_DF[GROUP_DF['Group'] != group_ref]['Group'].unique():
+        data=pd.read_table(pathSelGenes + 'group_vs_group/comparisonsSims_CASE' + group + '_REF' + group_ref +
+            '_AX4basedNeigh_u-less_removeZeroRep_scalemean0std1_logTrue_kN11_samples10resample10.tsv',index_col=0)
+        n_selected=data.query('FDR <= '+str(fdr)+' & `Difference median` >= '+str(mediff)).shape[0]
+        selected_aberrant.at[group_ref,group]=n_selected
+selected_aberrant.to_csv(pathSelGenes + 'group_vs_group/resultsN_FDR'+str(fdr)+'MeDiff'+str(mediff)+
+                         '_AX4basedNeigh_u-less_removeZeroRep_scalemean0std1_logTrue_kN11_samples10resample10.tsv',sep='\t')
 
 # ****** For each strain/gene compare similarities to neighbours from AX4 and closest neighbours in the strain
 # Similarities to neighbours from AX4 - do not quantile normalise !!!!!
@@ -1231,8 +1320,10 @@ genes_orange_avg_scaled.to_csv(pathStages + 'genes_averaged_orange_mainStage_sca
                                'percentileMax' + str(max_val) + '.tsv', sep='\t')
 # *************
 # *** Average data chubs
-genes_mb= pd.read_csv('/home/karin/Documents/timeTrajectories/data/from_huston/normalised_mediaBuffer.tsv', sep='\t', index_col=0)
-conditions_mb = pd.read_csv('/home/karin/Documents/timeTrajectories/data/from_huston/conditions_mediaBuffer.tsv', sep='\t', index_col=None)
+genes_mb = pd.read_csv('/home/karin/Documents/timeTrajectories/data/from_huston/normalised_mediaBuffer.tsv', sep='\t',
+                       index_col=0)
+conditions_mb = pd.read_csv('/home/karin/Documents/timeTrajectories/data/from_huston/conditions_mediaBuffer.tsv',
+                            sep='\t', index_col=None)
 
 # Average expression
 genes_group = genes_mb[conditions_mb.Measurment].copy().T
@@ -1240,7 +1331,7 @@ genes_group = genes_group.join(pd.DataFrame(conditions_mb[['Group', 'Time']].val
                                             index=conditions_mb['Measurment'], columns=['Group', 'Time']))
 averaged = genes_group.groupby(['Group', 'Time']).mean().reset_index()
 # Sort
-averaged['Group'] = pd.Categorical(averaged['Group'], categories=['media','buff'], ordered=True)
+averaged['Group'] = pd.Categorical(averaged['Group'], categories=['media', 'buff'], ordered=True)
 averaged = averaged.sort_values(['Group', 'Time'])
 
 averaged.to_csv('/home/karin/Documents/timeTrajectories/data/from_huston/averaged_mediaBuffer.tsv', sep='\t')
@@ -1259,9 +1350,9 @@ genes_orange_avg_scaled[genes_orange_avg_scaled > max_val] = max_val
 genes_orange_avg_scaled[['Group', 'Time']] = averaged[['Group', 'Time']]
 genes_orange_avg_scaled.index = [group + '_' + str(time)
                                  for group, time in genes_orange_avg_scaled[['Group', 'Time']].values]
-genes_orange_avg_scaled.to_csv('/home/karin/Documents/timeTrajectories/data/from_huston/averaged_scale' + str(percentile)[2:] +
-                               'percentileMax' + str(max_val) + 'mediaBuffer.tsv', sep='\t')
-
+genes_orange_avg_scaled.to_csv(
+    '/home/karin/Documents/timeTrajectories/data/from_huston/averaged_scale' + str(percentile)[2:] +
+    'percentileMax' + str(max_val) + 'mediaBuffer.tsv', sep='\t')
 
 # *****************
 # ******* Merge results from DESeq2 between neighbouring stages
