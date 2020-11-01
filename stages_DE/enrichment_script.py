@@ -1,7 +1,12 @@
 import pandas as pd
+import sys
+sys.path.append('baylor-dicty/stages_DE/')
 import stages_DE.enrichment_library as enr
 
-path_sets = '/home/karin/Documents/timeTrajectories/data/from_huston/gene_sets/'
+#laptop
+#path_sets = '/home/karin/Documents/timeTrajectories/data/from_huston/gene_sets/'
+#server
+path_sets ='/home/khrovatin/timeTrajectories/data/from_huston/gene_sets/'
 #################
 ### Change Mariko's gene sets to gmt
 set_files = {  # 'pulse_induced': ['cAMP_gene_inf.xlsx'],
@@ -21,18 +26,18 @@ set_files = {  # 'pulse_induced': ['cAMP_gene_inf.xlsx'],
     # 'TF (mediator)': ['TF-list.xlsx',0],
     'hssA/2C/7E family': 'hssA_2C_7E family',
     '57-aa protein family': '57-aa protein family',
-    'sig genes': 'sig genes',
-    'gtaG dependent short protein': 'gtaG dependent short protein',
-    'transcriptional regulation and chromatin organization': 'transcriptional regulation and chromatin organization',
+    'sig and sigN genes': 'sig and sigN genes',
+    'gtaG-dependent short protein': 'gtaG-dependent short protein',
+    'transcriptional regulation and chromatin organization': 'TR and CH',
     'regulatory transcription factor': 'regulatory transcription factor',
     'general transcription factor': 'general transcription factor',
     'mediator': 'mediator',
-    'chromatin remodeling/histone modification': 'chromatin remodeling and histone modification',
+    'chromatin remodeling/histone modification': 'CR and HM',
     'histone/histone variant': 'histone and histone variant',
     'chromatin/centromere': 'chromatin and centromere',
     'psp gene': 'psp gene',
     'pst gene': 'pst gene',
-    'pulse induced': 'pulse induced',
+    'cAMP pulse induced': 'cAMP pulse induced',
     'chemotaxis': 'chemotaxis'
 }
 for set_name in set_files.keys():
@@ -62,4 +67,5 @@ for set_name in set_files.keys():
 from orangecontrib.bioinformatics.utils import local_cache
 
 print(local_cache)
+# Localcahe wont be made befor eused - downloaded on first use
 # in unix: cp /home/karin/Documents/timeTrajectories/data/from_huston/gene_sets/Custom-Baylor-44689.gmt* /home/karin/.local/share/Orange/3.26.0.dev/bioinformatics/serverfiles/2020_04_05/gene_sets/

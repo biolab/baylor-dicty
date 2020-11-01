@@ -24,6 +24,9 @@ HYPERGEOMETRIC = Hypergeometric()
 font = 'Arial'
 matplotlib.rcParams.update({'font.family': font})
 plt.rcParams["font.family"] = font
+# installing Arial:
+# Install with conda https://anaconda.org/conda-forge/mscorefonts
+# Reset matplotlib cache https://scentellegher.github.io/visualization/2018/05/02/custom-fonts-matplotlib.html
 
 
 class GeneSetData:
@@ -813,8 +816,8 @@ def plot_enrichment_bar(df: pd.DataFrame, query_n, reference_n, used_padj, min_F
         'Pathways', 'Path.').replace(
         'Dictybase: Phenotypes', 'DB: Pheno.').replace(
         'Custom: Baylor', 'Custom') for ont in df['Ontology'].values]
-    df_plot['Group'] = ["%d (%.1f%%)" % (n, (100 * n / query_n)) for n in df['N in group']]
-    df_plot['Reference'] = ["%d (%.1f%%)" % (n, (100 * n / reference_n)) for n in df['N in ref.']]
+    df_plot['Group'] = ["%d (%.2f%%)" % (n, (100 * n / query_n)) for n in df['N in group']]
+    df_plot['Reference'] = ["%d (%.2f%%)" % (n, (100 * n / reference_n)) for n in df['N in ref.']]
     df_plot['FDR'] = df['FDR']
     df_plot = df_plot.sort_values('Fold enrichment', ascending=False)
     return plot_table_barh(df=df_plot, bar_col='Fold enrichment', colour_col='colour', col_widths=[37, 14, 8, 9, 9],
